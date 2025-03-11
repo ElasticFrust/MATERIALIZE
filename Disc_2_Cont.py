@@ -266,7 +266,7 @@ def analyze_elastic_struct(triangulation): # This is the main function
     triangulation.C_matrix_all = sp.sparse.linalg.inv(triangulation.A_matrix_all-triangulation.B_matrix_all)
     triangulation.Ws_with_inv = - np.reshape(triangulation.C_matrix_all @ triangulation.dA_vec_all,(-1,9))
     triangulation.Ws_with_spsolve=-np.reshape(sp.sparse.linalg.spsolve(triangulation.A_matrix_all-triangulation.B_matrix_all,triangulation.dA_vec_all,'Natural'),(-1,9))
-    triangulation.Ws=triangulation.Ws_with_inv
+    triangulation.Ws=triangulation.Ws_with_spsolve
     #add_actual_elastic_tensor(triangulation)  ## FUNCTION HAS AN ERROR
     add_actual_matrix(triangulation)
     triangulation.totalElasticTensor = np.mean(triangulation.ActualElasticTensor,0)
