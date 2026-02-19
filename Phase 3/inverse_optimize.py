@@ -216,6 +216,128 @@ def run_single_optimization(
 
 
 # ---------------------------------------------------------------------------
+# Property-targeting optimization (e.g. target Poisson = 0.1)
+# ---------------------------------------------------------------------------
+
+def run_property_optimization(
+    solver,
+    n_triangles,
+    target_poisson=None,
+    target_young=None,
+    weight_poisson=1.0,
+    weight_young=1.0,
+    n_edges_per_tri=3,
+    max_iter=500,
+    lr=0.05,
+    tol=1e-12,
+    optimizer_type='lbfgs',
+    seed=None,
+    verbose=False,
+):
+    """Optimize rigidities to hit target Poisson ratio and/or Young's modulus.
+
+    Unlike run_single_optimization (which matches all 6 tensor components),
+    this targets scalar properties directly.
+
+    Args:
+        solver:          ElasticSolver instance.
+        n_triangles:     Number of triangles.
+        target_poisson:  Target Poisson's ratio (None = don't target).
+        target_young:    Target Young's modulus (None = don't target).
+        weight_poisson:  Weight for Poisson loss term.
+        weight_young:    Weight for Young loss term.
+        max_iter, lr, tol, optimizer_type, seed, verbose: same as run_single_optimization.
+
+    Returns:
+        dict with 'converged', 'final_loss', 'iterations', 'rigidities',
+        'poisson', 'young', 'pred_tensor', 'time_seconds'.
+    """
+    if target_poisson is None and target_young is None:
+        raise ValueError("Must specify at least one of target_poisson or target_young")
+
+    if seed is not None:
+        torch.manual_seed(seed)
+
+    init_rigs = torch.exp(0.5 * torch.randn(n_triangles, n_edges_per_tri,
+                                              dtype=torch.float64))
+    raw = rigidities_to_raw(init_rigs)
+    raw = raw.clone().detach().requires_grad_(True)
+
+    best_loss = float('inf')
+    best_raw = raw.clone().detach()
+    iterations = 0
+    t0 = time.time()
+
+    def compute_loss():
+        optimizer.zero_grad()
+        k = raw_to_rigidities(raw)
+        result = solver(k, rest_lengths=None)
+        loss = torch.tensor(0.0, dtype=torch.float64)
+        if target_poisson is not None:
+            loss = loss + weight_poisson * (result['poisson'] - target_poisson) ** 2
+        if target_young is not None:
+            loss = loss + weight_young * (result['young'] - target_young) ** 2
+        loss.backward()
+        return loss
+
+    if optimizer_type == 'lbfgs':
+        optimizer = torch.optim.LBFGS(
+            [raw], lr=lr, max_iter=20, line_search_fn='strong_wolfe',
+            tolerance_grad=1e-14, tolerance_change=1e-16,
+        )
+        for outer in range(max_iter // 20 + 1):
+            loss_val = optimizer.step(compute_loss)
+            iterations += 20
+            current_loss = loss_val.item()
+            if current_loss < best_loss:
+                best_loss = current_loss
+                best_raw = raw.clone().detach()
+            if verbose and outer % 5 == 0:
+                with torch.no_grad():
+                    k = raw_to_rigidities(raw)
+                    r = solver(k, rest_lengths=None)
+                print(f"  iter {iterations:4d}  loss={current_loss:.3e}"
+                      f"  ν={r['poisson'].item():.6f}  E={r['young'].item():.6f}")
+            if current_loss < tol:
+                break
+    elif optimizer_type == 'adam':
+        optimizer = torch.optim.Adam([raw], lr=lr)
+        for it in range(max_iter):
+            loss_val = compute_loss()
+            optimizer.step()
+            iterations = it + 1
+            current_loss = loss_val.item()
+            if current_loss < best_loss:
+                best_loss = current_loss
+                best_raw = raw.clone().detach()
+            if verbose and it % 100 == 0:
+                with torch.no_grad():
+                    k = raw_to_rigidities(raw)
+                    r = solver(k, rest_lengths=None)
+                print(f"  iter {it:4d}  loss={current_loss:.3e}"
+                      f"  ν={r['poisson'].item():.6f}  E={r['young'].item():.6f}")
+            if current_loss < tol:
+                break
+
+    elapsed = time.time() - t0
+
+    with torch.no_grad():
+        k_best = raw_to_rigidities(best_raw)
+        result = solver(k_best, rest_lengths=None)
+
+    return {
+        'converged': best_loss < tol * 1000,
+        'final_loss': best_loss,
+        'iterations': iterations,
+        'rigidities': k_best.numpy(),
+        'pred_tensor': result['elastic_tensor'].numpy(),
+        'poisson': result['poisson'].item(),
+        'young': result['young'].item(),
+        'time_seconds': elapsed,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Multi-start campaign
 # ---------------------------------------------------------------------------
 
@@ -387,6 +509,133 @@ def validate_round_trip(solver, rigidities, target_tensor):
         'poisson': result['poisson'].item(),
         'young': result['young'].item(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Visualization: compare multiple solutions on the mesh
+# ---------------------------------------------------------------------------
+
+def visualize_solutions(triangulation, solutions, title=None, save_path=None):
+    """Plot the mesh with edges colored by rigidity for multiple solutions.
+
+    Each subplot shows one converged solution. Edges are colored by their
+    rigidity value (log scale), so you can see how different solutions
+    distribute stiffness across the network to achieve the same tensor.
+
+    Args:
+        triangulation: scipy.spatial.Delaunay with .points, .simplices
+        solutions:     list of dicts, each with 'rigidities' (N, 3) array
+                       and optionally 'poisson', 'young', 'rel_error'.
+        title:         Overall figure title.
+        save_path:     If given, save the figure to this path.
+
+    Returns:
+        matplotlib Figure object.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import LogNorm
+    import matplotlib.cm as cm
+
+    points = triangulation.points
+    simplices = triangulation.simplices
+    n_sols = len(solutions)
+    ncols = min(n_sols, 4)
+    nrows = (n_sols + ncols - 1) // ncols
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows),
+                             squeeze=False)
+    axes = axes.ravel().tolist()
+
+    # Collect all rigidities for consistent color scale
+    all_rigs = np.concatenate([s['rigidities'].ravel() for s in solutions])
+    vmin, vmax = all_rigs.min(), all_rigs.max()
+    # Clamp for log scale
+    vmin = max(vmin, 1e-6)
+    norm = LogNorm(vmin=vmin, vmax=max(vmax, vmin * 10))
+
+    for idx, (ax, sol) in enumerate(zip(axes, solutions)):
+        rigs = sol['rigidities']  # (N, 3)
+
+        # Build edge segments and colors
+        segments = []
+        colors = []
+        for tri_idx, tri in enumerate(simplices):
+            edge_pairs = [(tri[i], tri[j]) for i in range(3) for j in range(i+1, 3)]
+            for e_idx, (a, b) in enumerate(edge_pairs):
+                segments.append([points[a], points[b]])
+                colors.append(rigs[tri_idx, e_idx])
+
+        colors = np.array(colors)
+        lc = LineCollection(segments, cmap='viridis', norm=norm, linewidths=0.8)
+        lc.set_array(colors)
+        ax.add_collection(lc)
+        ax.set_xlim(points[:, 0].min() - 0.5, points[:, 0].max() + 0.5)
+        ax.set_ylim(points[:, 1].min() - 0.5, points[:, 1].max() + 0.5)
+        ax.set_aspect('equal')
+
+        subtitle = f"Solution {idx + 1}"
+        if 'poisson' in sol:
+            subtitle += f"\nν={sol['poisson']:.4f}"
+        if 'young' in sol:
+            subtitle += f"  E={sol['young']:.4f}"
+        if 'rel_error' in sol:
+            subtitle += f"\nerr={sol['rel_error']:.1e}"
+        ax.set_title(subtitle, fontsize=9)
+        ax.tick_params(labelsize=7)
+
+    # Hide unused axes
+    for ax in axes[n_sols:]:
+        ax.set_visible(False)
+
+    fig.colorbar(cm.ScalarMappable(norm=norm, cmap='viridis'),
+                 ax=axes[:n_sols], label='Edge rigidity (log scale)',
+                 shrink=0.8)
+
+    if title:
+        fig.suptitle(title, fontsize=13, y=1.02)
+
+    fig.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Figure saved to {save_path}")
+
+    return fig
+
+
+def visualize_rigidity_histograms(solutions, save_path=None):
+    """Plot overlaid histograms of rigidity distributions for each solution.
+
+    Shows how different solutions distribute edge stiffness differently.
+
+    Args:
+        solutions: list of dicts, each with 'rigidities' (N,3) array.
+        save_path: If given, save figure.
+
+    Returns:
+        matplotlib Figure.
+    """
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for idx, sol in enumerate(solutions):
+        rigs = sol['rigidities'].ravel()
+        ax.hist(rigs, bins=50, alpha=0.4, label=f"Solution {idx+1}",
+                density=True, edgecolor='none')
+
+    ax.set_xlabel('Edge rigidity')
+    ax.set_ylabel('Density')
+    ax.set_title('Rigidity distributions across converged solutions\n'
+                 '(all achieve the same elastic tensor)')
+    ax.legend()
+
+    fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Figure saved to {save_path}")
+    return fig
 
 
 # ---------------------------------------------------------------------------

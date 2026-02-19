@@ -6,7 +6,7 @@ Given a **target** elastic tensor, find spring rigidities that produce it — us
 
 | File | What it does |
 |------|-------------|
-| `inverse_optimize.py` | Inverse optimization engine: target tensor → spring rigidities. Supports L-BFGS and Adam, multi-start campaigns, clustering of converged solutions, and round-trip validation. |
+| `inverse_optimize.py` | Inverse optimization engine: target tensor → spring rigidities. Supports L-BFGS and Adam, tensor-matching and property-targeting modes, multi-start campaigns, clustering, round-trip validation, and solution visualization. |
 | `test_inverse.py` | Test suite: parameterization round-trip, single optimization, Adam/L-BFGS convergence, round-trip validation, gradient flow, mini campaign. |
 
 ## The inverse problem
@@ -130,7 +130,72 @@ All 6 tests pass:
 
 - **L-BFGS converges in ~60 iterations** (< 1 second) to relative error ~10⁻⁵
 - **The inverse problem has many solutions**: 5 random starts → 5 distinct clusters. This is expected — N×3 unknowns vs 6 equations means the solution manifold has dimension ~(3N - 6).
-- **Per-edge coefficient of variation** identifies structurally important springs ("locked" edges with low CV across all solutions) vs redundant springs ("free" edges with high CV).
+- **Per-edge coefficient of variation (CV)** identifies structurally important springs ("locked" edges with low CV across all solutions) vs redundant springs ("free" edges with high CV).
+
+### What is CV (Coefficient of Variation)?
+
+CV = standard deviation / mean, computed per edge across multiple converged solutions. It answers: "does this edge always end up with the same rigidity, or does it vary?"
+
+- **CV < 0.01 ("locked")**: This edge's rigidity is tightly constrained by the physics — all solutions agree on its value. These are structurally essential.
+- **CV > 0.10 ("free")**: This edge can take many different rigidity values without affecting the macroscopic tensor. With 2,832+ unknowns and only 6 tensor equations, most edges are free.
+
+### Large-mesh benchmarks
+
+| Mesh | Triangles | Nodes | Edge-springs | L-BFGS iters | Time (single) | Rel error | Campaign (5 starts) |
+|------|-----------|-------|-------------|-------------|---------------|-----------|---------------------|
+| 3×3 | 92 | 113 | 276 | 60 | ~0.5s | 8.0e-06 | ~2s |
+| **10×10** | 944 | 661 | 2,832 | 60 | 12.8s | 5.8e-06 | 8.1s |
+| **16×16** | 2,404 | 1,497 | 7,212 | 60 | 3.0s | 6.0e-05 | 14.4s |
+
+Key observations:
+- **Iteration count is constant** — 60 L-BFGS iterations at every scale (3×3 through 16×16).
+- **Relative error stays ~10⁻⁵** even at 7,212 unknowns.
+- **5/5 starts converge at every size**, producing 5 distinct clusters.
+- **99%+ of edges are "free"** (CV > 0.10) on larger meshes — physically correct given the huge underdetermination.
+- **Gradients reach every single edge** — all 7,212 gradient components are nonzero.
+
+### Property targeting: Poisson = 0.1
+
+The `run_property_optimization` function can target specific material properties (Poisson's ratio, Young's modulus) directly, rather than matching all 6 tensor components.
+
+Example: targeting ν = 0.1 on a 10×10 mesh whose natural Poisson's ratio is 0.267:
+
+| Seed | Achieved ν | Achieved E | Loss | Iters | Time |
+|------|-----------|-----------|------|-------|------|
+| 0 | 0.100000 | 0.0333 | 1.7e-17 | 60 | 11.5s |
+| 1 | 0.100000 | 0.0304 | 1.5e-17 | 60 | 1.0s |
+| 2 | 0.100000 | 0.0278 | 2.2e-17 | 60 | 0.7s |
+| 3 | 0.100000 | 0.0321 | 3.1e-17 | 60 | 0.9s |
+| 4 | 0.100000 | 0.0249 | 1.6e-17 | 60 | 0.8s |
+
+All 5 hit ν = 0.100000 (to 6+ decimal places). The Young's modulus varies across solutions because only Poisson was constrained — this is expected (1 constraint, 2832 unknowns).
+
+## Visualizing solutions
+
+The module includes two visualization functions for comparing converged solutions:
+
+### Mesh edge plots
+
+`visualize_solutions(triangulation, solutions)` plots the mesh with edges colored by rigidity (log scale). Each subplot shows one solution.
+
+![4 solutions for the same elastic tensor](solution_comparison.png)
+
+All four panels produce the *same* macroscopic elastic tensor (ν=0.2669, E=0.0481) — but the rigidity patterns are visibly different. This is the solution manifold in action.
+
+### Rigidity histograms
+
+`visualize_rigidity_histograms(solutions)` overlays the rigidity distributions.
+
+![Rigidity distributions](rigidity_histograms.png)
+
+The distributions are similar in shape (all centered near 1.0) but differ in spread and tail behavior — the solutions explore different regions of the solution manifold.
+
+### Poisson = 0.1 solutions
+
+When targeting a specific Poisson ratio, the optimizer finds rigidity patterns far from the uniform-rigidity baseline:
+
+![4 solutions targeting Poisson=0.1](poisson_01_solutions.png)
+![Rigidity distributions for Poisson=0.1](poisson_01_histograms.png)
 
 ## Quick start
 
@@ -190,6 +255,31 @@ print(f"Relative error: {result['rel_error']:.3e}")
 print(f"Poisson: {result['poisson']:.6f} (target: {gt['poisson'].item():.6f})")
 ```
 
+### Target a specific Poisson ratio
+
+```python
+from inverse_optimize import run_property_optimization
+
+result = run_property_optimization(
+    solver=solver,
+    n_triangles=len(tri.simplices),
+    target_poisson=0.1,    # target ν = 0.1
+    optimizer_type='lbfgs',
+)
+print(f"Poisson: {result['poisson']:.6f}")  # → 0.100000
+```
+
+### Visualize multiple solutions
+
+```python
+from inverse_optimize import run_campaign, visualize_solutions
+
+campaign = run_campaign(solver=solver, target_tensor=target,
+                        n_triangles=len(tri.simplices), n_starts=4)
+visualize_solutions(tri, campaign['converged_runs'][:4],
+                    save_path='comparison.png')
+```
+
 ## CLI options
 
 | Flag | Default | Description |
@@ -209,8 +299,9 @@ print(f"Poisson: {result['poisson']:.6f} (target: {gt['poisson'].item():.6f})")
 
 - **Converged N/M** — how many random starts found a valid solution
 - **Distinct clusters** — how many qualitatively different solutions exist (reveals the dimensionality of the solution manifold)
-- **Per-edge CV** — coefficient of variation of rigidities across converged solutions. Low CV = "locked" edge (structurally essential, same across all solutions). High CV = "free" edge (can vary without changing macroscopic behavior)
+- **Per-edge CV** — coefficient of variation (std/mean) of rigidities across converged solutions. Low CV = "locked" edge (structurally essential, same across all solutions). High CV = "free" edge (can vary without changing macroscopic behavior)
 - **Round-trip error** — `forward(optimized_k)` vs target, should be < 1e-3
+- **Locked/Free edges** — edges with CV < 0.01 vs CV > 0.10; at larger meshes nearly all edges are free
 
 ## Dependencies
 
