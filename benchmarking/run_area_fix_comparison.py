@@ -218,20 +218,20 @@ def d2c_old_prefix(triangulation):
 
 strip_size = (20, 6)
 square_half = 6.0
-etas = np.linspace(0.0, 0.49, 10)
+etas = np.linspace(0.0, 0.49, 20)
 n_trials = 10
 strain = 0.01
 
 print("=" * 78)
-print("  Sim vs D2C (old 1/16) vs D2C (area-fixed)  —  same mesh per trial")
+print("  Sim vs D2C (old 1/16) vs D2C (area-fixed)  —  crystal topology only")
 print("=" * 78)
 print(f"  Strip: {strip_size},  D2C square: [-{square_half},{square_half}]^2")
 print(f"  Trials: {n_trials}, eta points: {len(etas)}")
 print()
 
 keys = ['sim_crystal', 'sim_adapted',
-        'd2c_old_crystal', 'd2c_old_adapted',
-        'd2c_new_crystal', 'd2c_new_adapted']
+        'd2c_old_crystal',
+        'd2c_new_crystal']
 results = {k: {e: [] for e in etas} for k in keys}
 
 t_total = time.time()
@@ -254,48 +254,36 @@ for eta in etas:
         D2C.analyze_elastic_struct(sub_new)
         results['d2c_new_crystal'][eta].append(sub_new.PoissonsRatio)
 
-        # --- Adapted topology ---
+        # --- Adapted topology (simulation only, for reference) ---
         np.random.seed(seed)
         DT = gen_perturbed_then_delaunay(strip_size, eta)
         results['sim_adapted'][eta].append(simulate_poisson(DT, strain))
-
-        sub_old = extract_square_region(DT, square_half)
-        d2c_old_prefix(sub_old)
-        results['d2c_old_adapted'][eta].append(sub_old.PoissonsRatio)
-
-        sub_new = extract_square_region(DT, square_half)
-        D2C.analyze_elastic_struct(sub_new)
-        results['d2c_new_adapted'][eta].append(sub_new.PoissonsRatio)
 
     dt = time.time() - t0
     sc = np.mean(results['sim_crystal'][eta])
     sa = np.mean(results['sim_adapted'][eta])
     oc = np.mean(results['d2c_old_crystal'][eta])
     nc = np.mean(results['d2c_new_crystal'][eta])
-    oa = np.mean(results['d2c_old_adapted'][eta])
-    na = np.mean(results['d2c_new_adapted'][eta])
-    print(f"  eta={eta:.3f}  |  sim_cryst={sc:+.3f}  old_d2c={oc:+.3f}  new_d2c={nc:+.3f}"
-          f"  |  sim_adapt={sa:+.3f}  old_d2c={oa:+.3f}  new_d2c={na:+.3f}  ({dt:.1f}s)")
+    print(f"  eta={eta:.3f}  |  sim_cryst={sc:+.3f}  sim_adapt={sa:+.3f}  "
+          f"old_d2c={oc:+.3f}  new_d2c={nc:+.3f}  ({dt:.1f}s)")
 
 print(f"\nTotal time: {time.time()-t_total:.1f}s")
 
 
 # =========================================================================
-# Plot — single figure, all curves
+# Plot — single figure, 4 curves
 # =========================================================================
 
 eta_arr = np.array(list(etas))
-dx = 0.004  # horizontal offset to avoid overlapping error bars
+dx = 0.003  # horizontal offset to avoid overlapping error bars
 
 fig, ax = plt.subplots(figsize=(12, 7))
 
 for label, key, color, marker, ls, offset in [
-    ('Simulation (crystal)',       'sim_crystal',      'C3', 'o', '-',  -2*dx),
-    ('D2C old 1/16 (crystal)',     'd2c_old_crystal',  'C0', 's', '--', -dx),
-    ('D2C area-fixed (crystal)',   'd2c_new_crystal',  'C0', 'D', '-',  0),
-    ('Simulation (adapted)',       'sim_adapted',      'C1', 'o', '-',  dx),
-    ('D2C old 1/16 (adapted)',     'd2c_old_adapted',  'C4', 's', '--', 2*dx),
-    ('D2C area-fixed (adapted)',   'd2c_new_adapted',  'C4', 'D', '-',  3*dx),
+    ('Simulation (crystal)',       'sim_crystal',      'C3', 'o', '-',  -dx),
+    ('Simulation (adapted)',       'sim_adapted',      'C1', 'o', '-',  0),
+    ('D2C old 1/16 (crystal)',     'd2c_old_crystal',  'C0', 's', '--', dx),
+    ('D2C area-fixed (crystal)',   'd2c_new_crystal',  'C0', 'D', '-',  2*dx),
 ]:
     means = np.array([np.mean(results[key][e]) for e in etas])
     stds  = np.array([np.std(results[key][e])  for e in etas])
@@ -303,12 +291,12 @@ for label, key, color, marker, ls, offset in [
                 color=color, capsize=3, markersize=5, linewidth=1.5,
                 label=label)
 
-ax.axhline(y=1/3, color='gray', ls=':', alpha=0.5, label=r'$\nu=1/3$ (crystal)')
+ax.axhline(y=1/3, color='gray', ls=':', alpha=0.5, label=r'$\nu=1/3$')
 ax.axhline(y=0,   color='gray', ls='--', alpha=0.3)
 ax.set_xlabel(r'$\eta$', fontsize=14)
 ax.set_ylabel(r"Poisson's ratio $\nu$", fontsize=14)
-ax.set_title('Simulation vs D2C: old (1/16) vs area-fixed normalization', fontsize=14)
-ax.legend(fontsize=10, ncol=2, loc='lower left')
+ax.set_title('Crystal topology: Simulation vs D2C (old 1/16 vs area-fixed)', fontsize=14)
+ax.legend(fontsize=11, loc='lower left')
 ax.grid(True, alpha=0.3)
 ax.set_ylim(-1.5, 0.5)
 
