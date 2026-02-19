@@ -52,7 +52,7 @@ for i, eta in enumerate(eta_values):
         mask = ((np.abs(centroids[:, 0] - cx) <= trim_frac * half_w) &
                 (np.abs(centroids[:, 1] - cy) <= trim_frac * half_h))
 
-        trimmed_tensor = np.mean(DT.ActualElasticTensor[mask], axis=0)
+        trimmed_tensor = np.average(DT.ActualElasticTensor[mask], weights=DT.triangle_areas[mask], axis=0)
         nu_t, _ = compute_poisson_youngs(trimmed_tensor)
         nu_trim[i, trial] = nu_t
 

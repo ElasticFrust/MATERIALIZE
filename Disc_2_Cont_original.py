@@ -111,7 +111,7 @@ def bare_elastic(multiindex,edge_list,poslist): # This one is not needed either.
         com+=norm * (vec[mu]*vec[nu]*vec[alpha]*vec[beta])/np.dot(vec,vec) 
     return com
     
-def bare_elastic_local_tensor_componenets(multiindex,triangle_edges,poslist,rigidities=[],rest_lenghts=[]): #Calculating A(s) for specific triangle given 4-index (mu,nu,alpha,beta)
+def bare_elastic_local_tensor_componenets(multiindex,triangle_edges,poslist,rigidities=[],rest_lenghts=[],triangle_area=None): #Calculating A(s) for specific triangle given 4-index (mu,nu,alpha,beta)
     # REMEBER that greek indices are in base 1 while code in base 0
     mu=multiindex[0]-1;
     nu=multiindex[1]-1;
@@ -123,38 +123,54 @@ def bare_elastic_local_tensor_componenets(multiindex,triangle_edges,poslist,rigi
         rigidities=[1,1,1]
     if rest_lenghts ==[]:
         restlength_flag=0
+    # Use triangle area for normalization (energy density per unit area)
+    if triangle_area is None:
+        norm_factor = 16.0  # fallback to old behavior
+    else:
+        norm_factor = triangle_area
     for idx,edge in enumerate(triangle_edges):
         vec=np.array(poslist[edge[0]]-poslist[edge[1]])
         if restlength_flag:
             length2= rest_lenghts[idx]**2
         else:
             length2=(1-restlength_flag)*(np.dot(vec,vec))
-        com+= rigidities[idx]*(vec[mu]*vec[nu]*vec[alpha]*vec[beta])/length2 /16
+        com+= rigidities[idx]*(vec[mu]*vec[nu]*vec[alpha]*vec[beta])/length2 /norm_factor
     return com
 
 def add_local_tensors_to_triangulation(triangulation_with_edges_list): # Add local elastic A(s) tensor to triangulation structures. Tensor is given in vectorized  componenets: A1= A4x4(1,1)=A_rank4(1,1,1,1), A2=A4x4(1,2)=A4x4(1,3)=A_rank4(1,1,1,2), A3=A4x4(1,4)=A_rank4(1,2,1,2), A4=A4x4(2,4)=A_rank4(1,2,2,2), A5=A4x4(4,4)=A_rank4(2,2,2,2),
     positions=triangulation_with_edges_list.points
+    # Compute triangle areas for proper normalization
+    tri_pts = positions[triangulation_with_edges_list.simplices]  # (N, 3, 2)
+    v1 = tri_pts[:, 1] - tri_pts[:, 0]
+    v2 = tri_pts[:, 2] - tri_pts[:, 0]
+    areas = 0.5 * np.abs(v1[:, 0] * v2[:, 1] - v1[:, 1] * v2[:, 0])
+    triangulation_with_edges_list.triangle_areas = areas
     triangulation_with_edges_list.BareElasticTensor=np.array([np.array([bare_elastic_local_tensor_componenets([1,1,1,1],tri_Edges,positions,
                                                                                                 triangulation_with_edges_list.rigidities[idx],
-                                                                                                triangulation_with_edges_list.rest_lenghts[idx]),
+                                                                                                triangulation_with_edges_list.rest_lenghts[idx],
+                                                                                                triangle_area=areas[idx]),
                                                                         bare_elastic_local_tensor_componenets([1,1,1,2],tri_Edges,positions,
                                                                                                 triangulation_with_edges_list.rigidities[idx],
-                                                                                                triangulation_with_edges_list.rest_lenghts[idx]),
+                                                                                                triangulation_with_edges_list.rest_lenghts[idx],
+                                                                                                triangle_area=areas[idx]),
                                                                         bare_elastic_local_tensor_componenets([1,1,2,2],tri_Edges,positions,
                                                                                                 triangulation_with_edges_list.rigidities[idx],
-                                                                                                triangulation_with_edges_list.rest_lenghts[idx]),
+                                                                                                triangulation_with_edges_list.rest_lenghts[idx],
+                                                                                                triangle_area=areas[idx]),
                                                                         bare_elastic_local_tensor_componenets([1,2,2,2],tri_Edges,positions,
                                                                                                 triangulation_with_edges_list.rigidities[idx],
-                                                                                                triangulation_with_edges_list.rest_lenghts[idx]),
+                                                                                                triangulation_with_edges_list.rest_lenghts[idx],
+                                                                                                triangle_area=areas[idx]),
                                                                         bare_elastic_local_tensor_componenets([2,2,2,2],tri_Edges,positions,
                                                                                                 triangulation_with_edges_list.rigidities[idx],
-                                                                                                triangulation_with_edges_list.rest_lenghts[idx])]) 
+                                                                                                triangulation_with_edges_list.rest_lenghts[idx],
+                                                                                                triangle_area=areas[idx])])
                                                             for idx,tri_Edges in enumerate(triangulation_with_edges_list.edges)])
     return 0
 
 def add_delta_As(triangulation):
-    mean_tansor=np.mean(triangulation.BareElasticTensor,0)
-#print(mean_tansor)
+    areas = triangulation.triangle_areas
+    mean_tansor=np.average(triangulation.BareElasticTensor, weights=areas, axis=0)
     triangulation.delta_tensor = np.array([local_tensor-mean_tansor for local_tensor in triangulation.BareElasticTensor])
     return 0
 
@@ -260,16 +276,19 @@ def analyze_elastic_struct(triangulation): # This is the main function
     creat_dA_vec(triangulation) # create the 9vector dA
     triangulation.dA_vec_all = np.block(triangulation.dA_9vector) #the whole dA vector (1,9xN)
     triangulation.A_matrix_all = sp.sparse.block_diag(triangulation.A_matrix) # the  9N x 9N deal
-    one_vec=1/len(triangulation.simplices) * np.ones(len(triangulation.simplices))
-    one_vec=one_vec[...,None]
-    triangulation.B_matrix_all = sp.sparse.kron(one_vec,sp.sparse.block_array([triangulation.B_matrix]))
+    # Area-weighted coupling: each B block weighted by Omega_t / V_total
+    areas = triangulation.triangle_areas
+    area_weights = areas / areas.sum()
+    weighted_B = [area_weights[i] * B for i, B in enumerate(triangulation.B_matrix)]
+    one_vec=np.ones((len(triangulation.simplices), 1))
+    triangulation.B_matrix_all = sp.sparse.kron(one_vec,sp.sparse.block_array([weighted_B]))
     triangulation.C_matrix_all = sp.sparse.linalg.inv(triangulation.A_matrix_all-triangulation.B_matrix_all)
     triangulation.Ws_with_inv = - np.reshape(triangulation.C_matrix_all @ triangulation.dA_vec_all,(-1,9))
     triangulation.Ws_with_spsolve=-np.reshape(sp.sparse.linalg.spsolve(triangulation.A_matrix_all-triangulation.B_matrix_all,triangulation.dA_vec_all,'Natural'),(-1,9))
     triangulation.Ws=triangulation.Ws_with_spsolve
     #add_actual_elastic_tensor(triangulation)  ## FUNCTION HAS AN ERROR
     add_actual_matrix(triangulation)
-    triangulation.totalElasticTensor = np.mean(triangulation.ActualElasticTensor,0)
+    triangulation.totalElasticTensor = np.average(triangulation.ActualElasticTensor, weights=areas, axis=0)
     #directional poisson and youngs, assuming stretching along the 'y' (or "2") direction
     triangulation.PoissonsRatio = ((triangulation.totalElasticTensor[2] * triangulation.totalElasticTensor[3] - 
                                     triangulation.totalElasticTensor[1] * triangulation.totalElasticTensor[4]) / 

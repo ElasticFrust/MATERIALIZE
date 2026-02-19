@@ -80,6 +80,11 @@ def _compute_local_tensors_vectorized(triangulation):
     """Compute bare elastic tensors for all triangles at once (vectorized).
 
     Returns (N, 5) array of local tensor components [a0, a1, a2, a3, a4].
+
+    Each triangle's elastic tensor is normalized by its area (1/Omega_s),
+    so that it represents the elastic energy DENSITY (per unit area).
+    This ensures that small triangles (denser spring network per unit area)
+    correctly get a larger elastic modulus than large triangles.
     """
     N = len(triangulation.simplices)
     edges = triangulation.edges  # (N, 3, 2) node-index pairs
@@ -105,7 +110,15 @@ def _compute_local_tensors_vectorized(triangulation):
         if len(rl) > 0:
             length2[i] = np.array(rl)**2
 
-    factor = rigs / length2 / 16.0  # (N, 3)
+    # Compute triangle areas for proper normalization
+    tri_pts = positions[triangulation.simplices]  # (N, 3, 2)
+    v1 = tri_pts[:, 1] - tri_pts[:, 0]  # (N, 2)
+    v2 = tri_pts[:, 2] - tri_pts[:, 0]  # (N, 2)
+    areas = 0.5 * np.abs(v1[:, 0] * v2[:, 1] - v1[:, 1] * v2[:, 0])  # (N,)
+    triangulation.triangle_areas = areas
+
+    # Use 1/area instead of 1/16 for correct energy density normalization
+    factor = rigs / length2 / areas[:, None]  # (N, 3)
 
     local_tensors = np.column_stack([
         np.sum(factor * vx**4,             axis=1),  # a0: (1,1,1,1)
@@ -163,13 +176,14 @@ def _batch_to_9vec(vecs5):
     return np.column_stack([a0, a1, a2, a1, a2, a3, a2, a3, a4])
 
 
-def _woodbury_solve(A_blocks, B_blocks, dA_vecs):
+def _woodbury_solve(A_blocks, B_blocks, dA_vecs, area_weights=None):
     """Solve (A - B_full) W = -dA using Woodbury decomposition.
 
     A_full = block_diag(A_1, ..., A_N)  [9N x 9N, block diagonal]
     B_full = U @ V  where:
-        U = (1/N) * [I_9; I_9; ...; I_9]  [9N x 9]
-        V = [B_1, B_2, ..., B_N]          [9 x 9N]
+        U = [I_9; I_9; ...; I_9]                          [9N x 9]
+        V = [w_1*B_1, w_2*B_2, ..., w_N*B_N]              [9 x 9N]
+    with w_t = Omega_t / V_total (area weights).
 
     By Woodbury: (A - UV)^{-1} = A^{-1} + A^{-1} U (I - V A^{-1} U)^{-1} V A^{-1}
 
@@ -177,11 +191,15 @@ def _woodbury_solve(A_blocks, B_blocks, dA_vecs):
         A_blocks: (N, 9, 9) per-triangle A matrices
         B_blocks: (N, 9, 9) per-triangle delta-A matrices (B = dA matrices)
         dA_vecs:  (N, 9) per-triangle dA vectors
+        area_weights: (N,) area weights Omega_s / V_total. If None, uses 1/N.
 
     Returns:
         W: (N, 9) solution vectors per triangle
     """
     N = A_blocks.shape[0]
+
+    if area_weights is None:
+        area_weights = np.full(N, 1.0 / N)
 
     # Step 1: Invert each 9x9 A block
     # Regularize to handle degenerate triangles (nearly collinear edges)
@@ -192,17 +210,18 @@ def _woodbury_solve(A_blocks, B_blocks, dA_vecs):
     # Step 2: y_i = A_i^{-1} @ dA_i for each triangle
     y = np.einsum('nij,nj->ni', A_inv, dA_vecs)  # (N, 9)
 
-    # Step 3: V @ y = sum_j B_j @ y_j  (a 9-vector)
-    Vy = np.einsum('nij,nj->i', B_blocks, y)  # (9,)
+    # Step 3: V @ y = sum_j w_j * B_j @ y_j  (a 9-vector)
+    Vy = np.einsum('n,nij,nj->i', area_weights, B_blocks, y)  # (9,)
 
-    # Step 4: S = V @ A^{-1} @ U = (1/N) * sum_j B_j @ A_j^{-1}  (9x9)
-    S = np.einsum('nij,njk->ik', B_blocks, A_inv) / N  # (9, 9)
+    # Step 4: S = V @ A^{-1} @ U = sum_j w_j * B_j @ A_j^{-1}  (9x9)
+    S = np.einsum('n,nij,njk->ik', area_weights, B_blocks, A_inv)  # (9, 9)
 
     # Step 5: Solve (I_9 - S) z = Vy
     z = np.linalg.solve(np.eye(9) - S, Vy)  # (9,)
 
-    # Step 6: W_i = -(y_i + (1/N) * A_i^{-1} @ z)
-    correction = np.einsum('nij,j->ni', A_inv, z) / N  # (N, 9)
+    # Step 6: W_i = -(y_i + A_i^{-1} @ z)
+    # Note: no 1/N factor because U_s = I_9 (area weights absorbed into V)
+    correction = np.einsum('nij,j->ni', A_inv, z)  # (N, 9)
     W = -(y + correction)  # (N, 9)
 
     return W
@@ -308,11 +327,14 @@ def analyze_elastic_struct(triangulation):
     add_edges_to_triangulation(triangulation)
 
     # Step 2: Compute local bare elastic tensors (vectorized)
+    # (also computes and stores triangulation.triangle_areas)
     triangulation.BareElasticTensor = _compute_local_tensors_vectorized(triangulation)
     N = len(triangulation.simplices)
+    areas = triangulation.triangle_areas  # (N,)
+    area_weights = areas / areas.sum()    # (N,) normalized to sum to 1
 
-    # Step 3: Compute delta tensors
-    mean_tensor = np.mean(triangulation.BareElasticTensor, 0)
+    # Step 3: Compute delta tensors (area-weighted mean)
+    mean_tensor = np.average(triangulation.BareElasticTensor, weights=areas, axis=0)
     triangulation.delta_tensor = triangulation.BareElasticTensor - mean_tensor
 
     # Step 4: Build (N, 9, 9) A and B block matrices and (N, 9) dA vectors
@@ -320,16 +342,19 @@ def analyze_elastic_struct(triangulation):
     B_blocks = _batch_to_9x9(triangulation.delta_tensor)       # (N, 9, 9)
     dA_vecs  = _batch_to_9vec(triangulation.delta_tensor)      # (N, 9)
 
-    # Step 5: Woodbury solve
-    triangulation.Ws = _woodbury_solve(A_blocks, B_blocks, dA_vecs)  # (N, 9)
+    # Step 5: Woodbury solve (area-weighted coupling)
+    triangulation.Ws = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
+                                       area_weights=area_weights)  # (N, 9)
 
     # Step 6: Compute actual elastic tensor (vectorized)
     triangulation.ActualElasticTensor = _compute_actual_elastic_tensor_vectorized(
         triangulation.BareElasticTensor, triangulation.Ws
     )  # (N, 6)
 
-    # Step 7: Mean over all triangles
-    triangulation.totalElasticTensor = np.mean(triangulation.ActualElasticTensor, 0)
+    # Step 7: Area-weighted mean over all triangles
+    triangulation.totalElasticTensor = np.average(
+        triangulation.ActualElasticTensor, weights=areas, axis=0
+    )
 
     # Step 8: Poisson's ratio and Young's modulus
     C = triangulation.totalElasticTensor
