@@ -218,7 +218,7 @@ def d2c_old_prefix(triangulation):
 
 strip_size = (20, 6)
 square_half = 6.0
-etas = np.linspace(0.1, 0.49, 8)
+etas = np.linspace(0.0, 0.49, 10)
 n_trials = 10
 strain = 0.01
 
