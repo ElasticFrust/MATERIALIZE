@@ -1,10 +1,12 @@
 """
-Ground-truth comparison: spring network simulation vs D2C analytical calculation.
+Ground-truth comparison: spring simulation vs D2C analytical.
+
+Key change from v1: D2C is computed on a SQUARE sub-region cut from the
+exact same strip triangulation used by the simulation. This ensures
+identical mesh, vertices, edges, and perturbation pattern.
 
 Strip test: apply uniaxial strain, minimize elastic energy (L-BFGS-B),
 measure Poisson ratio from transverse contraction in the middle.
-
-Both pre-perturbation (crystal topology) and post-perturbation (adapted topology).
 """
 import sys, os, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -16,6 +18,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import Disc_2_Cont_optimized as D2C
+import copy
 
 
 # =========================================================================
@@ -74,6 +77,23 @@ def gen_perturbed_then_delaunay(size, eta):
     DM.all_simplices = DM.simplices
     DM.simplices = DM.simplices[np.where(goods)]
     return DM
+
+
+def extract_square_region(DT, half_side):
+    """Extract a square sub-region from a triangulation for D2C analysis.
+
+    Returns a new triangulation-like object containing only simplices
+    whose centroids fall within [-half_side, half_side]^2.
+    Same points array (shared vertices), just fewer simplices.
+    """
+    centroids = np.mean(DT.points[DT.simplices], axis=1)
+    in_square = ((np.abs(centroids[:,0]) <= half_side) &
+                 (np.abs(centroids[:,1]) <= half_side))
+
+    sub = copy.copy(DT)
+    sub.all_simplices = DT.simplices
+    sub.simplices = DT.simplices[np.where(in_square)]
+    return sub
 
 
 # =========================================================================
@@ -190,18 +210,17 @@ def simulate_poisson(DT, strain=0.01):
 # Main comparison
 # =========================================================================
 
-strip_size = (20, 6)    # long strip for simulation
-d2c_size   = (20, 20)   # square for D2C analytical
+strip_size = (20, 6)     # long strip for simulation
+square_half = 6.0        # D2C square = [-6,6]^2 cut from the strip center
 etas = np.linspace(0.1, 0.49, 8)
-n_sim = 10
-n_d2c = 20
+n_trials = 10
 strain = 0.01
 
 print("=" * 70)
-print("  Spring simulation vs D2C analytical: Poisson ratio comparison")
+print("  Spring simulation vs D2C (same mesh, square sub-region)")
 print("=" * 70)
-print(f"  Strip: {strip_size}, D2C square: {d2c_size}")
-print(f"  Trials: {n_sim} sim, {n_d2c} D2C, strain={strain}")
+print(f"  Strip: {strip_size},  D2C square: [{-square_half},{square_half}]^2")
+print(f"  Trials: {n_trials}, strain={strain}")
 print()
 
 results = {k: {e: [] for e in etas}
@@ -212,31 +231,26 @@ t_total = time.time()
 for eta in etas:
     t0 = time.time()
 
-    # --- Simulation ---
-    for trial in range(n_sim):
+    for trial in range(n_trials):
         seed = 1000*trial + int(eta*1000)
 
+        # --- Crystal topology ---
         np.random.seed(seed)
         DT = gen_crystal_then_perturb(strip_size, eta)
         results['sim_crystal'][eta].append(simulate_poisson(DT, strain))
 
+        sub = extract_square_region(DT, square_half)
+        D2C.analyze_elastic_struct(sub)
+        results['d2c_crystal'][eta].append(sub.PoissonsRatio)
+
+        # --- Adapted topology ---
         np.random.seed(seed)
         DT = gen_perturbed_then_delaunay(strip_size, eta)
         results['sim_adapted'][eta].append(simulate_poisson(DT, strain))
 
-    # --- D2C analytical ---
-    for trial in range(n_d2c):
-        seed = 2000*trial + int(eta*1000)
-
-        np.random.seed(seed)
-        DT = gen_crystal_then_perturb(d2c_size, eta)
-        D2C.analyze_elastic_struct(DT)
-        results['d2c_crystal'][eta].append(DT.PoissonsRatio)
-
-        np.random.seed(seed)
-        DT = gen_perturbed_then_delaunay(d2c_size, eta)
-        D2C.analyze_elastic_struct(DT)
-        results['d2c_adapted'][eta].append(DT.PoissonsRatio)
+        sub = extract_square_region(DT, square_half)
+        D2C.analyze_elastic_struct(sub)
+        results['d2c_adapted'][eta].append(sub.PoissonsRatio)
 
     sc = np.mean(results['sim_crystal'][eta])
     sa = np.mean(results['sim_adapted'][eta])
@@ -268,8 +282,8 @@ for ax, label, sk, dk in [
 
     ax.errorbar(eta_arr, sim_mean, yerr=sim_std, fmt='o-', color='red',
                 capsize=4, label='Simulation (strip)')
-    ax.errorbar(eta_arr, d2c_mean, yerr=d2c_std, fmt='s--', color='blue',
-                capsize=4, label='D2C analytical')
+    ax.errorbar(eta_arr + 0.003, d2c_mean, yerr=d2c_std, fmt='s--', color='blue',
+                capsize=4, label='D2C (square from same mesh)')
     ax.set_xlabel('eta')
     ax.set_ylabel('Poisson ratio')
     ax.set_title(label)
