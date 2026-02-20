@@ -227,6 +227,8 @@ def run_property_optimization(
     weight_poisson=1.0,
     weight_young=1.0,
     design_variable='rigidities',
+    isotropic=False,
+    weight_isotropy=10.0,
     n_edges_per_tri=3,
     max_iter=500,
     lr=0.05,
@@ -251,6 +253,10 @@ def run_property_optimization(
                          'rigidities'   — optimize k, keep rest lengths = actual (default)
                          'rest_lengths' — optimize l₀, keep rigidities = 1
                          'both'         — optimize both k and l₀ simultaneously
+        isotropic:       If True, add penalty terms enforcing 2D isotropy:
+                         C_xxxx = C_yyyy, C_xxxy = C_xyyy = 0,
+                         C_xyxy = (C_xxxx - C_xxyy) / 2.
+        weight_isotropy: Weight for isotropy penalty (relative to Poisson/Young).
         max_iter, lr, tol, optimizer_type, seed, verbose: same as run_single_optimization.
 
     Returns:
@@ -306,11 +312,33 @@ def run_property_optimization(
         else:
             rl = None
         result = solver(k, rest_lengths=rl)
+        C = result['elastic_tensor']  # [C_xxxx, C_xxxy, C_xxyy, C_xyxy, C_xyyy, C_yyyy]
+
         loss = torch.tensor(0.0, dtype=torch.float64)
         if target_poisson is not None:
-            loss = loss + weight_poisson * (result['poisson'] - target_poisson) ** 2
+            if isotropic:
+                # Isotropic 2D Poisson: ν = C_xxyy / C_xxxx
+                # (For isotropic: C_voigt = E/(1-ν²) × [[1,ν,0],[ν,1,0],[0,0,(1-ν)/2]]
+                #  so C_xxyy/C_xxxx = ν exactly.)
+                nu_iso = C[2] / C[0]
+                loss = loss + weight_poisson * (nu_iso - target_poisson) ** 2
+            else:
+                loss = loss + weight_poisson * (result['poisson'] - target_poisson) ** 2
         if target_young is not None:
             loss = loss + weight_young * (result['young'] - target_young) ** 2
+
+        if isotropic:
+            # Normalize penalties by tensor scale to keep them well-conditioned
+            scale2 = (C[0] ** 2 + C[5] ** 2).detach().clamp(min=1e-30)
+            # 1) C_xxxx = C_yyyy
+            loss = loss + weight_isotropy * (C[0] - C[5]) ** 2 / scale2
+            # 2) C_xxxy = 0
+            loss = loss + weight_isotropy * C[1] ** 2 / scale2
+            # 3) C_xyyy = 0
+            loss = loss + weight_isotropy * C[4] ** 2 / scale2
+            # 4) C_xyxy = (C_xxxx - C_xxyy) / 2
+            loss = loss + weight_isotropy * (C[3] - (C[0] - C[2]) / 2) ** 2 / scale2
+
         loss.backward()
         return loss
 
@@ -371,7 +399,8 @@ def run_property_optimization(
             rl_best = actual_lengths
         result = solver(k_best, rest_lengths=rl_best if raw_rl is not None else None)
 
-    return {
+    C_np = result['elastic_tensor'].numpy()
+    out = {
         'converged': best_loss < tol * 1000,
         'final_loss': best_loss,
         'iterations': iterations,
@@ -379,10 +408,30 @@ def run_property_optimization(
         'rest_lengths': rl_best.numpy(),
         'poisson': result['poisson'].item(),
         'young': result['young'].item(),
-        'pred_tensor': result['elastic_tensor'].numpy(),
+        'pred_tensor': C_np,
         'time_seconds': elapsed,
         'design_variable': design_variable,
+        'isotropic': isotropic,
     }
+
+    # Add full anisotropic properties via compliance matrix
+    C_voigt = np.array([
+        [C_np[0], C_np[2], C_np[1]],
+        [C_np[2], C_np[5], C_np[4]],
+        [C_np[1], C_np[4], C_np[3]],
+    ])
+    try:
+        S = np.linalg.inv(C_voigt)
+        out['nu_xy'] = -S[1, 0] / S[0, 0]
+        out['nu_yx'] = -S[0, 1] / S[1, 1]
+        out['E_x'] = 1.0 / S[0, 0]
+        out['E_y'] = 1.0 / S[1, 1]
+        out['G_xy'] = 1.0 / S[2, 2]
+    except np.linalg.LinAlgError:
+        out['nu_xy'] = out['nu_yx'] = float('nan')
+        out['E_x'] = out['E_y'] = out['G_xy'] = float('nan')
+
+    return out
 
 
 # ---------------------------------------------------------------------------
