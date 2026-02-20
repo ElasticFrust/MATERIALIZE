@@ -226,6 +226,7 @@ def run_property_optimization(
     target_young=None,
     weight_poisson=1.0,
     weight_young=1.0,
+    design_variable='rigidities',
     n_edges_per_tri=3,
     max_iter=500,
     lr=0.05,
@@ -234,7 +235,7 @@ def run_property_optimization(
     seed=None,
     verbose=False,
 ):
-    """Optimize rigidities to hit target Poisson ratio and/or Young's modulus.
+    """Optimize spring parameters to hit target Poisson ratio and/or Young's modulus.
 
     Unlike run_single_optimization (which matches all 6 tensor components),
     this targets scalar properties directly.
@@ -246,32 +247,65 @@ def run_property_optimization(
         target_young:    Target Young's modulus (None = don't target).
         weight_poisson:  Weight for Poisson loss term.
         weight_young:    Weight for Young loss term.
+        design_variable: What to optimize:
+                         'rigidities'   — optimize k, keep rest lengths = actual (default)
+                         'rest_lengths' — optimize l₀, keep rigidities = 1
+                         'both'         — optimize both k and l₀ simultaneously
         max_iter, lr, tol, optimizer_type, seed, verbose: same as run_single_optimization.
 
     Returns:
         dict with 'converged', 'final_loss', 'iterations', 'rigidities',
-        'poisson', 'young', 'pred_tensor', 'time_seconds'.
+        'rest_lengths', 'poisson', 'young', 'pred_tensor', 'time_seconds'.
     """
     if target_poisson is None and target_young is None:
         raise ValueError("Must specify at least one of target_poisson or target_young")
+    if design_variable not in ('rigidities', 'rest_lengths', 'both'):
+        raise ValueError(f"design_variable must be 'rigidities', 'rest_lengths', or 'both'")
 
     if seed is not None:
         torch.manual_seed(seed)
 
-    init_rigs = torch.exp(0.5 * torch.randn(n_triangles, n_edges_per_tri,
-                                              dtype=torch.float64))
-    raw = rigidities_to_raw(init_rigs)
-    raw = raw.clone().detach().requires_grad_(True)
+    shape = (n_triangles, n_edges_per_tri)
+    actual_lengths = solver.actual_length2.sqrt()  # (N, 3)
+
+    # Set up optimizable parameters based on design_variable
+    opt_params = []
+
+    if design_variable in ('rigidities', 'both'):
+        init_rigs = torch.exp(0.5 * torch.randn(*shape, dtype=torch.float64))
+        raw_k = rigidities_to_raw(init_rigs).clone().detach().requires_grad_(True)
+        opt_params.append(raw_k)
+    else:
+        # Fixed unit rigidities
+        raw_k = None
+        fixed_k = torch.ones(*shape, dtype=torch.float64)
+
+    if design_variable in ('rest_lengths', 'both'):
+        # Initialize near actual lengths (small perturbation)
+        init_rl = actual_lengths * torch.exp(0.1 * torch.randn(*shape, dtype=torch.float64))
+        raw_rl = rigidities_to_raw(init_rl).clone().detach().requires_grad_(True)
+        opt_params.append(raw_rl)
+    else:
+        raw_rl = None
 
     best_loss = float('inf')
-    best_raw = raw.clone().detach()
+    best_params = [p.clone().detach() for p in opt_params]
     iterations = 0
     t0 = time.time()
 
     def compute_loss():
         optimizer.zero_grad()
-        k = raw_to_rigidities(raw)
-        result = solver(k, rest_lengths=None)
+        # Build rigidities
+        if raw_k is not None:
+            k = raw_to_rigidities(raw_k)
+        else:
+            k = fixed_k
+        # Build rest lengths
+        if raw_rl is not None:
+            rl = raw_to_rigidities(raw_rl)
+        else:
+            rl = None
+        result = solver(k, rest_lengths=rl)
         loss = torch.tensor(0.0, dtype=torch.float64)
         if target_poisson is not None:
             loss = loss + weight_poisson * (result['poisson'] - target_poisson) ** 2
@@ -282,7 +316,7 @@ def run_property_optimization(
 
     if optimizer_type == 'lbfgs':
         optimizer = torch.optim.LBFGS(
-            [raw], lr=lr, max_iter=20, line_search_fn='strong_wolfe',
+            opt_params, lr=lr, max_iter=20, line_search_fn='strong_wolfe',
             tolerance_grad=1e-14, tolerance_change=1e-16,
         )
         for outer in range(max_iter // 20 + 1):
@@ -291,17 +325,18 @@ def run_property_optimization(
             current_loss = loss_val.item()
             if current_loss < best_loss:
                 best_loss = current_loss
-                best_raw = raw.clone().detach()
+                best_params = [p.clone().detach() for p in opt_params]
             if verbose and outer % 5 == 0:
                 with torch.no_grad():
-                    k = raw_to_rigidities(raw)
-                    r = solver(k, rest_lengths=None)
+                    k = raw_to_rigidities(raw_k) if raw_k is not None else fixed_k
+                    rl = raw_to_rigidities(raw_rl) if raw_rl is not None else None
+                    r = solver(k, rest_lengths=rl)
                 print(f"  iter {iterations:4d}  loss={current_loss:.3e}"
                       f"  ν={r['poisson'].item():.6f}  E={r['young'].item():.6f}")
             if current_loss < tol:
                 break
     elif optimizer_type == 'adam':
-        optimizer = torch.optim.Adam([raw], lr=lr)
+        optimizer = torch.optim.Adam(opt_params, lr=lr)
         for it in range(max_iter):
             loss_val = compute_loss()
             optimizer.step()
@@ -309,11 +344,12 @@ def run_property_optimization(
             current_loss = loss_val.item()
             if current_loss < best_loss:
                 best_loss = current_loss
-                best_raw = raw.clone().detach()
+                best_params = [p.clone().detach() for p in opt_params]
             if verbose and it % 100 == 0:
                 with torch.no_grad():
-                    k = raw_to_rigidities(raw)
-                    r = solver(k, rest_lengths=None)
+                    k = raw_to_rigidities(raw_k) if raw_k is not None else fixed_k
+                    rl = raw_to_rigidities(raw_rl) if raw_rl is not None else None
+                    r = solver(k, rest_lengths=rl)
                 print(f"  iter {it:4d}  loss={current_loss:.3e}"
                       f"  ν={r['poisson'].item():.6f}  E={r['young'].item():.6f}")
             if current_loss < tol:
@@ -321,19 +357,31 @@ def run_property_optimization(
 
     elapsed = time.time() - t0
 
+    # Recover best parameters
     with torch.no_grad():
-        k_best = raw_to_rigidities(best_raw)
-        result = solver(k_best, rest_lengths=None)
+        pi = 0
+        if raw_k is not None:
+            k_best = raw_to_rigidities(best_params[pi])
+            pi += 1
+        else:
+            k_best = fixed_k
+        if raw_rl is not None:
+            rl_best = raw_to_rigidities(best_params[pi])
+        else:
+            rl_best = actual_lengths
+        result = solver(k_best, rest_lengths=rl_best if raw_rl is not None else None)
 
     return {
         'converged': best_loss < tol * 1000,
         'final_loss': best_loss,
         'iterations': iterations,
         'rigidities': k_best.numpy(),
-        'pred_tensor': result['elastic_tensor'].numpy(),
+        'rest_lengths': rl_best.numpy(),
         'poisson': result['poisson'].item(),
         'young': result['young'].item(),
+        'pred_tensor': result['elastic_tensor'].numpy(),
         'time_seconds': elapsed,
+        'design_variable': design_variable,
     }
 
 
