@@ -41,9 +41,9 @@ OUT = os.path.dirname(os.path.abspath(__file__))
 # ── Configuration ─────────────────────────────────────────────────────────
 POISSON_TARGETS = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.0, 0.1, 0.3, 0.5, 0.7, 0.9]
 DESIGN_VARS = ['rigidities', 'rest_lengths', 'both']
-OPT_SEEDS = [7]  # single restart for speed (20x20 meshes are large)
-MESH_SIZE = (20, 20)
-MAX_ITER = 500
+OPT_SEEDS = [7, 144, 281]  # 3 restarts for robustness
+MESH_SIZE = (10, 10)
+MAX_ITER = 2000  # generous budget for full convergence
 LR = 0.05
 TOL = 1e-14
 
