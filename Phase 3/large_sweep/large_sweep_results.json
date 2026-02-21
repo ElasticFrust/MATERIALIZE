@@ -1,0 +1,5031 @@
+{
+  "config": {
+    "mesh_size": [
+      20,
+      20
+    ],
+    "poisson_targets": [
+      -0.9,
+      -0.7,
+      -0.5,
+      -0.3,
+      -0.1,
+      0.0,
+      0.1,
+      0.3,
+      0.5,
+      0.7,
+      0.9
+    ],
+    "design_vars": [
+      "rigidities",
+      "rest_lengths",
+      "both"
+    ],
+    "max_iter": 500,
+    "n_topologies": 9
+  },
+  "topologies": [
+    {
+      "name": "Isotropic crystal",
+      "short": "iso_crystal",
+      "description": "Perfect hexagonal lattice (eta=0, shape=(1,1))",
+      "n_tri": 3726,
+      "coord_stats": {
+        "mean": 5.818554587391081,
+        "std": 0.6248601376820169,
+        "min": 2,
+        "max": 6,
+        "n_active_nodes": 1951,
+        "n_edges": 5676
+      }
+    },
+    {
+      "name": "Anisotropic crystal",
+      "short": "aniso_crystal",
+      "description": "Stretched hexagonal lattice (eta=0, shape=(1,1.8))",
+      "n_tri": 2106,
+      "coord_stats": {
+        "mean": 5.755575379125781,
+        "std": 0.7061774408381184,
+        "min": 2,
+        "max": 6,
+        "n_active_nodes": 1121,
+        "n_edges": 3226
+      }
+    },
+    {
+      "name": "Foam eta=0.2 (seed 42)",
+      "short": "foam_eta02_42",
+      "description": "Hex lattice + eta=0.2 perturbation, seed=42",
+      "n_tri": 3726,
+      "coord_stats": {
+        "mean": 5.818554587391081,
+        "std": 0.6248601376820169,
+        "min": 2,
+        "max": 6,
+        "n_active_nodes": 1951,
+        "n_edges": 5676
+      }
+    },
+    {
+      "name": "Foam eta=0.2 (seed 137)",
+      "short": "foam_eta02_137",
+      "description": "Hex lattice + eta=0.2 perturbation, seed=137",
+      "n_tri": 3726,
+      "coord_stats": {
+        "mean": 5.818554587391081,
+        "std": 0.6248601376820169,
+        "min": 2,
+        "max": 6,
+        "n_active_nodes": 1951,
+        "n_edges": 5676
+      }
+    },
+    {
+      "name": "Foam eta=0.45 (seed 256)",
+      "short": "foam_eta045_256",
+      "description": "Hex lattice + eta=0.45 perturbation, seed=256",
+      "n_tri": 3726,
+      "coord_stats": {
+        "mean": 5.818554587391081,
+        "std": 0.6248601376820169,
+        "min": 2,
+        "max": 6,
+        "n_active_nodes": 1951,
+        "n_edges": 5676
+      }
+    },
+    {
+      "name": "Foam eta=0.45 (seed 314)",
+      "short": "foam_eta045_314",
+      "description": "Hex lattice + eta=0.45 perturbation, seed=314",
+      "n_tri": 3726,
+      "coord_stats": {
+        "mean": 5.818554587391081,
+        "std": 0.6248601376820169,
+        "min": 2,
+        "max": 6,
+        "n_active_nodes": 1951,
+        "n_edges": 5676
+      }
+    },
+    {
+      "name": "Poisson random (seed 999)",
+      "short": "poisson_999",
+      "description": "Poisson point process + Delaunay, seed=999, ~2269 target nodes",
+      "n_tri": 4729,
+      "coord_stats": {
+        "mean": 5.80983078162772,
+        "std": 1.457736609589145,
+        "min": 2,
+        "max": 11,
+        "n_active_nodes": 2482,
+        "n_edges": 7210
+      }
+    },
+    {
+      "name": "Poisson random (seed 1337)",
+      "short": "poisson_1337",
+      "description": "Poisson point process + Delaunay, seed=1337, ~2269 target nodes",
+      "n_tri": 4738,
+      "coord_stats": {
+        "mean": 5.815545710833669,
+        "std": 1.4612073216057966,
+        "min": 2,
+        "max": 12,
+        "n_active_nodes": 2483,
+        "n_edges": 7220
+      }
+    },
+    {
+      "name": "Poisson random (seed 2025)",
+      "short": "poisson_2025",
+      "description": "Poisson point process + Delaunay, seed=2025, ~2269 target nodes",
+      "n_tri": 4771,
+      "coord_stats": {
+        "mean": 5.825180433039295,
+        "std": 1.413898627877489,
+        "min": 2,
+        "max": 11,
+        "n_active_nodes": 2494,
+        "n_edges": 7264
+      }
+    }
+  ],
+  "results": {
+    "-0.9": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.33333333333333326,
+          "nu_yx": 0.31357837241516306,
+          "E_x": 0.0565275244163628,
+          "E_y": 0.05317742730942432,
+          "poisson": 0.31357837241516306,
+          "young": 0.053177427309424326,
+          "final_loss": 1.4960682706402897,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333335,
+          "nu_yx": 0.3135764673050221,
+          "E_x": 0.06394175449044312,
+          "E_y": 0.06015188845919454,
+          "poisson": 0.31357646730502203,
+          "young": 0.06015188845919454,
+          "final_loss": 1.4960640488741934,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 59.10174807980998,
+            "energy_per_spring": 0.005287327614940954,
+            "normalised_energy": 0.005287327614940954,
+            "max_spring_energy": 0.1339968524375113,
+            "frac_stressed": 0.9264626945786366
+          }
+        },
+        "both": {
+          "nu_xy": 0.33333333333333354,
+          "nu_yx": 0.31343633864032966,
+          "E_x": 0.05558625726417689,
+          "E_y": 0.05226825886680905,
+          "poisson": 0.3134363386403296,
+          "young": 0.05226825886680907,
+          "final_loss": 1.496065507638553,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 64.07175331346468,
+            "energy_per_spring": 0.005731951450479932,
+            "normalised_energy": 0.005103460752192007,
+            "max_spring_energy": 0.19642452476743186,
+            "frac_stressed": 0.9208266237251744
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621398,
+          "nu_yx": 0.1089920086464547,
+          "E_x": 0.06468939447180057,
+          "E_y": 0.06853209484439485,
+          "poisson": 0.10899200864645467,
+          "young": 0.06853209484439485,
+          "final_loss": 1.5712680685314089,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621409,
+          "nu_yx": 0.11186203373881734,
+          "E_x": 0.16226591359798345,
+          "E_y": 0.17643156038714014,
+          "poisson": 0.11186203373881734,
+          "young": 0.17643156038714017,
+          "final_loss": 1.5645188737450741,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 557.2522849106458,
+            "energy_per_spring": 0.08820074151798762,
+            "normalised_energy": 0.08820074151798762,
+            "max_spring_energy": 0.9533277706461116,
+            "frac_stressed": 0.9949351060462172
+          }
+        },
+        "both": {
+          "nu_xy": 0.1028806584362139,
+          "nu_yx": 0.10323974178589329,
+          "E_x": 0.07034153937713254,
+          "E_y": 0.07058705175978128,
+          "poisson": 0.10323974178589329,
+          "young": 0.07058705175978128,
+          "final_loss": 1.6000601954852307,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.26173621205271,
+            "energy_per_spring": 0.013811607504281847,
+            "normalised_energy": 0.012668693484384945,
+            "max_spring_energy": 0.5783072559246377,
+            "frac_stressed": 0.9243431465653688
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": -0.19248897856304673,
+          "nu_yx": -0.2205300565914305,
+          "E_x": 0.011973245153506807,
+          "E_y": 0.013717462947734878,
+          "poisson": -0.22053005659143052,
+          "young": 0.013717462947734878,
+          "final_loss": 0.9649982054349828,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.18379744043724508,
+          "nu_yx": -0.20375493945394282,
+          "E_x": 0.009201705749284887,
+          "E_y": 0.010200865656008383,
+          "poisson": -0.20375493945394285,
+          "young": 0.010200865656008381,
+          "final_loss": 0.7697178869119179,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 4951.921290606618,
+            "energy_per_spring": 0.44300601991470906,
+            "normalised_energy": 0.44300601991470906,
+            "max_spring_energy": 18.86940283113275,
+            "frac_stressed": 0.9816604043657183
+          }
+        },
+        "both": {
+          "nu_xy": 0.11532932089193206,
+          "nu_yx": 0.09777938453759216,
+          "E_x": 0.03808423887729192,
+          "E_y": 0.03228886990060086,
+          "poisson": 0.09777938453759216,
+          "young": 0.03228886990060086,
+          "final_loss": 1.24643078966503,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 75.35914386837759,
+            "energy_per_spring": 0.006741737687276578,
+            "normalised_energy": 0.005999097843029313,
+            "max_spring_energy": 0.2282218855899282,
+            "frac_stressed": 0.927357308999821
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.0046869327284176695,
+          "nu_yx": 0.003946137949527041,
+          "E_x": 0.03422954286729811,
+          "E_y": 0.028819380590770605,
+          "poisson": 0.003946137949527042,
+          "young": 0.028819380590770608,
+          "final_loss": 1.2482247496522663,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": NaN,
+          "nu_yx": NaN,
+          "E_x": NaN,
+          "E_y": NaN,
+          "poisson": NaN,
+          "young": NaN,
+          "final_loss": 0.7543055001708422,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 3.867126841684585e+41,
+            "energy_per_spring": 3.4595874411205803e+37,
+            "normalised_energy": 3.4595874411205803e+37,
+            "max_spring_energy": 1.4421757126384747e+39,
+            "frac_stressed": 1.0
+          }
+        },
+        "both": {
+          "nu_xy": -0.028636103502948453,
+          "nu_yx": -0.024402712877160893,
+          "E_x": 0.03152052557491143,
+          "E_y": 0.02686071920582955,
+          "poisson": -0.024402712877160893,
+          "young": 0.026860719205829553,
+          "final_loss": 1.2019761296613716,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 84.61200047659287,
+            "energy_per_spring": 0.007569511583162719,
+            "normalised_energy": 0.00673747955815793,
+            "max_spring_energy": 0.2596214062839843,
+            "frac_stressed": 0.928341384863124
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": -0.40924930446731933,
+          "nu_yx": -0.0459030077328563,
+          "E_x": 4.89445439887327e-11,
+          "E_y": 5.489812094171396e-12,
+          "poisson": -0.04590300773285771,
+          "young": 5.48981209417148e-12,
+          "final_loss": 19.327366729703364,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.8576353688625254,
+          "nu_yx": -0.20105215540581675,
+          "E_x": 3.022591576479022e-11,
+          "E_y": 7.0857449847078766e-12,
+          "poisson": -0.201052155405822,
+          "young": 7.085744984707485e-12,
+          "final_loss": 19.3102211943229,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76082125867504,
+            "energy_per_spring": 0.007046056652234303,
+            "normalised_energy": 0.007046056652234303,
+            "max_spring_energy": 0.3444610016500753,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.39170933140518466,
+          "nu_yx": -0.14458348060664813,
+          "E_x": 4.35380260002458e-11,
+          "E_y": 1.6070281796138395e-11,
+          "poisson": -0.1445834806066532,
+          "young": 1.60702817961393e-11,
+          "final_loss": 19.319239367483988,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397882057754,
+            "energy_per_spring": 0.007911431277561061,
+            "normalised_energy": 0.00703773396851428,
+            "max_spring_energy": 0.331536547919842,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.338693080128703,
+          "nu_yx": -2.8159108203420966,
+          "E_x": 8.909432542960433e-12,
+          "E_y": 7.407345757196106e-11,
+          "poisson": -2.8159108203420984,
+          "young": 7.407345757196057e-11,
+          "final_loss": 2.9661701423411486,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.33162538577764117,
+          "nu_yx": -2.9344051148792785,
+          "E_x": 5.264752811860954e-11,
+          "E_y": 4.658544925164001e-10,
+          "poisson": -2.934405114879277,
+          "young": 4.658544925164055e-10,
+          "final_loss": 8.320852286249103,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47835519379586,
+            "energy_per_spring": 0.007199709714957583,
+            "normalised_energy": 0.007199709714957583,
+            "max_spring_energy": 0.22888441957028247,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.33158884843191455,
+          "nu_yx": -2.9654946693450275,
+          "E_x": 5.6122974226164667e-11,
+          "E_y": 5.019239388855786e-10,
+          "poisson": -2.965494669345027,
+          "young": 5.019239388855811e-10,
+          "final_loss": 9.71604007041131,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 90.08593721987478,
+            "energy_per_spring": 0.008059217858281873,
+            "normalised_energy": 0.007169202260719579,
+            "max_spring_energy": 0.3687242413987407,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.23158947308538883,
+          "nu_yx": -0.24719554257931886,
+          "E_x": 0.000651741102586645,
+          "E_y": 0.0006956598386306947,
+          "poisson": -0.24719554257931886,
+          "young": 0.0006956598386306946,
+          "final_loss": 0.5880150433910954,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3378857389124001,
+          "nu_yx": -0.34719801098045044,
+          "E_x": 2.7370834446499314e-06,
+          "E_y": 2.8125186074111066e-06,
+          "poisson": -0.3471980109804505,
+          "young": 2.8125186074111066e-06,
+          "final_loss": 0.32232452466139466,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 93.67443394967603,
+            "energy_per_spring": 0.0066028359730511054,
+            "normalised_energy": 0.0066028359730511054,
+            "max_spring_energy": 5.1538117772018515,
+            "frac_stressed": 0.9214069218298442
+          }
+        },
+        "both": {
+          "nu_xy": -0.2720608790936454,
+          "nu_yx": -0.2934056780603843,
+          "E_x": 0.0005796427721575394,
+          "E_y": 0.0006251192055405516,
+          "poisson": -0.2934056780603843,
+          "young": 0.0006251192055405517,
+          "final_loss": 0.4796204888841096,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 85.46700771684958,
+            "energy_per_spring": 0.006024318581578176,
+            "normalised_energy": 0.005378508883689256,
+            "max_spring_energy": 0.30057351688656586,
+            "frac_stressed": 0.9211249735673503
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": -0.3005433257873605,
+          "nu_yx": -0.31568290123279474,
+          "E_x": 0.0002373633882272324,
+          "E_y": 0.0002493203362467423,
+          "poisson": -0.31568290123279474,
+          "young": 0.0002493203362467423,
+          "final_loss": 0.3898779564438375,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.2704558896903352,
+          "nu_yx": -0.2796016924533668,
+          "E_x": 0.000691035498734355,
+          "E_y": 0.0007144037248096455,
+          "poisson": -0.2796016924533668,
+          "young": 0.0007144037248096454,
+          "final_loss": 0.4703746769525967,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 76.36313573930899,
+            "energy_per_spring": 0.005372388893999507,
+            "normalised_energy": 0.005372388893999507,
+            "max_spring_energy": 0.29514305366261706,
+            "frac_stressed": 0.9210637399746728
+          }
+        },
+        "both": {
+          "nu_xy": -0.2619543290206693,
+          "nu_yx": -0.2745736821533946,
+          "E_x": 0.0007074678890100773,
+          "E_y": 0.0007415493533434171,
+          "poisson": -0.2745736821533946,
+          "young": 0.0007415493533434172,
+          "final_loss": 0.4780855354904875,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.9046292606317,
+            "energy_per_spring": 0.006184369583553658,
+            "normalised_energy": 0.005523851137019937,
+            "max_spring_energy": 0.44031856822688964,
+            "frac_stressed": 0.9215562121851696
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.3955495160648558,
+          "nu_yx": -0.3222901454423919,
+          "E_x": 0.0001085547493077393,
+          "E_y": 8.844942168281464e-05,
+          "poisson": -0.3222901454423919,
+          "young": 8.844942168281462e-05,
+          "final_loss": 0.9220938747462711,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.2784683288714738,
+          "nu_yx": -0.2928241048610156,
+          "E_x": 0.0006030794313443528,
+          "E_y": 0.0006341697648676154,
+          "poisson": -0.29282410486101557,
+          "young": 0.0006341697648676153,
+          "final_loss": 0.4224807799139483,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 77.30823356493444,
+            "energy_per_spring": 0.0054012599430541776,
+            "normalised_energy": 0.0054012599430541776,
+            "max_spring_energy": 0.26983917267290525,
+            "frac_stressed": 0.9209809264305178
+          }
+        },
+        "both": {
+          "nu_xy": -0.3652125432124473,
+          "nu_yx": -0.3423164917282566,
+          "E_x": 0.00011818886174210667,
+          "E_y": 0.00011077931813907925,
+          "poisson": -0.34231649172825657,
+          "young": 0.00011077931813907923,
+          "final_loss": 0.7831912708401342,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.45518246278289,
+            "energy_per_spring": 0.006040325750211897,
+            "normalised_energy": 0.005392616465511891,
+            "max_spring_energy": 0.8717385692669414,
+            "frac_stressed": 0.9220289247537204
+          }
+        }
+      }
+    },
+    "-0.7": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.3333333333333333,
+          "nu_yx": 0.3165071044199078,
+          "E_x": 0.05630592264357288,
+          "E_y": 0.0534636736128257,
+          "poisson": 0.31650710441990776,
+          "young": 0.05346367361282571,
+          "final_loss": 1.0500374874484326,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333332,
+          "nu_yx": 0.31656663211775504,
+          "E_x": 0.06356207630376584,
+          "E_y": 0.06036489727768477,
+          "poisson": 0.316566632117755,
+          "young": 0.060364897277684786,
+          "final_loss": 1.0500362885823347,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 58.56899340300468,
+            "energy_per_spring": 0.005239666613258605,
+            "normalised_energy": 0.005239666613258605,
+            "max_spring_energy": 0.13215003626574093,
+            "frac_stressed": 0.9260153873680443
+          }
+        },
+        "both": {
+          "nu_xy": 0.33333333333333337,
+          "nu_yx": 0.31656715887730946,
+          "E_x": 0.0553093473834022,
+          "E_y": 0.05252736888156535,
+          "poisson": 0.31656715887730946,
+          "young": 0.05252736888156535,
+          "final_loss": 1.0500362769520843,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.9622529359405,
+            "energy_per_spring": 0.005722155388794104,
+            "normalised_energy": 0.005093506250019663,
+            "max_spring_energy": 0.19584059488279396,
+            "frac_stressed": 0.9214528538200035
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621362,
+          "nu_yx": 0.10914438646462717,
+          "E_x": 0.06445098127470843,
+          "E_y": 0.06837497849639655,
+          "poisson": 0.10914438646462717,
+          "young": 0.06837497849639655,
+          "final_loss": 1.2073712171828197,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621401,
+          "nu_yx": 0.11221817573919803,
+          "E_x": 0.1607370095861135,
+          "E_y": 0.1753256079782087,
+          "poisson": 0.11221817573919805,
+          "young": 0.1753256079782087,
+          "final_loss": 1.1996861531096998,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 565.8801320678949,
+            "energy_per_spring": 0.08956633935864117,
+            "normalised_energy": 0.08956633935864117,
+            "max_spring_energy": 0.9664219793842748,
+            "frac_stressed": 0.9957264957264957
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621363,
+          "nu_yx": 0.0995193080952716,
+          "E_x": 0.07258446157572558,
+          "E_y": 0.0702129584343851,
+          "poisson": 0.0995193080952716,
+          "young": 0.0702129584343851,
+          "final_loss": 1.250798558209095,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 89.69098008192896,
+            "energy_per_spring": 0.014196103210181854,
+            "normalised_energy": 0.013048499018150816,
+            "max_spring_energy": 0.5845841381010515,
+            "frac_stressed": 0.9311490978157645
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.07613061562944388,
+          "nu_yx": 0.0670864756826248,
+          "E_x": 0.03632567536995667,
+          "E_y": 0.032010269682083245,
+          "poisson": 0.06708647568262478,
+          "young": 0.032010269682083245,
+          "final_loss": 0.8465882426660777,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.16622220056117737,
+          "nu_yx": -0.18370020350194152,
+          "E_x": 0.009485640026414097,
+          "E_y": 0.010483040155379889,
+          "poisson": -0.18370020350194155,
+          "young": 0.010483040155379889,
+          "final_loss": 0.505714718097102,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 4815.827596416894,
+            "energy_per_spring": 0.4308308817692695,
+            "normalised_energy": 0.4308308817692695,
+            "max_spring_energy": 17.21915952169513,
+            "frac_stressed": 0.9814814814814815
+          }
+        },
+        "both": {
+          "nu_xy": 0.12192991685683473,
+          "nu_yx": 0.10626566599713401,
+          "E_x": 0.037627493672624024,
+          "E_y": 0.03279351596392238,
+          "poisson": 0.10626566599713401,
+          "young": 0.032793515963922375,
+          "final_loss": 0.8368934104813157,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 75.6091205316686,
+            "energy_per_spring": 0.0067641009600705486,
+            "normalised_energy": 0.006018844884945354,
+            "max_spring_energy": 0.22808830020904253,
+            "frac_stressed": 0.9274467704419396
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.02885671524239482,
+          "nu_yx": 0.025232825249154444,
+          "E_x": 0.03429322169029461,
+          "E_y": 0.029986603217764727,
+          "poisson": 0.025232825249154447,
+          "young": 0.029986603217764727,
+          "final_loss": 0.8370340051347614,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.1761680162753322,
+          "nu_yx": -0.1891381738592134,
+          "E_x": 0.009892561800959786,
+          "E_y": 0.010620889724379207,
+          "poisson": -0.18913817385921336,
+          "young": 0.010620889724379206,
+          "final_loss": 0.49279889719690173,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 4948.987217668256,
+            "energy_per_spring": 0.4427435335183625,
+            "normalised_energy": 0.4427435335183625,
+            "max_spring_energy": 15.80646557065304,
+            "frac_stressed": 0.9821077115763106
+          }
+        },
+        "both": {
+          "nu_xy": 0.034186406836984894,
+          "nu_yx": 0.030044479713014806,
+          "E_x": 0.033395558699949285,
+          "E_y": 0.029349448470844707,
+          "poisson": 0.030044479713014802,
+          "young": 0.0293494484708447,
+          "final_loss": 0.802762763816471,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 83.41712679309089,
+            "energy_per_spring": 0.00746261646028725,
+            "normalised_energy": 0.00664140498555738,
+            "max_spring_energy": 0.2597043596971453,
+            "frac_stressed": 0.927536231884058
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": 0.5675490822806759,
+          "nu_yx": 0.18646390316487282,
+          "E_x": 4.699046835497562e-11,
+          "E_y": 1.5438358398544675e-11,
+          "poisson": 0.18646390316487743,
+          "young": 1.5438358398545335e-11,
+          "final_loss": 18.980898321046556,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -1.4256740904550005,
+          "nu_yx": -0.11664584151194421,
+          "E_x": 3.439056951276271e-11,
+          "E_y": 2.813768551837088e-12,
+          "poisson": -0.11664584151194475,
+          "young": 2.8137685518370357e-12,
+          "final_loss": 18.997906100079778,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76082125858821,
+            "energy_per_spring": 0.007046056652226535,
+            "normalised_energy": 0.007046056652226535,
+            "max_spring_energy": 0.3444610016500753,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": 0.18264446111237465,
+          "nu_yx": 0.09446876846785929,
+          "E_x": 4.538732661089094e-11,
+          "E_y": 2.347558104344212e-11,
+          "poisson": 0.09446876846786383,
+          "young": 2.347558104344414e-11,
+          "final_loss": 18.98792894254318,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.4340991396563,
+            "energy_per_spring": 0.007911442041479361,
+            "normalised_energy": 0.0070377436122129634,
+            "max_spring_energy": 0.3315365479192923,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.33153994423127175,
+          "nu_yx": -2.9797721958962518,
+          "E_x": 4.675294315210813e-11,
+          "E_y": 4.20200107121299e-10,
+          "poisson": -2.9797721958962513,
+          "young": 4.202001071213036e-10,
+          "final_loss": 10.633461199424724,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3307909770427001,
+          "nu_yx": -2.8820038562817833,
+          "E_x": 9.276569949977935e-11,
+          "E_y": 8.082176426914154e-10,
+          "poisson": -2.882003856281784,
+          "young": 8.082176426914106e-10,
+          "final_loss": 8.747177367347591,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47690769458094,
+            "energy_per_spring": 0.007199580219590351,
+            "normalised_energy": 0.007199580219590351,
+            "max_spring_energy": 0.22888441957699512,
+            "frac_stressed": 0.9221685453569511
+          }
+        },
+        "both": {
+          "nu_xy": -0.33167443595379675,
+          "nu_yx": -2.970022443516397,
+          "E_x": 5.010586298270507e-11,
+          "E_y": 4.4867955283452096e-10,
+          "poisson": -2.9700224435163975,
+          "young": 4.4867955283451987e-10,
+          "final_loss": 10.334518199441248,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 90.08598263045306,
+            "energy_per_spring": 0.008059221920777694,
+            "normalised_energy": 0.007169205994819019,
+            "max_spring_energy": 0.36872424139132204,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.23430107665558494,
+          "nu_yx": -0.24093079939944545,
+          "E_x": 0.0006468375863060038,
+          "E_y": 0.0006651403355666079,
+          "poisson": -0.24093079939944545,
+          "young": 0.0006651403355666077,
+          "final_loss": 0.35826918194089086,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.30391332779023256,
+          "nu_yx": -0.3108154075566847,
+          "E_x": 0.00016036268382162283,
+          "E_y": 0.00016400463017306137,
+          "poisson": -0.31081540755668474,
+          "young": 0.0001640046301730614,
+          "final_loss": 0.17258430851127696,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 77.4728430572745,
+            "energy_per_spring": 0.005460833372613978,
+            "normalised_energy": 0.005460833372613978,
+            "max_spring_energy": 0.299347526815922,
+            "frac_stressed": 0.9209839994361034
+          }
+        },
+        "both": {
+          "nu_xy": -0.2603908807619372,
+          "nu_yx": -0.2643942314807813,
+          "E_x": 0.00034491834804279266,
+          "E_y": 0.00035022125693322356,
+          "poisson": -0.2643942314807813,
+          "young": 0.0003502212569332235,
+          "final_loss": 0.21758612995916124,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 85.52352515063465,
+            "energy_per_spring": 0.006028302329642254,
+            "normalised_energy": 0.005382129765154964,
+            "max_spring_energy": 0.30057326162684245,
+            "frac_stressed": 0.9219003312892085
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": -0.30931637509012333,
+          "nu_yx": -0.32424974446096644,
+          "E_x": 0.00015170985393134087,
+          "E_y": 0.00015903419712297849,
+          "poisson": -0.32424974446096644,
+          "young": 0.00015903419712297849,
+          "final_loss": 0.17647143040907254,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.2569292736492491,
+          "nu_yx": -0.2640889052275371,
+          "E_x": 0.0007142399536875387,
+          "E_y": 0.0007341430766531113,
+          "poisson": -0.2640889052275371,
+          "young": 0.0007341430766531113,
+          "final_loss": 0.2444228925867552,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 76.36609426158945,
+            "energy_per_spring": 0.005372597035429116,
+            "normalised_energy": 0.005372597035429116,
+            "max_spring_energy": 0.2951409654516127,
+            "frac_stressed": 0.921134093147601
+          }
+        },
+        "both": {
+          "nu_xy": -0.25451994205602885,
+          "nu_yx": -0.26387331899175104,
+          "E_x": 0.0006844915085225248,
+          "E_y": 0.0007096459503976644,
+          "poisson": -0.26387331899175104,
+          "young": 0.0007096459503976644,
+          "final_loss": 0.24710755230339912,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.89872643141499,
+            "energy_per_spring": 0.00618395430078901,
+            "normalised_energy": 0.005523476591758725,
+            "max_spring_energy": 0.4403180767131283,
+            "frac_stressed": 0.922541156606163
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.3744128800439815,
+          "nu_yx": -0.2971443709215246,
+          "E_x": 0.00012902443784037007,
+          "E_y": 0.00010239734650975825,
+          "poisson": -0.2971443709215246,
+          "young": 0.00010239734650975821,
+          "final_loss": 0.705015366253098,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.27878216136857714,
+          "nu_yx": -0.29044287965453075,
+          "E_x": 0.000544242098857862,
+          "E_y": 0.0005670063021446974,
+          "poisson": -0.29044287965453075,
+          "young": 0.0005670063021446973,
+          "final_loss": 0.2086416345526263,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 77.31151596829784,
+            "energy_per_spring": 0.0054014892732689055,
+            "normalised_energy": 0.0054014892732689055,
+            "max_spring_energy": 0.2698363714504268,
+            "frac_stressed": 0.9207713267658771
+          }
+        },
+        "both": {
+          "nu_xy": -0.40123683533489624,
+          "nu_yx": -0.41921046079297436,
+          "E_x": 6.186895938797246e-06,
+          "E_y": 6.4640413565633675e-06,
+          "poisson": -0.41921046079297436,
+          "young": 6.464041356563367e-06,
+          "final_loss": 0.36440561945463146,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.53585400711466,
+            "energy_per_spring": 0.006115828547971401,
+            "normalised_energy": 0.005460750103064046,
+            "max_spring_energy": 0.8717396790146419,
+            "frac_stressed": 0.9230070565220428
+          }
+        }
+      }
+    },
+    "-0.5": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.3333333333333333,
+          "nu_yx": 0.31961709094031837,
+          "E_x": 0.05606956951616296,
+          "E_y": 0.05376237809709589,
+          "poisson": 0.3196170909403184,
+          "young": 0.05376237809709589,
+          "final_loss": 0.682799536509635,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333333,
+          "nu_yx": 0.3196127069644049,
+          "E_x": 0.06319156767516845,
+          "E_y": 0.06059048400595495,
+          "poisson": 0.31961270696440497,
+          "young": 0.06059048400595493,
+          "final_loss": 0.6827992587151841,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 58.09161783231946,
+            "energy_per_spring": 0.005196959906272987,
+            "normalised_energy": 0.005196959906272987,
+            "max_spring_energy": 0.1302351527884138,
+            "frac_stressed": 0.9253891572732152
+          }
+        },
+        "both": {
+          "nu_xy": 0.3333333333333332,
+          "nu_yx": 0.31962924171984824,
+          "E_x": 0.05500833244265464,
+          "E_y": 0.05274681476075712,
+          "poisson": 0.3196292417198482,
+          "young": 0.05274681476075711,
+          "final_loss": 0.6827992208052989,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.87909699070813,
+            "energy_per_spring": 0.0057147161380128935,
+            "normalised_energy": 0.005086012978631783,
+            "max_spring_energy": 0.19531815178777862,
+            "frac_stressed": 0.9209160851672928
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.1028806584362136,
+          "nu_yx": 0.1090117622936568,
+          "E_x": 0.06424375755059084,
+          "E_y": 0.06807232120601574,
+          "poisson": 0.10901176229365682,
+          "young": 0.06807232120601574,
+          "final_loss": 0.923425306988571,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621409,
+          "nu_yx": 0.11269547608569716,
+          "E_x": 0.15877536951565885,
+          "E_y": 0.17392254414218658,
+          "poisson": 0.11269547608569716,
+          "young": 0.17392254414218658,
+          "final_loss": 0.9146634113011607,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 577.1675141288312,
+            "energy_per_spring": 0.09135288289471845,
+            "normalised_energy": 0.09135288289471845,
+            "max_spring_energy": 0.9833383062555304,
+            "frac_stressed": 0.9963596074707186
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621394,
+          "nu_yx": 0.10450311956642731,
+          "E_x": 0.06625844827763745,
+          "E_y": 0.06730336535449861,
+          "poisson": 0.10450311956642731,
+          "young": 0.06730336535449863,
+          "final_loss": 0.9447400554049201,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 85.04618451663532,
+            "energy_per_spring": 0.013460934554706445,
+            "normalised_energy": 0.012363000629452324,
+            "max_spring_energy": 0.5750302988076003,
+            "frac_stressed": 0.9287749287749287
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.10910009621150314,
+          "nu_yx": 0.0991277413588844,
+          "E_x": 0.036954366846539737,
+          "E_y": 0.03357653243259825,
+          "poisson": 0.0991277413588844,
+          "young": 0.03357653243259825,
+          "final_loss": 0.5166654176820739,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.08966393932276545,
+          "nu_yx": -0.0979206913199721,
+          "E_x": 0.019075089944858403,
+          "E_y": 0.020831629844718876,
+          "poisson": -0.09792069131997211,
+          "young": 0.020831629844718876,
+          "final_loss": 0.3161306962095765,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 1441.5757532371786,
+            "energy_per_spring": 0.1289654458075844,
+            "normalised_energy": 0.1289654458075844,
+            "max_spring_energy": 4.798496977227437,
+            "frac_stressed": 0.9759348720701377
+          }
+        },
+        "both": {
+          "nu_xy": -0.026847126445577203,
+          "nu_yx": -0.029424155436885428,
+          "E_x": 0.02189924332885974,
+          "E_y": 0.024001329936176402,
+          "poisson": -0.029424155436885424,
+          "young": 0.0240013299361764,
+          "final_loss": 0.3712821776333556,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 85.08120183388709,
+            "energy_per_spring": 0.007611487013230192,
+            "normalised_energy": 0.006772231582727757,
+            "max_spring_energy": 0.22740994911023274,
+            "frac_stressed": 0.9295938450527822
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.028882164808625682,
+          "nu_yx": 0.026516322268072504,
+          "E_x": 0.03265065917430666,
+          "E_y": 0.029976125635580785,
+          "poisson": 0.026516322268072507,
+          "young": 0.029976125635580785,
+          "final_loss": 0.4995936457843745,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.11034395309977062,
+          "nu_yx": -0.11890797854848306,
+          "E_x": 0.016985493060246472,
+          "E_y": 0.01830377277327573,
+          "poisson": -0.11890797854848305,
+          "young": 0.01830377277327573,
+          "final_loss": 0.31166700089626886,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 1770.1607216343355,
+            "energy_per_spring": 0.15836113093883838,
+            "normalised_energy": 0.15836113093883838,
+            "max_spring_energy": 5.139296950329262,
+            "frac_stressed": 0.9745034889962426
+          }
+        },
+        "both": {
+          "nu_xy": -0.007582993090946232,
+          "nu_yx": -0.007071663907556309,
+          "E_x": 0.028966323498153156,
+          "E_y": 0.027013093901016496,
+          "poisson": -0.007071663907556311,
+          "young": 0.027013093901016503,
+          "final_loss": 0.4543175803460817,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 95.19649429832931,
+            "energy_per_spring": 0.008516415664549052,
+            "normalised_energy": 0.007576395589364064,
+            "max_spring_energy": 0.2588171746023716,
+            "frac_stressed": 0.934961531579889
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": -0.4302830480465217,
+          "nu_yx": -0.12324868700438499,
+          "E_x": 4.087225382162811e-11,
+          "E_y": 1.1707297420373804e-11,
+          "poisson": -0.12324868700438878,
+          "young": 1.1707297420373644e-11,
+          "final_loss": 18.760700264381203,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -1.4256740904550005,
+          "nu_yx": -0.11664584151194421,
+          "E_x": 3.439056951276271e-11,
+          "E_y": 2.813768551837088e-12,
+          "poisson": -0.11664584151194475,
+          "young": 2.8137685518370357e-12,
+          "final_loss": 18.756788780251284,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76082125858821,
+            "energy_per_spring": 0.007046056652226535,
+            "normalised_energy": 0.007046056652226535,
+            "max_spring_energy": 0.3444610016500753,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.9225007423461891,
+          "nu_yx": -0.12107509130743951,
+          "E_x": 5.406741473211424e-11,
+          "E_y": 7.096164669525355e-12,
+          "poisson": -0.12107509130744148,
+          "young": 7.096164669525225e-12,
+          "final_loss": 18.742322490044554,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43398834275274,
+            "energy_per_spring": 0.007911432129428587,
+            "normalised_energy": 0.007037734732233023,
+            "max_spring_energy": 0.33153654791902465,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.3314168402166604,
+          "nu_yx": -2.970741497424424,
+          "E_x": 5.992673202192001e-11,
+          "E_y": 5.371689305412711e-10,
+          "poisson": -2.970741497424424,
+          "young": 5.371689305412741e-10,
+          "final_loss": 11.32834591320723,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3320569369706661,
+          "nu_yx": -2.9497029312608682,
+          "E_x": 3.985998797377327e-11,
+          "E_y": 3.54081214019777e-10,
+          "poisson": -2.9497029312608687,
+          "young": 3.5408121401977745e-10,
+          "final_loss": 9.321267635489354,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47735406917533,
+            "energy_per_spring": 0.00719962015290529,
+            "normalised_energy": 0.00719962015290529,
+            "max_spring_energy": 0.22888441959842637,
+            "frac_stressed": 0.9221685453569511
+          }
+        },
+        "both": {
+          "nu_xy": -0.33171478495758744,
+          "nu_yx": -2.98011480656234,
+          "E_x": 3.868865015334513e-11,
+          "E_y": 3.4757757084187784e-10,
+          "poisson": -2.98011480656234,
+          "young": 3.475775708418747e-10,
+          "final_loss": 11.080702357256104,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 90.08618396473904,
+            "energy_per_spring": 0.008059239932433265,
+            "normalised_energy": 0.007169219265644505,
+            "max_spring_energy": 0.36872424136605525,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.28472505367277257,
+          "nu_yx": -0.28470407672876685,
+          "E_x": 6.384592001088044e-05,
+          "E_y": 6.384121620181345e-05,
+          "poisson": -0.2847040767287668,
+          "young": 6.384121620181345e-05,
+          "final_loss": 0.06544915016157006,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3261587441717307,
+          "nu_yx": -0.3287812699744087,
+          "E_x": 4.196067770943728e-06,
+          "E_y": 4.229806851056484e-06,
+          "poisson": -0.3287812699744087,
+          "young": 4.229806851056484e-06,
+          "final_loss": 0.030787771742039848,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 94.83665445068144,
+            "energy_per_spring": 0.006684757485774402,
+            "normalised_energy": 0.006684757485774402,
+            "max_spring_energy": 4.233555499215379,
+            "frac_stressed": 0.9216183830267146
+          }
+        },
+        "both": {
+          "nu_xy": -0.2687827504018357,
+          "nu_yx": -0.271403799683665,
+          "E_x": 0.00032661030034346794,
+          "E_y": 0.00032979525805326693,
+          "poisson": -0.27140379968366507,
+          "young": 0.0003297952580532669,
+          "final_loss": 0.06974680688943917,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 85.52515035865784,
+            "energy_per_spring": 0.006028416885786836,
+            "normalised_energy": 0.005382192221092472,
+            "max_spring_energy": 0.300573405510214,
+            "frac_stressed": 0.9211954606329739
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": -0.3203872386613287,
+          "nu_yx": -0.32447601897532613,
+          "E_x": 1.6235305729109483e-07,
+          "E_y": 1.6442500618438654e-07,
+          "poisson": -0.32447601897532613,
+          "young": 1.6442500618438657e-07,
+          "final_loss": 0.032018409033293595,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.2560101873422796,
+          "nu_yx": -0.2626748729333483,
+          "E_x": 0.000627030398981571,
+          "E_y": 0.0006433538137200139,
+          "poisson": -0.2626748729333483,
+          "young": 0.0006433538137200139,
+          "final_loss": 0.08532042344289568,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 76.46494880446423,
+            "energy_per_spring": 0.005379551766178713,
+            "normalised_energy": 0.005379551766178713,
+            "max_spring_energy": 0.2951334479709983,
+            "frac_stressed": 0.9207823272829605
+          }
+        },
+        "both": {
+          "nu_xy": -0.25311397466735935,
+          "nu_yx": -0.2610216045932921,
+          "E_x": 0.0006056430712529549,
+          "E_y": 0.000624564196729996,
+          "poisson": -0.2610216045932921,
+          "young": 0.0006245641967299959,
+          "final_loss": 0.08959462203987854,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.91230406229874,
+            "energy_per_spring": 0.006184909530202529,
+            "normalised_energy": 0.00552433703333474,
+            "max_spring_energy": 0.4403168061155444,
+            "frac_stressed": 0.9219783312227381
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.36746276807490197,
+          "nu_yx": -0.29028020734753696,
+          "E_x": 0.00013898121209008265,
+          "E_y": 0.00010978934076580452,
+          "poisson": -0.2902802073475369,
+          "young": 0.00010978934076580449,
+          "final_loss": 0.5665273151622334,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.27340408691808116,
+          "nu_yx": -0.2796712153629939,
+          "E_x": 0.0005203203271749406,
+          "E_y": 0.0005322474141459609,
+          "poisson": -0.2796712153629939,
+          "young": 0.0005322474141459608,
+          "final_loss": 0.06853581234713887,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 77.30688358622487,
+            "energy_per_spring": 0.005401165624692578,
+            "normalised_energy": 0.005401165624692578,
+            "max_spring_energy": 0.2698359365624206,
+            "frac_stressed": 0.9204219939914763
+          }
+        },
+        "both": {
+          "nu_xy": -0.38588654036146014,
+          "nu_yx": -0.4172798789279803,
+          "E_x": 7.511848835786803e-06,
+          "E_y": 8.122966325247516e-06,
+          "poisson": -0.4172798789279804,
+          "young": 8.122966325247516e-06,
+          "final_loss": 0.2521474543286989,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.56343903464895,
+            "energy_per_spring": 0.006117755818811497,
+            "normalised_energy": 0.005462455002305061,
+            "max_spring_energy": 0.8717396967527207,
+            "frac_stressed": 0.9230070565220428
+          }
+        }
+      }
+    },
+    "-0.3": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.33333333333333337,
+          "nu_yx": 0.3227645922506599,
+          "E_x": 0.05580462323058314,
+          "E_y": 0.05403526938816261,
+          "poisson": 0.32276459225065995,
+          "young": 0.05403526938816262,
+          "final_loss": 0.3943212970166988,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333333,
+          "nu_yx": 0.32277008917476085,
+          "E_x": 0.06283920099435486,
+          "E_y": 0.060847843525855934,
+          "poisson": 0.3227700891747609,
+          "young": 0.06084784352585593,
+          "final_loss": 0.3943211885557473,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.64638852364991,
+            "energy_per_spring": 0.005157129050246011,
+            "normalised_energy": 0.005157129050246011,
+            "max_spring_energy": 0.12813871494981222,
+            "frac_stressed": 0.9232420826623725
+          }
+        },
+        "both": {
+          "nu_xy": 0.3333333333333333,
+          "nu_yx": 0.3227707656899476,
+          "E_x": 0.05468891520055413,
+          "E_y": 0.052955949102106416,
+          "poisson": 0.3227707656899476,
+          "young": 0.05295594910210643,
+          "final_loss": 0.39432114896285164,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.81035965033887,
+            "energy_per_spring": 0.005708566796416074,
+            "normalised_energy": 0.00507978050909175,
+            "max_spring_energy": 0.19480146513733942,
+            "frac_stressed": 0.9206477008409376
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621297,
+          "nu_yx": 0.11003769463008564,
+          "E_x": 0.06388993632241102,
+          "E_y": 0.0683345286649768,
+          "poisson": 0.11003769463008566,
+          "young": 0.06833452866497679,
+          "final_loss": 0.7195783280189563,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621401,
+          "nu_yx": 0.11316678760130508,
+          "E_x": 0.15749617671585692,
+          "E_y": 0.17324282959825202,
+          "poisson": 0.1131667876013051,
+          "young": 0.17324282959825205,
+          "final_loss": 0.7094552528449924,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 582.2409029014299,
+            "energy_per_spring": 0.09215588839845361,
+            "normalised_energy": 0.09215588839845361,
+            "max_spring_energy": 0.9916074550132179,
+            "frac_stressed": 0.99667616334283
+          }
+        },
+        "both": {
+          "nu_xy": 0.1028806584362143,
+          "nu_yx": 0.10545570358308115,
+          "E_x": 0.06864763710508427,
+          "E_y": 0.07036584893866155,
+          "poisson": 0.10545570358308114,
+          "young": 0.07036584893866152,
+          "final_loss": 0.7358080333482101,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.96026185110347,
+            "energy_per_spring": 0.013763890764657085,
+            "normalised_energy": 0.012656799842138125,
+            "max_spring_energy": 0.5802853472028463,
+            "frac_stressed": 0.9268755935422602
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.03649191380163119,
+          "nu_yx": 0.03933130263928711,
+          "E_x": 0.027148475944925848,
+          "E_y": 0.029260863910556385,
+          "poisson": 0.0393313026392871,
+          "young": 0.02926086391055638,
+          "final_loss": 0.21181775108886153,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": NaN,
+          "nu_yx": NaN,
+          "E_x": NaN,
+          "E_y": NaN,
+          "poisson": NaN,
+          "young": NaN,
+          "final_loss": 0.16901269449421347,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 7.84325736494051e+42,
+            "energy_per_spring": 7.016691147737082e+38,
+            "normalised_energy": 7.016691147737082e+38,
+            "max_spring_energy": 3.1092076535276967e+40,
+            "frac_stressed": 1.0
+          }
+        },
+        "both": {
+          "nu_xy": -0.07467573991573871,
+          "nu_yx": -0.08075819409678889,
+          "E_x": 0.011426049433412105,
+          "E_y": 0.012356718781014995,
+          "poisson": -0.0807581940967889,
+          "young": 0.012356718781014997,
+          "final_loss": 0.1513492459225078,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.51610402909779,
+            "energy_per_spring": 0.007918778317149561,
+            "normalised_energy": 0.0070416838485534965,
+            "max_spring_energy": 0.22758657694711498,
+            "frac_stressed": 0.9295938450527822
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.059760173483533637,
+          "nu_yx": 0.062427060480183885,
+          "E_x": 0.03015677945738774,
+          "E_y": 0.031502570781402506,
+          "poisson": 0.06242706048018389,
+          "young": 0.0315025707814025,
+          "final_loss": 0.2099448635231882,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.06123204300245083,
+          "nu_yx": -0.06452063819827797,
+          "E_x": 0.021681220582409736,
+          "E_y": 0.022845655971967575,
+          "poisson": -0.06452063819827797,
+          "young": 0.02284565597196757,
+          "final_loss": 0.16194839045031817,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 1071.4327152225287,
+            "energy_per_spring": 0.09585191583669071,
+            "normalised_energy": 0.09585191583669071,
+            "max_spring_energy": 2.9409680221786805,
+            "frac_stressed": 0.9723564143853999
+          }
+        },
+        "both": {
+          "nu_xy": 0.0880496001529818,
+          "nu_yx": 0.0818756309467503,
+          "E_x": 0.03401598456928629,
+          "E_y": 0.031630810293815065,
+          "poisson": 0.0818756309467503,
+          "young": 0.031630810293815065,
+          "final_loss": 0.25807546867710257,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 82.0543901971134,
+            "energy_per_spring": 0.007340704079183522,
+            "normalised_energy": 0.00653180963396403,
+            "max_spring_energy": 0.2601075122288182,
+            "frac_stressed": 0.9268205403471104
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": 0.4303234120591567,
+          "nu_yx": 0.06202867024715815,
+          "E_x": 5.184905539707821e-11,
+          "E_y": 7.473746186530697e-12,
+          "poisson": 0.06202867024715658,
+          "young": 7.473746186530684e-12,
+          "final_loss": 18.599997488556337,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -1.4256740904550005,
+          "nu_yx": -0.11664584151194421,
+          "E_x": 3.439056951276271e-11,
+          "E_y": 2.813768551837088e-12,
+          "poisson": -0.11664584151194475,
+          "young": 2.8137685518370357e-12,
+          "final_loss": 18.595671460422793,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76082125858821,
+            "energy_per_spring": 0.007046056652226535,
+            "normalised_energy": 0.007046056652226535,
+            "max_spring_energy": 0.3444610016500753,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.39170933140518466,
+          "nu_yx": -0.14458348060664813,
+          "E_x": 4.35380260002458e-11,
+          "E_y": 1.6070281796138395e-11,
+          "poisson": -0.1445834806066532,
+          "young": 1.60702817961393e-11,
+          "final_loss": 18.59304674118337,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397882057754,
+            "energy_per_spring": 0.007911431277561061,
+            "normalised_energy": 0.00703773396851428,
+            "max_spring_energy": 0.331536547919842,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.29691837686077965,
+          "nu_yx": -2.9283968111474143,
+          "E_x": 4.4190928688613283e-10,
+          "E_y": 4.358388861665357e-09,
+          "poisson": -2.9283968111474143,
+          "young": 4.358388861665357e-09,
+          "final_loss": 9.598284515125767,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.33118200172509166,
+          "nu_yx": -2.921370476885623,
+          "E_x": 6.380648529789751e-11,
+          "E_y": 5.628397117360372e-10,
+          "poisson": -2.921370476885623,
+          "young": 5.628397117360323e-10,
+          "final_loss": 10.000074126964417,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.4798851313409,
+            "energy_per_spring": 0.007199846585376713,
+            "normalised_energy": 0.007199846585376713,
+            "max_spring_energy": 0.228884419517285,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.33057102437488367,
+          "nu_yx": -2.6375002726279506,
+          "E_x": 4.935492269106618e-11,
+          "E_y": 3.9378412641997084e-10,
+          "poisson": -2.637500272627953,
+          "young": 3.9378412641996784e-10,
+          "final_loss": 2.4281669653811275,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 92.81133416554326,
+            "energy_per_spring": 0.008303035799386587,
+            "normalised_energy": 0.00738653074206686,
+            "max_spring_energy": 1.6291827781565231,
+            "frac_stressed": 0.9201109321882269
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.29999999513487857,
+          "nu_yx": -0.2999999954172003,
+          "E_x": 0.00014929042975374786,
+          "E_y": 0.00014929042989424095,
+          "poisson": -0.2999999954172003,
+          "young": 0.00014929042989424092,
+          "final_loss": 1.3200064154429495e-16,
+          "converged": true,
+          "iterations": 280
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3000000026334213,
+          "nu_yx": -0.30000000307402913,
+          "E_x": 0.00014291292777255117,
+          "E_y": 0.00014291292798244634,
+          "poisson": -0.3000000030740291,
+          "young": 0.00014291292798244631,
+          "final_loss": 1.5940457093885872e-16,
+          "converged": true,
+          "iterations": 280,
+          "residual_energy": {
+            "total_energy": 77.61024420597346,
+            "energy_per_spring": 0.005470518376399059,
+            "normalised_energy": 0.005470518376399059,
+            "max_spring_energy": 0.29933532778159033,
+            "frac_stressed": 0.9204201029111158
+          }
+        },
+        "both": {
+          "nu_xy": -0.3000000022789373,
+          "nu_yx": -0.3000000027043395,
+          "E_x": 0.00013125404602399636,
+          "E_y": 0.00013125404621011557,
+          "poisson": -0.3000000027043395,
+          "young": 0.00013125404621011557,
+          "final_loss": 1.9696339929576506e-15,
+          "converged": true,
+          "iterations": 200,
+          "residual_energy": {
+            "total_energy": 85.63989292667023,
+            "energy_per_spring": 0.006036504752708129,
+            "normalised_energy": 0.005389343230967883,
+            "max_spring_energy": 0.30057190851114163,
+            "frac_stressed": 0.9209839994361034
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": -0.2999999953148217,
+          "nu_yx": -0.2999999953953417,
+          "E_x": 0.00013715927384720395,
+          "E_y": 0.0001371592738840175,
+          "poisson": -0.2999999953953417,
+          "young": 0.00013715927388401747,
+          "final_loss": 8.497939010848949e-15,
+          "converged": true,
+          "iterations": 180
+        },
+        "rest_lengths": {
+          "nu_xy": -0.2996856752825421,
+          "nu_yx": -0.299689338281825,
+          "E_x": 3.940759950844022e-05,
+          "E_y": 3.9408081179806746e-05,
+          "poisson": -0.299689338281825,
+          "young": 3.940808117980674e-05,
+          "final_loss": 9.917546272129398e-08,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.87877387765104,
+            "energy_per_spring": 0.006112197402395599,
+            "normalised_energy": 0.006112197402395599,
+            "max_spring_energy": 4.839030487296759,
+            "frac_stressed": 0.9212747994934571
+          }
+        },
+        "both": {
+          "nu_xy": -0.2999999923597004,
+          "nu_yx": -0.29999999164640084,
+          "E_x": 1.7714626229634138e-05,
+          "E_y": 1.7714626187514693e-05,
+          "poisson": -0.29999999164640084,
+          "young": 1.7714626187514693e-05,
+          "final_loss": 3.613173812560419e-15,
+          "converged": true,
+          "iterations": 240,
+          "residual_energy": {
+            "total_energy": 91.46539594666889,
+            "energy_per_spring": 0.006434880817973047,
+            "normalised_energy": 0.005747772025292177,
+            "max_spring_energy": 0.4402877598708268,
+            "frac_stressed": 0.9244406922752216
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.16619791868713607,
+          "nu_yx": -0.12130213414535808,
+          "E_x": 0.00020119446560215573,
+          "E_y": 0.00014684490785783422,
+          "poisson": -0.12130213414535808,
+          "young": 0.00014684490785783424,
+          "final_loss": 1.9933255569077275,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.30000000349118205,
+          "nu_yx": -0.3000000038028638,
+          "E_x": 0.00020754412787891955,
+          "E_y": 0.00020754412809454524,
+          "poisson": -0.30000000380286374,
+          "young": 0.00020754412809454524,
+          "final_loss": 1.52784205622107e-15,
+          "converged": true,
+          "iterations": 360,
+          "residual_energy": {
+            "total_energy": 77.43370136656769,
+            "energy_per_spring": 0.005410025946102682,
+            "normalised_energy": 0.005410025946102682,
+            "max_spring_energy": 0.2698173821261119,
+            "frac_stressed": 0.9211206595402781
+          }
+        },
+        "both": {
+          "nu_xy": -0.3739375747318198,
+          "nu_yx": -0.4028309996549094,
+          "E_x": 1.0206994573546347e-05,
+          "E_y": 1.0995669077874111e-05,
+          "poisson": -0.40283099965490937,
+          "young": 1.099566907787411e-05,
+          "final_loss": 0.23461102379401644,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.3202018638627,
+            "energy_per_spring": 0.00610076167566986,
+            "normalised_energy": 0.005447159724332028,
+            "max_spring_energy": 0.8717395029963184,
+            "frac_stressed": 0.9227275903025222
+          }
+        }
+      }
+    },
+    "-0.1": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.33333333333333315,
+          "nu_yx": 0.32598957609728607,
+          "E_x": 0.055482519936962245,
+          "E_y": 0.054260169465178656,
+          "poisson": 0.32598957609728607,
+          "young": 0.054260169465178656,
+          "final_loss": 0.18456839024476687,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333334,
+          "nu_yx": 0.3259950109814234,
+          "E_x": 0.062446119821746436,
+          "E_y": 0.06107137055111252,
+          "poisson": 0.32599501098142336,
+          "young": 0.061071370551112523,
+          "final_loss": 0.18456834975105094,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.33330855219945,
+            "energy_per_spring": 0.005129120464501651,
+            "normalised_energy": 0.005129120464501651,
+            "max_spring_energy": 0.1262695632133304,
+            "frac_stressed": 0.9244050814099123
+          }
+        },
+        "both": {
+          "nu_xy": 0.3333333333333334,
+          "nu_yx": 0.3260010832637099,
+          "E_x": 0.054371630978096504,
+          "E_y": 0.05317563179302243,
+          "poisson": 0.32600108326370997,
+          "young": 0.053175631793022426,
+          "final_loss": 0.18456830262780513,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.74569157879089,
+            "energy_per_spring": 0.005702781497476372,
+            "normalised_energy": 0.005073737848028896,
+            "max_spring_energy": 0.19424319287938716,
+            "frac_stressed": 0.9217212381463589
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621476,
+          "nu_yx": 0.10989282541726451,
+          "E_x": 0.06365507529876072,
+          "E_y": 0.06799369466581061,
+          "poisson": 0.10989282541726451,
+          "young": 0.06799369466581062,
+          "final_loss": 0.5953681326797828,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621397,
+          "nu_yx": 0.11345649438146355,
+          "E_x": 0.15562788531454172,
+          "E_y": 0.1716259845550628,
+          "poisson": 0.11345649438146355,
+          "young": 0.17162598455506287,
+          "final_loss": 0.5840864934973715,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 596.6897557454874,
+            "energy_per_spring": 0.09444282300498377,
+            "normalised_energy": 0.09444282300498377,
+            "max_spring_energy": 1.0118045571864056,
+            "frac_stressed": 0.9960430515986072
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621393,
+          "nu_yx": 0.10735650453324241,
+          "E_x": 0.06792730492749821,
+          "E_y": 0.07088249754837268,
+          "poisson": 0.10735650453324243,
+          "young": 0.0708824975483727,
+          "final_loss": 0.6019015693511186,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.79679515759892,
+            "energy_per_spring": 0.013738017593795334,
+            "normalised_energy": 0.012644019673569828,
+            "max_spring_energy": 0.5808169549447201,
+            "frac_stressed": 0.9276669832225388
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.07288250717596699,
+          "nu_yx": 0.07321219719629056,
+          "E_x": 0.030062303243508514,
+          "E_y": 0.0301982925467222,
+          "poisson": 0.07321219719629056,
+          "young": 0.0301982925467222,
+          "final_loss": 0.08611870364358393,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.07444219891559137,
+          "nu_yx": -0.07435409344083437,
+          "E_x": 0.007257990180872224,
+          "E_y": 0.0072494000440951984,
+          "poisson": -0.07435409344083438,
+          "young": 0.0072494000440952,
+          "final_loss": 0.0006726670475290506,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 5463.690898155228,
+            "energy_per_spring": 0.4887896670383993,
+            "normalised_energy": 0.4887896670383993,
+            "max_spring_energy": 22.640616524375055,
+            "frac_stressed": 0.9851494006083378
+          }
+        },
+        "both": {
+          "nu_xy": NaN,
+          "nu_yx": NaN,
+          "E_x": NaN,
+          "E_y": NaN,
+          "poisson": NaN,
+          "young": NaN,
+          "final_loss": 0.08564428764544631,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 2.6977994615303138e+51,
+            "energy_per_spring": 2.4134903037487152e+47,
+            "normalised_energy": 8.114385917622502e+27,
+            "max_spring_energy": 2.685614826207522e+51,
+            "frac_stressed": 1.0
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.09992430987402659,
+          "nu_yx": 0.10260677761331569,
+          "E_x": 0.03234222038849414,
+          "E_y": 0.0332104471785364,
+          "poisson": 0.1026067776133157,
+          "young": 0.033210447178536405,
+          "final_loss": 0.0844012901287832,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.07733462161364062,
+          "nu_yx": -0.07722613324020883,
+          "E_x": 0.00741699983316714,
+          "E_y": 0.007406594942952971,
+          "poisson": -0.07722613324020883,
+          "young": 0.007406594942952972,
+          "final_loss": 0.0014966096592542255,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 5429.548199306451,
+            "energy_per_spring": 0.48573521196157193,
+            "normalised_energy": 0.48573521196157193,
+            "max_spring_energy": 16.29256086772048,
+            "frac_stressed": 0.9848810162819824
+          }
+        },
+        "both": {
+          "nu_xy": 0.07619619772838546,
+          "nu_yx": 0.07520412570713417,
+          "E_x": 0.031119401343393867,
+          "E_y": 0.030714227747974807,
+          "poisson": 0.07520412570713417,
+          "young": 0.03071422774797481,
+          "final_loss": 0.09190006041268056,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.05127744388068,
+            "energy_per_spring": 0.0076982713762641505,
+            "normalised_energy": 0.006848945621005016,
+            "max_spring_energy": 0.2597733300355427,
+            "frac_stressed": 0.9301306137054929
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": -0.5852423554858731,
+          "nu_yx": -0.059220616151979585,
+          "E_x": 5.478593721111265e-11,
+          "E_y": 5.5437835756302745e-12,
+          "poisson": -0.05922061615197898,
+          "young": 5.543783575630153e-12,
+          "final_loss": 18.507021195154238,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 1.1690322170183627,
+          "nu_yx": 0.05944970580589614,
+          "E_x": 4.431991316986869e-11,
+          "E_y": 2.2538350619726073e-12,
+          "poisson": 0.05944970580589808,
+          "young": 2.253835061972472e-12,
+          "final_loss": 18.511864084622726,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76082126340722,
+            "energy_per_spring": 0.007046056652657651,
+            "normalised_energy": 0.007046056652657651,
+            "max_spring_energy": 0.3444610016500753,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.39170933140518466,
+          "nu_yx": -0.14458348060664813,
+          "E_x": 4.35380260002458e-11,
+          "E_y": 1.6070281796138395e-11,
+          "poisson": -0.1445834806066532,
+          "young": 1.60702817961393e-11,
+          "final_loss": 18.5109825324165,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397882057754,
+            "energy_per_spring": 0.007911431277561061,
+            "normalised_energy": 0.00703773396851428,
+            "max_spring_energy": 0.331536547919842,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.3306896270215792,
+          "nu_yx": -3.0171482566856924,
+          "E_x": 7.621711043745887e-12,
+          "E_y": 6.953901879450061e-11,
+          "poisson": -3.0171482566856924,
+          "young": 6.953901879450107e-11,
+          "final_loss": 10.33964078615453,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": NaN,
+          "nu_yx": NaN,
+          "E_x": NaN,
+          "E_y": NaN,
+          "poisson": NaN,
+          "young": NaN,
+          "final_loss": 10.751211236007965,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 3.921835606302271e+22,
+            "energy_per_spring": 3.5085306909127496e+18,
+            "normalised_energy": 3.5085306909127496e+18,
+            "max_spring_energy": 3.9200067185093235e+22,
+            "frac_stressed": 1.0
+          }
+        },
+        "both": {
+          "nu_xy": -0.3315056450625619,
+          "nu_yx": -2.6160991457618383,
+          "E_x": 4.734482507580182e-11,
+          "E_y": 3.73624878736753e-10,
+          "poisson": -2.6160991457618388,
+          "young": 3.736248787367478e-10,
+          "final_loss": 2.4840696096448056,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 93.0921953392092,
+            "energy_per_spring": 0.008328162045017821,
+            "normalised_energy": 0.007408883732106887,
+            "max_spring_energy": 1.7933223036619503,
+            "frac_stressed": 0.9201109321882269
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.10000000447533271,
+          "nu_yx": -0.1000000044701404,
+          "E_x": 0.0005779330548630493,
+          "E_y": 0.0005779330548330412,
+          "poisson": -0.10000000447014044,
+          "young": 0.0005779330548330412,
+          "final_loss": 1.6316531723817632e-15,
+          "converged": true,
+          "iterations": 220
+        },
+        "rest_lengths": {
+          "nu_xy": -0.09999998834577203,
+          "nu_yx": -0.09999998818721673,
+          "E_x": 0.001467454461164308,
+          "E_y": 0.0014674544588375803,
+          "poisson": -0.09999998818721671,
+          "young": 0.00146745445883758,
+          "final_loss": 5.969051547047032e-16,
+          "converged": true,
+          "iterations": 260,
+          "residual_energy": {
+            "total_energy": 77.44722456527474,
+            "energy_per_spring": 0.005459027600287217,
+            "normalised_energy": 0.005459027600287217,
+            "max_spring_energy": 0.29945090069598457,
+            "frac_stressed": 0.9210544865017269
+          }
+        },
+        "both": {
+          "nu_xy": -0.09999998855280186,
+          "nu_yx": -0.09999998856781768,
+          "E_x": 0.0013914276233500617,
+          "E_y": 0.0013914276235589959,
+          "poisson": -0.09999998856781768,
+          "young": 0.0013914276235589959,
+          "final_loss": 2.856924429683981e-16,
+          "converged": true,
+          "iterations": 180,
+          "residual_energy": {
+            "total_energy": 85.52631740326764,
+            "energy_per_spring": 0.0060284991473368325,
+            "normalised_energy": 0.0053822378494053965,
+            "max_spring_energy": 0.30057684639211774,
+            "frac_stressed": 0.9211954606329739
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": -0.09999998517724058,
+          "nu_yx": -0.09999998537721616,
+          "E_x": 0.000910900371354442,
+          "E_y": 0.0009109003731760204,
+          "poisson": -0.09999998537721617,
+          "young": 0.0009109003731760207,
+          "final_loss": 3.2758174185530498e-15,
+          "converged": true,
+          "iterations": 180
+        },
+        "rest_lengths": {
+          "nu_xy": -0.09999999115740327,
+          "nu_yx": -0.09999999118561888,
+          "E_x": 0.0015082519007006243,
+          "E_y": 0.0015082519011261864,
+          "poisson": -0.09999999118561885,
+          "young": 0.0015082519011261864,
+          "final_loss": 2.6481194209285785e-16,
+          "converged": true,
+          "iterations": 160,
+          "residual_energy": {
+            "total_energy": 76.27326988253274,
+            "energy_per_spring": 0.005366066545837396,
+            "normalised_energy": 0.005366066545837396,
+            "max_spring_energy": 0.295174504858928,
+            "frac_stressed": 0.9209933868017448
+          }
+        },
+        "both": {
+          "nu_xy": -0.09999998303621875,
+          "nu_yx": -0.09999998307146503,
+          "E_x": 0.00133188532963488,
+          "E_y": 0.0013318853301043203,
+          "poisson": -0.09999998307146503,
+          "young": 0.0013318853301043203,
+          "final_loss": 2.305359648162605e-15,
+          "converged": true,
+          "iterations": 160,
+          "residual_energy": {
+            "total_energy": 87.88268918075947,
+            "energy_per_spring": 0.0061828260293203515,
+            "normalised_energy": 0.005522430140579071,
+            "max_spring_energy": 0.44032859022819076,
+            "frac_stressed": 0.9219079780498101
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.30791347783835793,
+          "nu_yx": -0.26030864026220596,
+          "E_x": 0.00013811913088749908,
+          "E_y": 0.00011676527902554733,
+          "poisson": -0.26030864026220596,
+          "young": 0.0001167652790255473,
+          "final_loss": 0.5061555718852343,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.10000001328944198,
+          "nu_yx": -0.10000001324872244,
+          "E_x": 0.0016395996236555532,
+          "E_y": 0.001639599622987916,
+          "poisson": -0.10000001324872244,
+          "young": 0.0016395996229879165,
+          "final_loss": 3.6900837560020433e-16,
+          "converged": true,
+          "iterations": 360,
+          "residual_energy": {
+            "total_energy": 77.45661647689099,
+            "energy_per_spring": 0.00541162694591567,
+            "normalised_energy": 0.00541162694591567,
+            "max_spring_energy": 0.2698884686715865,
+            "frac_stressed": 0.9209809264305178
+          }
+        },
+        "both": {
+          "nu_xy": -0.37027841162315994,
+          "nu_yx": -0.39791990381460646,
+          "E_x": 1.1606372973818175e-05,
+          "E_y": 1.2472795260012147e-05,
+          "poisson": -0.3979199038146065,
+          "young": 1.2472795260012149e-05,
+          "final_loss": 0.2983459335524673,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.2220076685576,
+            "energy_per_spring": 0.00609390118553466,
+            "normalised_energy": 0.00544098799183987,
+            "max_spring_energy": 0.8717394174466704,
+            "frac_stressed": 0.922657723747642
+          }
+        }
+      }
+    },
+    "+0.0": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.33333333333333337,
+          "nu_yx": 0.3276377509538806,
+          "E_x": 0.05529874273387332,
+          "E_y": 0.05435386709971049,
+          "poisson": 0.3276377509538806,
+          "young": 0.05435386709971049,
+          "final_loss": 0.10920271558014126,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333335,
+          "nu_yx": 0.3276399490000667,
+          "E_x": 0.06222366833727028,
+          "E_y": 0.061160878561860865,
+          "poisson": 0.32763994900006665,
+          "young": 0.06116087856186087,
+          "final_loss": 0.10920269529603602,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.237671759241834,
+            "energy_per_spring": 0.005120564659084079,
+            "normalised_energy": 0.005120564659084079,
+            "max_spring_energy": 0.12545229302956423,
+            "frac_stressed": 0.9235104669887279
+          }
+        },
+        "both": {
+          "nu_xy": 0.33333333333333365,
+          "nu_yx": 0.32764834274556237,
+          "E_x": 0.05417783330975146,
+          "E_y": 0.05325383189245613,
+          "poisson": 0.3276483427455625,
+          "young": 0.053253831892456145,
+          "final_loss": 0.10920266439060393,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.72214945561778,
+            "energy_per_spring": 0.005700675385186776,
+            "normalised_energy": 0.005071724199363862,
+            "max_spring_energy": 0.1939979199133891,
+            "frac_stressed": 0.9216317767042405
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621468,
+          "nu_yx": 0.10981793317008626,
+          "E_x": 0.06353480261429534,
+          "E_y": 0.06781897407662067,
+          "poisson": 0.10981793317008626,
+          "young": 0.06781897407662064,
+          "final_loss": 0.5632896956278614,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621393,
+          "nu_yx": 0.11356981578838277,
+          "E_x": 0.15464510501470013,
+          "E_y": 0.17071251638599966,
+          "poisson": 0.11356981578838275,
+          "young": 0.17071251638599966,
+          "final_loss": 0.5513518689541833,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 605.249514191343,
+            "energy_per_spring": 0.09579764390492924,
+            "normalised_energy": 0.09579764390492924,
+            "max_spring_energy": 1.02344490738957,
+            "frac_stressed": 0.9957264957264957
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621409,
+          "nu_yx": 0.1072714775849997,
+          "E_x": 0.06761414077412556,
+          "E_y": 0.07049982860459161,
+          "poisson": 0.10727147758499969,
+          "young": 0.07049982860459161,
+          "final_loss": 0.5707493233347563,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.86489342826707,
+            "energy_per_spring": 0.01374879604752565,
+            "normalised_energy": 0.012663793064351963,
+            "max_spring_energy": 0.5816759662450885,
+            "frac_stressed": 0.928616650838873
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.10343074891622464,
+          "nu_yx": 0.10587688412954076,
+          "E_x": 0.031429540685213836,
+          "E_y": 0.03217284871511821,
+          "poisson": 0.10587688412954074,
+          "young": 0.032172848715118205,
+          "final_loss": 0.040120827744021634,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 4.363543428099903e-09,
+          "nu_yx": 4.3635434256371366e-09,
+          "E_x": 0.01874385791246895,
+          "E_y": 0.018743857901889992,
+          "poisson": 4.363543425637137e-09,
+          "young": 0.018743857901889992,
+          "final_loss": 3.5445600322577015e-16,
+          "converged": true,
+          "iterations": 100,
+          "residual_energy": {
+            "total_energy": 1226.8744294996532,
+            "energy_per_spring": 0.10975795576128584,
+            "normalised_energy": 0.10975795576128584,
+            "max_spring_energy": 4.726304699257192,
+            "frac_stressed": 0.9709250313115048
+          }
+        },
+        "both": {
+          "nu_xy": 0.10919785032256446,
+          "nu_yx": 0.11141086808733397,
+          "E_x": 0.03146283049519932,
+          "E_y": 0.0321004602892853,
+          "poisson": 0.11141086808733398,
+          "young": 0.0321004602892853,
+          "final_loss": 0.039442754507590716,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 77.230180946906,
+            "energy_per_spring": 0.006909123362578816,
+            "normalised_energy": 0.0061468405206044395,
+            "max_spring_energy": 0.22694930542121572,
+            "frac_stressed": 0.9281624619788871
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.04874846707175946,
+          "nu_yx": 0.049412412715181465,
+          "E_x": 0.02482776312434853,
+          "E_y": 0.02516591294017883,
+          "poisson": 0.049412412715181465,
+          "young": 0.02516591294017883,
+          "final_loss": 0.03506501526592765,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -2.551530771690737e-09,
+          "nu_yx": -2.551530777234319e-09,
+          "E_x": 0.017957103008118463,
+          "E_y": 0.017957103047132952,
+          "poisson": -2.551530777234319e-09,
+          "young": 0.017957103047132952,
+          "final_loss": 1.5835482487683916e-16,
+          "converged": true,
+          "iterations": 160,
+          "residual_energy": {
+            "total_energy": 1282.754796889748,
+            "energy_per_spring": 0.11475709401411235,
+            "normalised_energy": 0.11475709401411235,
+            "max_spring_energy": 3.627655009794154,
+            "frac_stressed": 0.9740561817856503
+          }
+        },
+        "both": {
+          "nu_xy": 0.018864990910361656,
+          "nu_yx": 0.018970468945033243,
+          "E_x": 0.017583129828026033,
+          "E_y": 0.01768144071438946,
+          "poisson": 0.018970468945033243,
+          "young": 0.017681440714389457,
+          "final_loss": 0.02729430934452323,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 97.79279504504625,
+            "energy_per_spring": 0.00874868447352355,
+            "normalised_energy": 0.007784715350086417,
+            "max_spring_energy": 0.2609357429788481,
+            "frac_stressed": 0.9370191447486134
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": -0.6133539118746801,
+          "nu_yx": -0.28542276995298654,
+          "E_x": 9.739177363525421e-12,
+          "E_y": 4.532102797982663e-12,
+          "poisson": -0.28542276995298654,
+          "young": 4.532102797982663e-12,
+          "final_loss": 5.63964408742557,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.42776984445393784,
+          "nu_yx": 0.01824150065701913,
+          "E_x": 4.452077666385969e-11,
+          "E_y": 1.8985110504960987e-12,
+          "poisson": 0.018241500657018773,
+          "young": 1.898511050495956e-12,
+          "final_loss": 18.49864741031163,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76089751302646,
+            "energy_per_spring": 0.007046063474058549,
+            "normalised_energy": 0.007046063474058549,
+            "max_spring_energy": 0.34446100165110516,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.39170933140518466,
+          "nu_yx": -0.14458348060664813,
+          "E_x": 4.35380260002458e-11,
+          "E_y": 1.6070281796138395e-11,
+          "poisson": -0.1445834806066532,
+          "young": 1.60702817961393e-11,
+          "final_loss": 18.49995042803306,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397882057754,
+            "energy_per_spring": 0.007911431277561061,
+            "normalised_energy": 0.00703773396851428,
+            "max_spring_energy": 0.331536547919842,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.33162751579423494,
+          "nu_yx": -2.986974563473835,
+          "E_x": 3.1339887199637506e-11,
+          "E_y": 2.8227888648883895e-10,
+          "poisson": -2.9869745634738356,
+          "young": 2.8227888648884417e-10,
+          "final_loss": 12.528518734398773,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3318201170556316,
+          "nu_yx": -2.963464266074939,
+          "E_x": 3.232500045895773e-11,
+          "E_y": 2.8869251391686055e-10,
+          "poisson": -2.963464266074939,
+          "young": 2.8869251391686106e-10,
+          "final_loss": 11.087931600428387,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47719406556274,
+            "energy_per_spring": 0.007199605838751364,
+            "normalised_energy": 0.007199605838751364,
+            "max_spring_energy": 0.22888441952597535,
+            "frac_stressed": 0.9222580067990696
+          }
+        },
+        "both": {
+          "nu_xy": -0.3317770006418976,
+          "nu_yx": -2.953798649778098,
+          "E_x": 6.771105634803767e-11,
+          "E_y": 6.028290883000566e-10,
+          "poisson": -2.953798649778098,
+          "young": 6.028290883000568e-10,
+          "final_loss": 13.08069456902485,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 90.0857885885599,
+            "energy_per_spring": 0.0080592045615101,
+            "normalised_energy": 0.007169190188986611,
+            "max_spring_energy": 0.3687242413809061,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": 5.8956097481427115e-09,
+          "nu_yx": 5.895609741798521e-09,
+          "E_x": 0.0003638042624038788,
+          "E_y": 0.0003638042620123937,
+          "poisson": 5.895609741798521e-09,
+          "young": 0.0003638042620123936,
+          "final_loss": 2.356933792875396e-16,
+          "converged": true,
+          "iterations": 220
+        },
+        "rest_lengths": {
+          "nu_xy": 8.098889578182431e-09,
+          "nu_yx": 8.09888957606713e-09,
+          "E_x": 0.001637481151238896,
+          "E_y": 0.0016374811508112121,
+          "poisson": 8.09888957606713e-09,
+          "young": 0.0016374811508112117,
+          "final_loss": 1.2520853890211741e-16,
+          "converged": true,
+          "iterations": 260,
+          "residual_energy": {
+            "total_energy": 79.01392336664401,
+            "energy_per_spring": 0.005569459601511525,
+            "normalised_energy": 0.005569459601511525,
+            "max_spring_energy": 0.2996877317651436,
+            "frac_stressed": 0.9236625079297949
+          }
+        },
+        "both": {
+          "nu_xy": 5.764268572165784e-09,
+          "nu_yx": 5.764268573999654e-09,
+          "E_x": 0.0017266608604211014,
+          "E_y": 0.001726660860970429,
+          "poisson": 5.7642685739996545e-09,
+          "young": 0.0017266608609704292,
+          "final_loss": 1.7795169258601533e-16,
+          "converged": true,
+          "iterations": 200,
+          "residual_energy": {
+            "total_energy": 85.79601968715056,
+            "energy_per_spring": 0.006047509669919684,
+            "normalised_energy": 0.005399334164390924,
+            "max_spring_energy": 0.30058498357596675,
+            "frac_stressed": 0.9217593571579615
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": 8.184858209804917e-09,
+          "nu_yx": 8.184858221085854e-09,
+          "E_x": 0.0008288112112566482,
+          "E_y": 0.000828811212398973,
+          "poisson": 8.184858221085854e-09,
+          "young": 0.0008288112123989732,
+          "final_loss": 2.1896004334538346e-16,
+          "converged": true,
+          "iterations": 180
+        },
+        "rest_lengths": {
+          "nu_xy": -2.0426068196123217e-09,
+          "nu_yx": -2.0426068131851267e-09,
+          "E_x": 0.0008937737461293234,
+          "E_y": 0.0008937737433170063,
+          "poisson": -2.0426068131851267e-09,
+          "young": 0.0008937737433170062,
+          "final_loss": 1.4258311186883564e-14,
+          "converged": true,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 77.29762960639827,
+            "energy_per_spring": 0.005438133502631087,
+            "normalised_energy": 0.005438133502631087,
+            "max_spring_energy": 0.2952557522026893,
+            "frac_stressed": 0.9209933868017448
+          }
+        },
+        "both": {
+          "nu_xy": -8.285930383079534e-09,
+          "nu_yx": -8.285930388116525e-09,
+          "E_x": 0.0014736615211003157,
+          "E_y": 0.0014736615219961495,
+          "poisson": -8.285930388116523e-09,
+          "young": 0.0014736615219961492,
+          "final_loss": 8.687437615440576e-15,
+          "converged": true,
+          "iterations": 140,
+          "residual_energy": {
+            "total_energy": 88.23390760235925,
+            "energy_per_spring": 0.006207535359670694,
+            "normalised_energy": 0.0055447659993297415,
+            "max_spring_energy": 0.44034958335382235,
+            "frac_stressed": 0.922611509779091
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.31582696084413414,
+          "nu_yx": -0.2552213181960967,
+          "E_x": 0.0001174114624118817,
+          "E_y": 9.488077942427653e-05,
+          "poisson": -0.2552213181960967,
+          "young": 9.488077942427652e-05,
+          "final_loss": 0.5614375693143537,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -8.636855891803352e-05,
+          "nu_yx": -8.636802329083885e-05,
+          "E_x": 0.0020901403423269267,
+          "E_y": 0.0020901273800172384,
+          "poisson": -8.636802329083885e-05,
+          "young": 0.002090127380017239,
+          "final_loss": 9.744835221854713e-09,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 79.0640018985473,
+            "energy_per_spring": 0.005523929427691421,
+            "normalised_energy": 0.005523929427691421,
+            "max_spring_energy": 0.27001932087424285,
+            "frac_stressed": 0.92188919164396
+          }
+        },
+        "both": {
+          "nu_xy": -0.36752765208346166,
+          "nu_yx": -0.4051082775306827,
+          "E_x": 1.1024465804192957e-05,
+          "E_y": 1.2151745119897308e-05,
+          "poisson": -0.4051082775306827,
+          "young": 1.2151745119897306e-05,
+          "final_loss": 0.36785986195467096,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.2281965526754,
+            "energy_per_spring": 0.006094333581546524,
+            "normalised_energy": 0.005441367509308842,
+            "max_spring_energy": 0.8717394178379847,
+            "frac_stressed": 0.9225179906378816
+          }
+        }
+      }
+    },
+    "+0.1": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.3333333333333332,
+          "nu_yx": 0.3293113183322758,
+          "E_x": 0.055111941331547266,
+          "E_y": 0.05444695816722862,
+          "poisson": 0.3293113183322757,
+          "young": 0.05444695816722861,
+          "final_loss": 0.053504670605407104,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.33333333333333326,
+          "nu_yx": 0.3293107819244738,
+          "E_x": 0.06201226042905799,
+          "E_y": 0.061263917912391594,
+          "poisson": 0.3293107819244738,
+          "young": 0.06126391791239158,
+          "final_loss": 0.05350467550756053,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.14516615993287,
+            "energy_per_spring": 0.005112288974765867,
+            "normalised_energy": 0.005112288974765867,
+            "max_spring_energy": 0.12456206769204489,
+            "frac_stressed": 0.9228842368938988
+          }
+        },
+        "both": {
+          "nu_xy": 0.3333333333333334,
+          "nu_yx": 0.329321817922538,
+          "E_x": 0.054000932344197755,
+          "E_y": 0.05335105562730956,
+          "poisson": 0.32932181792253806,
+          "young": 0.053351055627309546,
+          "final_loss": 0.05350465075395092,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.70406007026536,
+            "energy_per_spring": 0.005699057082686113,
+            "normalised_energy": 0.00506999245204596,
+            "max_spring_energy": 0.19374124004528212,
+            "frac_stressed": 0.9204687779567007
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621376,
+          "nu_yx": 0.10974265716874594,
+          "E_x": 0.06341256655707085,
+          "E_y": 0.06764209772410763,
+          "poisson": 0.10974265716874594,
+          "young": 0.06764209772410766,
+          "final_loss": 0.5512268392084233,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621397,
+          "nu_yx": 0.11421080815228682,
+          "E_x": 0.1550265019984297,
+          "E_y": 0.1720994242007141,
+          "poisson": 0.11421080815228685,
+          "young": 0.17209942420071417,
+          "final_loss": 0.5384664462891182,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 590.457434370566,
+            "energy_per_spring": 0.0934563840409253,
+            "normalised_energy": 0.0934563840409253,
+            "max_spring_energy": 1.005651220989576,
+            "frac_stressed": 0.9963596074707186
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621419,
+          "nu_yx": 0.10845145210714893,
+          "E_x": 0.06738027499586575,
+          "E_y": 0.07102878984013586,
+          "poisson": 0.10845145210714893,
+          "young": 0.07102878984013587,
+          "final_loss": 0.553703284676932,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.89502412859153,
+            "energy_per_spring": 0.013753565072584921,
+            "normalised_energy": 0.012674547957156569,
+            "max_spring_energy": 0.5822032949702279,
+            "frac_stressed": 0.9306742640075973
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.10000000132986622,
+          "nu_yx": 0.1000000015929113,
+          "E_x": 0.025607800082154925,
+          "E_y": 0.025607800149514984,
+          "poisson": 0.10000000159291131,
+          "young": 0.025607800149514987,
+          "final_loss": 3.0276647766559736e-15,
+          "converged": true,
+          "iterations": 320
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10000000180686641,
+          "nu_yx": 0.10000000178716906,
+          "E_x": 0.030854110862626585,
+          "E_y": 0.03085411085654914,
+          "poisson": 0.10000000178716906,
+          "young": 0.03085411085654914,
+          "final_loss": 1.84531533844715e-15,
+          "converged": true,
+          "iterations": 100,
+          "residual_energy": {
+            "total_energy": 333.40316502171856,
+            "energy_per_spring": 0.02982672794969749,
+            "normalised_energy": 0.02982672794969749,
+            "max_spring_energy": 1.2648827156065445,
+            "frac_stressed": 0.9557165861513688
+          }
+        },
+        "both": {
+          "nu_xy": 0.09999999022277359,
+          "nu_yx": 0.09999999011712579,
+          "E_x": 0.025145743563886363,
+          "E_y": 0.025145743537320436,
+          "poisson": 0.09999999011712579,
+          "young": 0.025145743537320436,
+          "final_loss": 2.950597434766624e-16,
+          "converged": true,
+          "iterations": 200,
+          "residual_energy": {
+            "total_energy": 72.48683630391402,
+            "energy_per_spring": 0.0064847769103519425,
+            "normalised_energy": 0.005770684260890813,
+            "max_spring_energy": 0.22560201484112813,
+            "frac_stressed": 0.9261943102522813
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.1000000056566435,
+          "nu_yx": 0.10000000555997333,
+          "E_x": 0.02445440018587302,
+          "E_y": 0.024454400162232905,
+          "poisson": 0.10000000555997332,
+          "young": 0.024454400162232905,
+          "final_loss": 7.278413763002667e-16,
+          "converged": true,
+          "iterations": 140
+        },
+        "rest_lengths": {
+          "nu_xy": 0.1000000144196268,
+          "nu_yx": 0.10000001451213354,
+          "E_x": 0.030341297149818685,
+          "E_y": 0.030341297177886428,
+          "poisson": 0.10000001451213356,
+          "young": 0.03034129717788643,
+          "final_loss": 5.512412722835196e-15,
+          "converged": true,
+          "iterations": 160,
+          "residual_energy": {
+            "total_energy": 338.9813188779233,
+            "energy_per_spring": 0.030325757638032143,
+            "normalised_energy": 0.030325757638032143,
+            "max_spring_energy": 0.9302243412170029,
+            "frac_stressed": 0.9549114331723028
+          }
+        },
+        "both": {
+          "nu_xy": 0.10000000056799609,
+          "nu_yx": 0.10000000062821289,
+          "E_x": 0.024796052299830344,
+          "E_y": 0.024796052314761733,
+          "poisson": 0.10000000062821289,
+          "young": 0.02479605231476174,
+          "final_loss": 1.7404983631164763e-17,
+          "converged": true,
+          "iterations": 140,
+          "residual_energy": {
+            "total_energy": 88.55439725255552,
+            "energy_per_spring": 0.007922204084143453,
+            "normalised_energy": 0.007049330201263175,
+            "max_spring_energy": 0.2613597440032105,
+            "frac_stressed": 0.9302200751476114
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": -1.02969089186289,
+          "nu_yx": -0.11349069902494843,
+          "E_x": 5.56191803480358e-11,
+          "E_y": 6.130247151621668e-12,
+          "poisson": -0.1134906990249483,
+          "young": 6.130247151621596e-12,
+          "final_loss": 18.503501667283693,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 1.4497625526567577,
+          "nu_yx": 0.10266115922332701,
+          "E_x": 4.101253128606298e-11,
+          "E_y": 2.9041955848524614e-12,
+          "poisson": 0.10266115922332876,
+          "young": 2.9041955848522974e-12,
+          "final_loss": 18.497964046305274,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76081671568485,
+            "energy_per_spring": 0.007046056245811849,
+            "normalised_energy": 0.007046056245811849,
+            "max_spring_energy": 0.3444610016500805,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.39170933140518466,
+          "nu_yx": -0.14458348060664813,
+          "E_x": 4.35380260002458e-11,
+          "E_y": 1.6070281796138395e-11,
+          "poisson": -0.1445834806066532,
+          "young": 1.60702817961393e-11,
+          "final_loss": 18.508918323649624,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397882057754,
+            "energy_per_spring": 0.007911431277561061,
+            "normalised_energy": 0.00703773396851428,
+            "max_spring_energy": 0.331536547919842,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.3316146561798626,
+          "nu_yx": -2.9752688012534265,
+          "E_x": 5.178737129509335e-11,
+          "E_y": 4.646397474955005e-10,
+          "poisson": -2.975268801253427,
+          "young": 4.646397474955021e-10,
+          "final_loss": 13.956627917514963,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3322559464519284,
+          "nu_yx": -2.9480396376546842,
+          "E_x": 3.9962417014765144e-11,
+          "E_y": 3.5457842255069685e-10,
+          "poisson": -2.9480396376546842,
+          "young": 3.5457842255069147e-10,
+          "final_loss": 11.467202605009204,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47983238684304,
+            "energy_per_spring": 0.007199841866777871,
+            "normalised_energy": 0.007199841866777871,
+            "max_spring_energy": 0.22888441956508712,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.33389631890169535,
+          "nu_yx": -2.515776803375442,
+          "E_x": 6.003184896069609e-11,
+          "E_y": 4.5231625666266205e-10,
+          "poisson": -2.515776803375441,
+          "young": 4.523162566626622e-10,
+          "final_loss": 2.6749766912377484,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 93.08762560081597,
+            "energy_per_spring": 0.008327753229631057,
+            "normalised_energy": 0.007408503271691537,
+            "max_spring_energy": 1.7896379997026637,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": 0.0943889134207945,
+          "nu_yx": 0.09213529608400274,
+          "E_x": 0.0002161846463149253,
+          "E_y": 0.00021102305000846565,
+          "poisson": 0.09213529608400273,
+          "young": 0.00021102305000846562,
+          "final_loss": 0.017061125384539792,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10000847077484268,
+          "nu_yx": 0.10000855912541205,
+          "E_x": 0.0014385941674721272,
+          "E_y": 0.0014385954383706098,
+          "poisson": 0.10000855912541205,
+          "young": 0.00143859543837061,
+          "final_loss": 6.29533616123699e-09,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 82.97923203751755,
+            "energy_per_spring": 0.005848962574012656,
+            "normalised_energy": 0.005848962574012656,
+            "max_spring_energy": 1.0455563589425145,
+            "frac_stressed": 0.9238034820610418
+          }
+        },
+        "both": {
+          "nu_xy": 0.10000000110666618,
+          "nu_yx": 0.10000000108320008,
+          "E_x": 0.0016865430340579563,
+          "E_y": 0.0016865430336621904,
+          "poisson": 0.10000000108320008,
+          "young": 0.0016865430336621902,
+          "final_loss": 2.6153457494901004e-17,
+          "converged": true,
+          "iterations": 180,
+          "residual_energy": {
+            "total_energy": 86.10043274899571,
+            "energy_per_spring": 0.006068966853386601,
+            "normalised_energy": 0.005418653218648923,
+            "max_spring_energy": 0.30059021917325723,
+            "frac_stressed": 0.921688870092338
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": 0.10000000722360089,
+          "nu_yx": 0.10000000727638053,
+          "E_x": 0.0007472933818751317,
+          "E_y": 0.0007472933822695504,
+          "poisson": 0.10000000727638053,
+          "young": 0.0007472933822695504,
+          "final_loss": 3.4838538861473414e-16,
+          "converged": true,
+          "iterations": 180
+        },
+        "rest_lengths": {
+          "nu_xy": 0.030178679349573523,
+          "nu_yx": 0.03018177157890372,
+          "E_x": 0.00028328808049689043,
+          "E_y": 0.00028331710733737136,
+          "poisson": 0.03018177157890372,
+          "young": 0.00028331710733737136,
+          "final_loss": 0.008475286417671774,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 79.40610116679557,
+            "energy_per_spring": 0.005586471166933697,
+            "normalised_energy": 0.005586471166933697,
+            "max_spring_energy": 1.0303450727869388,
+            "frac_stressed": 0.9221190375685944
+          }
+        },
+        "both": {
+          "nu_xy": 0.09999974694458896,
+          "nu_yx": 0.09999974615193934,
+          "E_x": 0.0012146017441278614,
+          "E_y": 0.0012146017345003005,
+          "poisson": 0.09999974615193932,
+          "young": 0.0012146017345003007,
+          "final_loss": 7.978976787863497e-14,
+          "converged": true,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.80145900651821,
+            "energy_per_spring": 0.006247464401753076,
+            "normalised_energy": 0.005580855030930765,
+            "max_spring_energy": 0.4403737530476004,
+            "frac_stressed": 0.922541156606163
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.30620492709749814,
+          "nu_yx": -0.2539808846398584,
+          "E_x": 0.0001413429531547045,
+          "E_y": 0.00011723654684502044,
+          "poisson": -0.2539808846398584,
+          "young": 0.00011723654684502044,
+          "final_loss": 0.5984826285468954,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.07522702364413293,
+          "nu_yx": 0.07522107742003338,
+          "E_x": 0.0025820623810069816,
+          "E_y": 0.002581858285180605,
+          "poisson": 0.07522107742003338,
+          "young": 0.0025818582851806055,
+          "final_loss": 0.0006600037291370512,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 82.0218222754363,
+            "energy_per_spring": 0.005730582147379048,
+            "normalised_energy": 0.005730582147379048,
+            "max_spring_energy": 0.5748940986641331,
+            "frac_stressed": 0.9211206595402781
+          }
+        },
+        "both": {
+          "nu_xy": -0.3459394421101005,
+          "nu_yx": -0.35343080432783835,
+          "E_x": 4.154702753637964e-05,
+          "E_y": 4.244673365386333e-05,
+          "poisson": -0.3534308043278384,
+          "young": 4.244673365386332e-05,
+          "final_loss": 0.44380186239849345,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.67650460799352,
+            "energy_per_spring": 0.0060557887660164554,
+            "normalised_energy": 0.005406605124881437,
+            "max_spring_energy": 0.8717388690053384,
+            "frac_stressed": 0.9220289247537204
+          }
+        }
+      }
+    },
+    "+0.3": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.33333333333333337,
+          "nu_yx": 0.3327526604513038,
+          "E_x": 0.05472444240179643,
+          "E_y": 0.054629111402735686,
+          "poisson": 0.3327526604513038,
+          "young": 0.054629111402735686,
+          "final_loss": 0.0010917362663446588,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333333,
+          "nu_yx": 0.3327527082171081,
+          "E_x": 0.06155975349847127,
+          "E_y": 0.06145252408138172,
+          "poisson": 0.3327527082171081,
+          "young": 0.06145252408138173,
+          "final_loss": 0.0010917362670706632,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.05035011677306,
+            "energy_per_spring": 0.005103806594808826,
+            "normalised_energy": 0.005103806594808826,
+            "max_spring_energy": 0.12288341402366898,
+            "frac_stressed": 0.9227053140096618
+          }
+        },
+        "both": {
+          "nu_xy": 0.33333333333333337,
+          "nu_yx": 0.33275257696563204,
+          "E_x": 0.053612480330773794,
+          "E_y": 0.053519072962752726,
+          "poisson": 0.3327525769656321,
+          "young": 0.05351907296275272,
+          "final_loss": 0.0010917362659864848,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.68779512608154,
+            "energy_per_spring": 0.005697601997323451,
+            "normalised_energy": 0.005068417238643633,
+            "max_spring_energy": 0.1932718908583915,
+            "frac_stressed": 0.9202898550724637
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.1028806584362134,
+          "nu_yx": 0.10786285899406581,
+          "E_x": 0.06272329901167223,
+          "E_y": 0.06576079954944385,
+          "poisson": 0.1078628589940658,
+          "young": 0.06576079954944385,
+          "final_loss": 0.5945744352213556,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621394,
+          "nu_yx": 0.11456341387435448,
+          "E_x": 0.14990410625936587,
+          "E_y": 0.1669266743418496,
+          "poisson": 0.1145634138743545,
+          "young": 0.1669266743418496,
+          "final_loss": 0.5726914418063344,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 641.7888128532277,
+            "energy_per_spring": 0.10158100868205566,
+            "normalised_energy": 0.10158100868205566,
+            "max_spring_energy": 1.0733147100386995,
+            "frac_stressed": 0.9965178854067743
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621481,
+          "nu_yx": 0.10473702784784922,
+          "E_x": 0.06643745263788109,
+          "E_y": 0.0676362440991579,
+          "poisson": 0.10473702784784919,
+          "young": 0.0676362440991579,
+          "final_loss": 0.6164734594835556,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 85.56443837080911,
+            "energy_per_spring": 0.013542962705097993,
+            "normalised_energy": 0.012453982219155108,
+            "max_spring_energy": 0.5771656215190334,
+            "frac_stressed": 0.928616650838873
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.2999999982015392,
+          "nu_yx": 0.2999999986965142,
+          "E_x": 0.041147687336776734,
+          "E_y": 0.041147687404667,
+          "poisson": 0.2999999986965142,
+          "young": 0.04114768740466699,
+          "final_loss": 2.8025756429624155e-15,
+          "converged": true,
+          "iterations": 80
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3000000021863912,
+          "nu_yx": 0.30000000215180556,
+          "E_x": 0.0486565045617808,
+          "E_y": 0.04865650455617141,
+          "poisson": 0.3000000021518056,
+          "young": 0.04865650455617141,
+          "final_loss": 2.1727155798598596e-16,
+          "converged": true,
+          "iterations": 120,
+          "residual_energy": {
+            "total_energy": 67.85887731867193,
+            "energy_per_spring": 0.006070753025467161,
+            "normalised_energy": 0.006070753025467161,
+            "max_spring_energy": 0.16719767403711042,
+            "frac_stressed": 0.9301306137054929
+          }
+        },
+        "both": {
+          "nu_xy": 0.30000000438779156,
+          "nu_yx": 0.30000000413826056,
+          "E_x": 0.04186248401527904,
+          "E_y": 0.04186248398045908,
+          "poisson": 0.30000000413826056,
+          "young": 0.04186248398045908,
+          "final_loss": 1.4320429226971897e-15,
+          "converged": true,
+          "iterations": 80,
+          "residual_energy": {
+            "total_energy": 71.67634925329736,
+            "energy_per_spring": 0.00641226956998545,
+            "normalised_energy": 0.005704173214262937,
+            "max_spring_energy": 0.2334565623195064,
+            "frac_stressed": 0.9212739309357667
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.30000000028012125,
+          "nu_yx": 0.3000000007479762,
+          "E_x": 0.041249116433434985,
+          "E_y": 0.04124911649776367,
+          "poisson": 0.3000000007479762,
+          "young": 0.041249116497763666,
+          "final_loss": 3.6648669953841134e-15,
+          "converged": true,
+          "iterations": 80
+        },
+        "rest_lengths": {
+          "nu_xy": 0.299999998625654,
+          "nu_yx": 0.2999999986176499,
+          "E_x": 0.048606260783201356,
+          "E_y": 0.04860626078190451,
+          "poisson": 0.2999999986176499,
+          "young": 0.04860626078190452,
+          "final_loss": 1.8350465821827615e-15,
+          "converged": true,
+          "iterations": 160,
+          "residual_energy": {
+            "total_energy": 69.50976567353865,
+            "energy_per_spring": 0.006218443878470089,
+            "normalised_energy": 0.006218443878470089,
+            "max_spring_energy": 0.16863434391792492,
+            "frac_stressed": 0.9317409196636249
+          }
+        },
+        "both": {
+          "nu_xy": 0.30000000456234455,
+          "nu_yx": 0.3000000042803737,
+          "E_x": 0.04175359075620919,
+          "E_y": 0.04175359071696488,
+          "poisson": 0.3000000042803737,
+          "young": 0.0417535907169649,
+          "final_loss": 7.755135095075248e-17,
+          "converged": true,
+          "iterations": 100,
+          "residual_energy": {
+            "total_energy": 70.59616518940541,
+            "energy_per_spring": 0.006315634745876312,
+            "normalised_energy": 0.005618861783526774,
+            "max_spring_energy": 0.26935851932311605,
+            "frac_stressed": 0.9235104669887279
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": -0.040875334201959435,
+          "nu_yx": -0.0058480468313613105,
+          "E_x": 4.424799751241784e-11,
+          "E_y": 6.330574824613453e-12,
+          "poisson": -0.00584804683136087,
+          "young": 6.330574824613331e-12,
+          "final_loss": 18.602496734081175,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.9223943190545077,
+          "nu_yx": -0.03726723127036898,
+          "E_x": 4.493038292167337e-11,
+          "E_y": 1.8153092845634527e-12,
+          "poisson": -0.0372672312703687,
+          "young": 1.815309284563481e-12,
+          "final_loss": 18.580168233729964,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76082125855503,
+            "energy_per_spring": 0.007046056652223566,
+            "normalised_energy": 0.007046056652223566,
+            "max_spring_energy": 0.3444610016500753,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.39170933140518466,
+          "nu_yx": -0.14458348060664813,
+          "E_x": 4.35380260002458e-11,
+          "E_y": 1.6070281796138395e-11,
+          "poisson": -0.1445834806066532,
+          "young": 1.60702817961393e-11,
+          "final_loss": 18.586854114882748,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397882057754,
+            "energy_per_spring": 0.007911431277561061,
+            "normalised_energy": 0.00703773396851428,
+            "max_spring_energy": 0.331536547919842,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.3316077454677331,
+          "nu_yx": -2.9738812398909236,
+          "E_x": 5.3653374261420163e-11,
+          "E_y": 4.811671782509971e-10,
+          "poisson": -2.973881239890924,
+          "young": 4.811671782509886e-10,
+          "final_loss": 14.969229052484106,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3314157687296463,
+          "nu_yx": -2.918314449913583,
+          "E_x": 6.452560390349072e-11,
+          "E_y": 5.681866103799322e-10,
+          "poisson": -2.9183144499135834,
+          "young": 5.681866103799288e-10,
+          "final_loss": 12.271120638872473,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47994971449145,
+            "energy_per_spring": 0.007199852363078498,
+            "normalised_energy": 0.007199852363078498,
+            "max_spring_energy": 0.2288844194871493,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.331217444136312,
+          "nu_yx": -2.9597263189256635,
+          "E_x": 6.607268824286902e-11,
+          "E_y": 5.904190066574769e-10,
+          "poisson": -2.959726318925663,
+          "young": 5.90419006657478e-10,
+          "final_loss": 14.51664687822789,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 90.08629428249328,
+            "energy_per_spring": 0.008059249801618651,
+            "normalised_energy": 0.007169230741639991,
+            "max_spring_energy": 0.36872424136710813,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": 0.019586066962143465,
+          "nu_yx": 0.018711786637079224,
+          "E_x": 0.0003668850914683533,
+          "E_y": 0.0003505081221845175,
+          "poisson": 0.018711786637079224,
+          "young": 0.0003505081221845175,
+          "final_loss": 0.16173450134524373,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3000044603567922,
+          "nu_yx": 0.30000459304429394,
+          "E_x": 0.0013023223953323429,
+          "E_y": 0.0013023229713301295,
+          "poisson": 0.30000459304429394,
+          "young": 0.0013023229713301295,
+          "final_loss": 3.4714200737027345e-11,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 102.09625918445374,
+            "energy_per_spring": 0.0071964657210441775,
+            "normalised_energy": 0.0071964657210441775,
+            "max_spring_energy": 6.512389978182189,
+            "frac_stressed": 0.9243673785860295
+          }
+        },
+        "both": {
+          "nu_xy": 0.3000000009031044,
+          "nu_yx": 0.3000000012592023,
+          "E_x": 0.0013132556061729204,
+          "E_y": 0.0013132556077317457,
+          "poisson": 0.3000000012592023,
+          "young": 0.001313255607731746,
+          "final_loss": 7.521715323951964e-15,
+          "converged": true,
+          "iterations": 220,
+          "residual_energy": {
+            "total_energy": 86.6569397595829,
+            "energy_per_spring": 0.006108193399561775,
+            "normalised_energy": 0.005454195254006066,
+            "max_spring_energy": 0.3005996412311793,
+            "frac_stressed": 0.9233100726016776
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": 0.29999999254723764,
+          "nu_yx": 0.2999999926681875,
+          "E_x": 0.0002580815778651822,
+          "E_y": 0.000258081577969232,
+          "poisson": 0.29999999266818755,
+          "young": 0.000258081577969232,
+          "final_loss": 8.436039298640331e-17,
+          "converged": true,
+          "iterations": 200
+        },
+        "rest_lengths": {
+          "nu_xy": 0.022491359485889602,
+          "nu_yx": 0.023178493093122192,
+          "E_x": 0.00102346559639427,
+          "E_y": 0.0010547334976329678,
+          "poisson": 0.023178493093122192,
+          "young": 0.001054733497632968,
+          "final_loss": 0.12874961760243678,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 76.76760234364284,
+            "energy_per_spring": 0.005400844402957847,
+            "normalised_energy": 0.005400844402957847,
+            "max_spring_energy": 0.2952094835033166,
+            "frac_stressed": 0.9216969185310258
+          }
+        },
+        "both": {
+          "nu_xy": 0.20386148230025927,
+          "nu_yx": 0.20467604997650593,
+          "E_x": 0.0006370512950356885,
+          "E_y": 0.0006395967557435766,
+          "poisson": 0.20467604997650587,
+          "young": 0.0006395967557435765,
+          "final_loss": 0.010363095215809784,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 89.6076898674162,
+            "energy_per_spring": 0.006304185300929801,
+            "normalised_energy": 0.005632324726153956,
+            "max_spring_energy": 0.4403992427424092,
+            "frac_stressed": 0.9195863233431828
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.2995088151037699,
+          "nu_yx": -0.24589278316587582,
+          "E_x": 0.0001428547023568448,
+          "E_y": 0.00011728182470585063,
+          "poisson": -0.2458927831658758,
+          "young": 0.00011728182470585057,
+          "final_loss": 0.7731056423244735,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.29999772788144924,
+          "nu_yx": 0.29999780665014314,
+          "E_x": 0.0018208010049372751,
+          "E_y": 0.0018208014830146193,
+          "poisson": 0.29999780665014314,
+          "young": 0.0018208014830146193,
+          "final_loss": 3.327627333146819e-11,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 108.65371275604036,
+            "energy_per_spring": 0.007591260585205084,
+            "normalised_energy": 0.007591260585205084,
+            "max_spring_energy": 6.376695891028743,
+            "frac_stressed": 0.9254523859428492
+          }
+        },
+        "both": {
+          "nu_xy": -0.3512641223192094,
+          "nu_yx": -0.36632842640609964,
+          "E_x": 3.554540913326748e-05,
+          "E_y": 3.70698086322572e-05,
+          "poisson": -0.3663284264060996,
+          "young": 3.70698086322572e-05,
+          "final_loss": 0.6499094806235349,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.69127454885427,
+            "energy_per_spring": 0.006056820690900179,
+            "normalised_energy": 0.005407547099042645,
+            "max_spring_energy": 0.871738894587691,
+            "frac_stressed": 0.9220289247537204
+          }
+        }
+      }
+    },
+    "+0.5": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.3333333333333336,
+          "nu_yx": 0.336297166865768,
+          "E_x": 0.0542666449048909,
+          "E_y": 0.054749156810476374,
+          "poisson": 0.33629716686576805,
+          "young": 0.05474915681047638,
+          "final_loss": 0.02728836950778865,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.33333333333333337,
+          "nu_yx": 0.3362947123728581,
+          "E_x": 0.061057388359755715,
+          "E_y": 0.06159983057004581,
+          "poisson": 0.3362947123728581,
+          "young": 0.061599830570045803,
+          "final_loss": 0.027288365052059647,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.10109741913655,
+            "energy_per_spring": 0.005108346521661885,
+            "normalised_energy": 0.005108346521661885,
+            "max_spring_energy": 0.12151480593071394,
+            "frac_stressed": 0.9214528538200035
+          }
+        },
+        "both": {
+          "nu_xy": 0.3333333333333334,
+          "nu_yx": 0.33629621855896963,
+          "E_x": 0.0531757809187461,
+          "E_y": 0.053648442125683544,
+          "poisson": 0.3362962185589697,
+          "young": 0.053648442125683565,
+          "final_loss": 0.02728836486070842,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.70022236617909,
+            "energy_per_spring": 0.00569871375614413,
+            "normalised_energy": 0.0050695678499775906,
+            "max_spring_energy": 0.19285392895585968,
+            "frac_stressed": 0.9204687779567007
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621474,
+          "nu_yx": 0.11004861267252891,
+          "E_x": 0.06256333609943136,
+          "E_y": 0.06692228108334106,
+          "poisson": 0.11004861267252893,
+          "young": 0.06692228108334104,
+          "final_loss": 0.7105066514106206,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621397,
+          "nu_yx": 0.11490061381001064,
+          "E_x": 0.14950030149619312,
+          "E_y": 0.16696701467306807,
+          "poisson": 0.11490061381001064,
+          "young": 0.16696701467306801,
+          "final_loss": 0.6867393062786354,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 640.5861700406437,
+            "energy_per_spring": 0.10139065685986763,
+            "normalised_energy": 0.10139065685986763,
+            "max_spring_energy": 1.0726869365895044,
+            "frac_stressed": 0.9965178854067743
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621416,
+          "nu_yx": 0.10560205544212958,
+          "E_x": 0.06684273713577288,
+          "E_y": 0.06861085980793934,
+          "poisson": 0.10560205544212958,
+          "young": 0.06861085980793935,
+          "final_loss": 0.7266491348488988,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.02826501337572,
+            "energy_per_spring": 0.013616376228771085,
+            "normalised_energy": 0.012528489355071521,
+            "max_spring_energy": 0.5787736559323563,
+            "frac_stressed": 0.9290914846470402
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.5000000002461944,
+          "nu_yx": 0.5000000007837996,
+          "E_x": 0.02942957576557235,
+          "E_y": 0.029429575797215335,
+          "poisson": 0.5000000007837996,
+          "young": 0.02942957579721534,
+          "final_loss": 3.864265796860928e-16,
+          "converged": true,
+          "iterations": 160
+        },
+        "rest_lengths": {
+          "nu_xy": 0.4999999961462726,
+          "nu_yx": 0.49999999615116447,
+          "E_x": 0.05575905284510557,
+          "E_y": 0.0557590528456511,
+          "poisson": 0.4999999961511645,
+          "young": 0.05575905284565111,
+          "final_loss": 5.237117726385181e-17,
+          "converged": true,
+          "iterations": 120,
+          "residual_energy": {
+            "total_energy": 476.76844651916826,
+            "energy_per_spring": 0.04265239278217644,
+            "normalised_energy": 0.04265239278217644,
+            "max_spring_energy": 0.971634366975496,
+            "frac_stressed": 0.9712828770799785
+          }
+        },
+        "both": {
+          "nu_xy": 0.5000000002430812,
+          "nu_yx": 0.5000000010244796,
+          "E_x": 0.03233025393288621,
+          "E_y": 0.03233025398341183,
+          "poisson": 0.5000000010244796,
+          "young": 0.032330253983411834,
+          "final_loss": 1.3792472885951975e-16,
+          "converged": true,
+          "iterations": 140,
+          "residual_energy": {
+            "total_energy": 99.32425946166288,
+            "energy_per_spring": 0.00888569148878716,
+            "normalised_energy": 0.007909417126284657,
+            "max_spring_energy": 0.2404039229410454,
+            "frac_stressed": 0.9358561460010736
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.4999999955569272,
+          "nu_yx": 0.4999999959537016,
+          "E_x": 0.026172222884312667,
+          "E_y": 0.026172222905081602,
+          "poisson": 0.49999999595370154,
+          "young": 0.026172222905081602,
+          "final_loss": 8.889977001260757e-17,
+          "converged": true,
+          "iterations": 120
+        },
+        "rest_lengths": {
+          "nu_xy": 0.49999999613788354,
+          "nu_yx": 0.49999999629567143,
+          "E_x": 0.05811111390023754,
+          "E_y": 0.058111113918576,
+          "poisson": 0.49999999629567143,
+          "young": 0.058111113918576,
+          "final_loss": 1.6618155629560518e-17,
+          "converged": true,
+          "iterations": 100,
+          "residual_energy": {
+            "total_energy": 440.2941452978809,
+            "energy_per_spring": 0.03938934919465744,
+            "normalised_energy": 0.03938934919465744,
+            "max_spring_energy": 1.6080577049662808,
+            "frac_stressed": 0.9726247987117552
+          }
+        },
+        "both": {
+          "nu_xy": 0.4999999991330107,
+          "nu_yx": 0.4999999991013982,
+          "E_x": 0.030114845296675664,
+          "E_y": 0.03011484529477166,
+          "poisson": 0.49999999910139814,
+          "young": 0.030114845294771663,
+          "final_loss": 2.316353189089012e-16,
+          "converged": true,
+          "iterations": 200,
+          "residual_energy": {
+            "total_energy": 90.50069767216598,
+            "energy_per_spring": 0.008096322926477544,
+            "normalised_energy": 0.007210997870218386,
+            "max_spring_energy": 0.27260850121464814,
+            "frac_stressed": 0.92914653784219
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": 0.5109976697871177,
+          "nu_yx": 0.11756832896081966,
+          "E_x": 4.797123070150888e-11,
+          "E_y": 1.1037031605486494e-11,
+          "poisson": 0.11756832896082173,
+          "young": 1.1037031605486655e-11,
+          "final_loss": 18.741622714296522,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.8169487131362673,
+          "nu_yx": 1.2236731315613598,
+          "E_x": 3338.9053028202707,
+          "E_y": 5001.205880114302,
+          "poisson": 1.2236731315613596,
+          "young": 5001.205880115336,
+          "final_loss": 1.371575692334646,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 97.17796954291629,
+            "energy_per_spring": 0.008693681297451806,
+            "normalised_energy": 0.008693681297451806,
+            "max_spring_energy": 10.488155930541321,
+            "frac_stressed": 0.9225263911254249
+          }
+        },
+        "both": {
+          "nu_xy": -0.39170933140518466,
+          "nu_yx": -0.14458348060664813,
+          "E_x": 4.35380260002458e-11,
+          "E_y": 1.6070281796138395e-11,
+          "poisson": -0.1445834806066532,
+          "young": 1.60702817961393e-11,
+          "final_loss": 18.744789906115876,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397882057754,
+            "energy_per_spring": 0.007911431277561061,
+            "normalised_energy": 0.00703773396851428,
+            "max_spring_energy": 0.331536547919842,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.3317570213973331,
+          "nu_yx": -2.9712108936276866,
+          "E_x": 5.4432567501247135e-11,
+          "E_y": 4.874972558128049e-10,
+          "poisson": -2.9712108936276866,
+          "young": 4.874972558128095e-10,
+          "final_loss": 15.959084932543306,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": NaN,
+          "nu_yx": NaN,
+          "E_x": NaN,
+          "E_y": NaN,
+          "poisson": NaN,
+          "young": NaN,
+          "final_loss": 13.35487286907659,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 5.307579359626352e+30,
+            "energy_per_spring": 4.7482370367027664e+26,
+            "normalised_energy": 4.7482370367027664e+26,
+            "max_spring_energy": 5.307072814026945e+30,
+            "frac_stressed": 1.0
+          }
+        },
+        "both": {
+          "nu_xy": -0.3316459387294099,
+          "nu_yx": -2.9756080790595205,
+          "E_x": 4.413047043855197e-11,
+          "E_y": 3.9594932135379634e-10,
+          "poisson": -2.97560807905952,
+          "young": 3.959493213537992e-10,
+          "final_loss": 15.680417984474605,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 90.08676696168575,
+            "energy_per_spring": 0.00805929208818087,
+            "normalised_energy": 0.007169266506108497,
+            "max_spring_energy": 0.3687242413582734,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.010362874489446228,
+          "nu_yx": -0.009689357759892794,
+          "E_x": 0.00034722127725706837,
+          "E_y": 0.00032465424343573686,
+          "poisson": -0.009689357759892794,
+          "young": 0.00032465424343573686,
+          "final_loss": 0.32743000090747376,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.5000000410956318,
+          "nu_yx": 0.5000000023410129,
+          "E_x": 0.00037932247401226355,
+          "E_y": 0.00037932244461127013,
+          "poisson": 0.5000000023410129,
+          "young": 0.0003793224446112702,
+          "final_loss": 5.674204304843856e-13,
+          "converged": true,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 243.94567904369939,
+            "energy_per_spring": 0.017195015087312283,
+            "normalised_energy": 0.017195015087312283,
+            "max_spring_energy": 29.98817991227398,
+            "frac_stressed": 0.9278917318672024
+          }
+        },
+        "both": {
+          "nu_xy": 0.5612079632154708,
+          "nu_yx": 0.5683268822752645,
+          "E_x": 0.0006514169805107141,
+          "E_y": 0.0006596802003193938,
+          "poisson": 0.5683268822752644,
+          "young": 0.0006596802003193939,
+          "final_loss": 0.019583779505427782,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.88019496651033,
+            "energy_per_spring": 0.006123930003983247,
+            "normalised_energy": 0.005469479661929901,
+            "max_spring_energy": 0.3006044377333387,
+            "frac_stressed": 0.9211954606329739
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": 0.20903863253278943,
+          "nu_yx": 0.20134279942870315,
+          "E_x": 0.0004698160463692664,
+          "E_y": 0.0004525195981545451,
+          "poisson": 0.20134279942870312,
+          "young": 0.00045251959815454507,
+          "final_loss": 0.19789065860166807,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.03946126644047532,
+          "nu_yx": 0.03788559129845707,
+          "E_x": 0.0011900879935150142,
+          "E_y": 0.0011425681788373838,
+          "poisson": 0.037885591298457075,
+          "young": 0.0011425681788373838,
+          "final_loss": 0.33475470337931684,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 76.6014769919243,
+            "energy_per_spring": 0.005389156957360652,
+            "normalised_energy": 0.005389156957360652,
+            "max_spring_energy": 0.295196841008153,
+            "frac_stressed": 0.9208526804558885
+          }
+        },
+        "both": {
+          "nu_xy": 0.1312557491040491,
+          "nu_yx": 0.13136293661262197,
+          "E_x": 0.0007964932644501924,
+          "E_y": 0.000797143705510445,
+          "poisson": 0.13136293661262197,
+          "young": 0.0007971437055104451,
+          "final_loss": 0.21737051725690953,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.69879995293775,
+            "energy_per_spring": 0.006240242011603894,
+            "normalised_energy": 0.005574874974876172,
+            "max_spring_energy": 0.4403685828567699,
+            "frac_stressed": 0.9231743351625158
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.3175668316369556,
+          "nu_yx": -0.25515344968364656,
+          "E_x": 0.00014599649117326053,
+          "E_y": 0.00011730289392171673,
+          "poisson": -0.2551534496836466,
+          "young": 0.00011730289392171676,
+          "final_loss": 1.030555807034235,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.49209446514545035,
+          "nu_yx": 0.49023965252805973,
+          "E_x": 0.0006825716409081308,
+          "E_y": 0.0006799988777874254,
+          "poisson": 0.4902396525280598,
+          "young": 0.0006799988777874254,
+          "final_loss": 0.0022858858882266178,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 330.0482871440238,
+            "energy_per_spring": 0.02305933676685697,
+            "normalised_energy": 0.02305933676685697,
+            "max_spring_energy": 68.9378655643759,
+            "frac_stressed": 0.9276881156990149
+          }
+        },
+        "both": {
+          "nu_xy": -0.3459664288973997,
+          "nu_yx": -0.3611718935054488,
+          "E_x": 4.508033395563625e-05,
+          "E_y": 4.7061645913175195e-05,
+          "poisson": -0.3611718935054488,
+          "young": 4.706164591317519e-05,
+          "final_loss": 0.9257407786903273,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.64388408868327,
+            "energy_per_spring": 0.006053509682713845,
+            "normalised_energy": 0.0054045768548086496,
+            "max_spring_energy": 0.871738864294829,
+            "frac_stressed": 0.9225179906378816
+          }
+        }
+      }
+    },
+    "+0.7": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.33333333333333326,
+          "nu_yx": 0.339940012095454,
+          "E_x": 0.05375000701556891,
+          "E_y": 0.054815334105009716,
+          "poisson": 0.3399400120954541,
+          "young": 0.054815334105009716,
+          "final_loss": 0.13205029238422256,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.3333333333333336,
+          "nu_yx": 0.3399333331490273,
+          "E_x": 0.06051771112917776,
+          "E_y": 0.06171596177607409,
+          "poisson": 0.3399333331490273,
+          "young": 0.0617159617760741,
+          "final_loss": 0.13205024124107229,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.29021796507466,
+            "energy_per_spring": 0.0051252655184357366,
+            "normalised_energy": 0.0051252655184357366,
+            "max_spring_energy": 0.12032320407437826,
+            "frac_stressed": 0.9218106995884774
+          }
+        },
+        "both": {
+          "nu_xy": 0.3333333333333335,
+          "nu_yx": 0.33993034889160995,
+          "E_x": 0.05269905009932266,
+          "E_y": 0.05374201945955751,
+          "poisson": 0.33993034889160995,
+          "young": 0.053742019459557526,
+          "final_loss": 0.13205023353091916,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.73904374114871,
+            "energy_per_spring": 0.0057021867723339335,
+            "normalised_energy": 0.005073206295233534,
+            "max_spring_energy": 0.19249903285636455,
+            "frac_stressed": 0.9202898550724637
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621384,
+          "nu_yx": 0.11043862351533361,
+          "E_x": 0.06230413853139049,
+          "E_y": 0.06688121366351403,
+          "poisson": 0.11043862351533361,
+          "young": 0.06688121366351402,
+          "final_loss": 0.9044472444159701,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621406,
+          "nu_yx": 0.11567007239533444,
+          "E_x": 0.1490721857171775,
+          "E_y": 0.1676038117964363,
+          "poisson": 0.11567007239533444,
+          "young": 0.1676038117964363,
+          "final_loss": 0.8805242895859117,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 632.0614855500892,
+            "energy_per_spring": 0.1000413873931765,
+            "normalised_energy": 0.1000413873931765,
+            "max_spring_energy": 1.0638827098108978,
+            "frac_stressed": 0.9962013295346629
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621391,
+          "nu_yx": 0.10642208484699547,
+          "E_x": 0.06346299335796224,
+          "E_y": 0.06564755869999385,
+          "poisson": 0.10642208484699547,
+          "young": 0.06564755869999385,
+          "final_loss": 0.9157546481817795,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 84.16586293142359,
+            "energy_per_spring": 0.013321599071133838,
+            "normalised_energy": 0.012257376086297749,
+            "max_spring_energy": 0.574113411433027,
+            "frac_stressed": 0.9264007597340931
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.8163008332321513,
+          "nu_yx": 0.8183093774847026,
+          "E_x": 0.0002710611654702861,
+          "E_y": 0.0002717281234394939,
+          "poisson": 0.8183093774847026,
+          "young": 0.000271728123439494,
+          "final_loss": 0.01779567720684227,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.6903982840284392,
+          "nu_yx": 0.6912883573888606,
+          "E_x": 0.05093283304678322,
+          "E_y": 0.05099849653250515,
+          "poisson": 0.6912883573888606,
+          "young": 0.05099849653250514,
+          "final_loss": 0.00012732894175043405,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 1658.3072750667552,
+            "energy_per_spring": 0.148354560302984,
+            "normalised_energy": 0.148354560302984,
+            "max_spring_energy": 8.006226281101455,
+            "frac_stressed": 0.987385936661299
+          }
+        },
+        "both": {
+          "nu_xy": 0.7000000016818702,
+          "nu_yx": 0.7000000032372791,
+          "E_x": 0.015093611485689579,
+          "E_y": 0.015093611519227779,
+          "poisson": 0.7000000032372792,
+          "young": 0.01509361151922778,
+          "final_loss": 2.5707878497090084e-16,
+          "converged": true,
+          "iterations": 340,
+          "residual_energy": {
+            "total_energy": 110.49200312683968,
+            "energy_per_spring": 0.009884773942283027,
+            "normalised_energy": 0.008805038762296168,
+            "max_spring_energy": 0.23879116773166809,
+            "frac_stressed": 0.9386294507067454
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.7003640160830701,
+          "nu_yx": 0.6604523147033687,
+          "E_x": 0.01630596519476821,
+          "E_y": 0.01537673582458852,
+          "poisson": 0.6604523147033686,
+          "young": 0.015376735824588523,
+          "final_loss": 0.08314415772706245,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.7000000071908994,
+          "nu_yx": 0.7000000065478059,
+          "E_x": 0.05462026209087313,
+          "E_y": 0.05462026204069323,
+          "poisson": 0.7000000065478059,
+          "young": 0.054620262040693236,
+          "final_loss": 4.095539087072987e-15,
+          "converged": true,
+          "iterations": 140,
+          "residual_energy": {
+            "total_energy": 1580.5978213385706,
+            "energy_per_spring": 0.14140256050622388,
+            "normalised_energy": 0.14140256050622388,
+            "max_spring_energy": 7.800512276075963,
+            "frac_stressed": 0.9853283234925747
+          }
+        },
+        "both": {
+          "nu_xy": 0.6447825135355434,
+          "nu_yx": 0.5857493873488032,
+          "E_x": 0.02305417985829992,
+          "E_y": 0.020943452163089557,
+          "poisson": 0.5857493873488032,
+          "young": 0.020943452163089567,
+          "final_loss": 0.089531007925161,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 120.97712554514584,
+            "energy_per_spring": 0.010822788114613154,
+            "normalised_energy": 0.009628101737915415,
+            "max_spring_energy": 0.28228932271498297,
+            "frac_stressed": 0.941760601180891
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": -0.6939337838049409,
+          "nu_yx": -0.20112999767168804,
+          "E_x": 4.228127113057666e-11,
+          "E_y": 1.2254817624557834e-11,
+          "poisson": -0.20112999767168555,
+          "young": 1.225481762455794e-11,
+          "final_loss": 18.97288051289546,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.9749097463337673,
+          "nu_yx": -0.03472542207462887,
+          "E_x": 5.07387928031854e-11,
+          "E_y": 1.8072708804826605e-12,
+          "poisson": -0.03472542207462755,
+          "young": 1.8072708804827707e-12,
+          "final_loss": 18.97469687429328,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76349881596165,
+            "energy_per_spring": 0.0070462961903705185,
+            "normalised_energy": 0.0070462961903705185,
+            "max_spring_energy": 0.34446100174423894,
+            "frac_stressed": 0.9222580067990696
+          }
+        },
+        "both": {
+          "nu_xy": 0.13579154025092516,
+          "nu_yx": 0.0606955985733393,
+          "E_x": 4.5178366941358485e-11,
+          "E_y": 2.01936587434285e-11,
+          "poisson": 0.06069559857333864,
+          "young": 2.019365874342731e-11,
+          "final_loss": 18.976733344728366,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43399301770297,
+            "energy_per_spring": 0.007911432547656376,
+            "normalised_energy": 0.00703773510623613,
+            "max_spring_energy": 0.3315365479198222,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.33131919513048685,
+          "nu_yx": -2.9686596991097325,
+          "E_x": 6.378816236013298e-11,
+          "E_y": 5.715495801691038e-10,
+          "poisson": -2.9686596991097334,
+          "young": 5.715495801691107e-10,
+          "final_loss": 17.237373908683114,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.33232968180627187,
+          "nu_yx": -2.9414208298518236,
+          "E_x": 4.3725944646620997e-11,
+          "E_y": 3.8701449623598295e-10,
+          "poisson": -2.9414208298518236,
+          "young": 3.870144962359877e-10,
+          "final_loss": 14.208210321137999,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47756802148007,
+            "energy_per_spring": 0.007199639293387016,
+            "normalised_energy": 0.007199639293387016,
+            "max_spring_energy": 0.228884419587457,
+            "frac_stressed": 0.9221685453569511
+          }
+        },
+        "both": {
+          "nu_xy": -0.3303804353828775,
+          "nu_yx": -2.6330074066051643,
+          "E_x": 3.647589855086042e-11,
+          "E_y": 2.906991478950378e-10,
+          "poisson": -2.6330074066051607,
+          "young": 2.906991478950385e-10,
+          "final_loss": 4.10491267338708,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 93.9901739013877,
+            "energy_per_spring": 0.00840849650218176,
+            "normalised_energy": 0.0074803924804374795,
+            "max_spring_energy": 2.3177172854947283,
+            "frac_stressed": 0.9201109321882269
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.05433476008094794,
+          "nu_yx": -0.05294889708781949,
+          "E_x": 0.0005266532350704557,
+          "E_y": 0.0005132204118168301,
+          "poisson": -0.05294889708781949,
+          "young": 0.0005132204118168303,
+          "final_loss": 0.6882532485446886,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.5948111044634222,
+          "nu_yx": 0.5863445136408582,
+          "E_x": 0.00013822225514762305,
+          "E_y": 0.0001362547880507156,
+          "poisson": 0.5863445136408583,
+          "young": 0.0001362547880507156,
+          "final_loss": 0.024774536355482144,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 349.5470167102907,
+            "energy_per_spring": 0.024638543505342263,
+            "normalised_energy": 0.024638543505342263,
+            "max_spring_energy": 53.06472546743967,
+            "frac_stressed": 0.9275392965390851
+          }
+        },
+        "both": {
+          "nu_xy": 0.740852167947989,
+          "nu_yx": 0.7974060018572603,
+          "E_x": 0.0002387548655611707,
+          "E_y": 0.00025698050300430056,
+          "poisson": 0.7974060018572602,
+          "young": 0.00025698050300430056,
+          "final_loss": 0.2720810910324288,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 89.61740832979943,
+            "energy_per_spring": 0.006316868141946813,
+            "normalised_energy": 0.005642408740741346,
+            "max_spring_energy": 0.4041771331803112,
+            "frac_stressed": 0.9241559173891591
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": 0.08829338735961524,
+          "nu_yx": 0.07391192662128712,
+          "E_x": 0.00077642719067554,
+          "E_y": 0.0006499606738412568,
+          "poisson": 0.07391192662128711,
+          "young": 0.0006499606738412567,
+          "final_loss": 0.6260483427654059,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.04391286769511426,
+          "nu_yx": 0.04141823022183237,
+          "E_x": 0.0012043001375161677,
+          "E_y": 0.0011358852876141969,
+          "poisson": 0.04141823022183237,
+          "young": 0.0011358852876141967,
+          "final_loss": 0.6046449156805453,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 76.56777196559612,
+            "energy_per_spring": 0.005386785701814839,
+            "normalised_energy": 0.005386785701814839,
+            "max_spring_energy": 0.2951929771207868,
+            "frac_stressed": 0.9206416209371042
+          }
+        },
+        "both": {
+          "nu_xy": 0.13344661978304567,
+          "nu_yx": 0.13743266495628007,
+          "E_x": 0.0006973641140466475,
+          "E_y": 0.0007181943521246274,
+          "poisson": 0.13743266495628007,
+          "young": 0.0007181943521246275,
+          "final_loss": 0.4316916264265649,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.69029887138174,
+            "energy_per_spring": 0.006239643933543109,
+            "normalised_energy": 0.005574548234691506,
+            "max_spring_energy": 0.44036733053845384,
+            "frac_stressed": 0.9227522161249473
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.2896045667163205,
+          "nu_yx": -0.23261597488683178,
+          "E_x": 0.00014226156099496608,
+          "E_y": 0.00011426723022700742,
+          "poisson": -0.2326159748868318,
+          "young": 0.00011426723022700742,
+          "final_loss": 1.3549794325239184,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.5051817938540878,
+          "nu_yx": 0.5032199876575751,
+          "E_x": 0.0006905905104585782,
+          "E_y": 0.0006879086942111349,
+          "poisson": 0.5032199876575751,
+          "young": 0.0006879086942111347,
+          "final_loss": 0.07535937426744894,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 196.88098698860506,
+            "energy_per_spring": 0.013755396282303154,
+            "normalised_energy": 0.013755396282303154,
+            "max_spring_energy": 40.61240810322972,
+            "frac_stressed": 0.9253126528330888
+          }
+        },
+        "both": {
+          "nu_xy": -0.335207419994761,
+          "nu_yx": -0.3482005966738023,
+          "E_x": 5.66116686968357e-05,
+          "E_y": 5.8806027680550424e-05,
+          "poisson": -0.3482005966738023,
+          "young": 5.8806027680550424e-05,
+          "final_loss": 1.2985630759965192,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.57240337328382,
+            "energy_per_spring": 0.0060485155713885155,
+            "normalised_energy": 0.005400070143627932,
+            "max_spring_energy": 0.871738785420754,
+            "frac_stressed": 0.9224481240830015
+          }
+        }
+      }
+    },
+    "+0.9": {
+      "0": {
+        "rigidities": {
+          "nu_xy": 0.33333333333333354,
+          "nu_yx": 0.3437026611437126,
+          "E_x": 0.05318176060085217,
+          "E_y": 0.05483613792846219,
+          "poisson": 0.3437026611437126,
+          "young": 0.05483613792846219,
+          "final_loss": 0.3153298192653428,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.33333333333333337,
+          "nu_yx": 0.34374209938406025,
+          "E_x": 0.05994219738127754,
+          "E_y": 0.06181397030860218,
+          "poisson": 0.34374209938406025,
+          "young": 0.06181397030860219,
+          "final_loss": 0.31532980602371125,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 57.61874728113013,
+            "energy_per_spring": 0.005154656224828246,
+            "normalised_energy": 0.005154656224828246,
+            "max_spring_energy": 0.11921080389309092,
+            "frac_stressed": 0.9226158525675434
+          }
+        },
+        "both": {
+          "nu_xy": 0.3333333333333334,
+          "nu_yx": 0.34370249683127047,
+          "E_x": 0.05218194858772422,
+          "E_y": 0.05380519805736538,
+          "poisson": 0.3437024968312704,
+          "young": 0.05380519805736538,
+          "final_loss": 0.3153296943664595,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 63.79739035772715,
+            "energy_per_spring": 0.0057074065447957735,
+            "normalised_energy": 0.005078699808805443,
+            "max_spring_energy": 0.19218956251196057,
+            "frac_stressed": 0.9211844694936482
+          }
+        }
+      },
+      "1": {
+        "rigidities": {
+          "nu_xy": 0.10288065843621431,
+          "nu_yx": 0.11052913351241701,
+          "E_x": 0.06204128882433243,
+          "E_y": 0.06665363538666125,
+          "poisson": 0.11052913351241703,
+          "young": 0.06665363538666126,
+          "final_loss": 1.1784157072882002,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.10288065843621404,
+          "nu_yx": 0.11616033708459139,
+          "E_x": 0.14681904305598723,
+          "E_y": 0.1657702214492963,
+          "poisson": 0.11616033708459138,
+          "young": 0.1657702214492963,
+          "final_loss": 1.1541422584332728,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 650.7978335135003,
+            "energy_per_spring": 0.1030069378780469,
+            "normalised_energy": 0.1030069378780469,
+            "max_spring_energy": 1.0888236596853416,
+            "frac_stressed": 0.9969927192149415
+          }
+        },
+        "both": {
+          "nu_xy": 0.10288065843621408,
+          "nu_yx": 0.1074646187420076,
+          "E_x": 0.06553218563242504,
+          "E_y": 0.06845204386678086,
+          "poisson": 0.10746461874200762,
+          "young": 0.06845204386678087,
+          "final_loss": 1.185082353552326,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 85.7555813523326,
+            "energy_per_spring": 0.013573216421705064,
+            "normalised_energy": 0.012506482943896526,
+            "max_spring_energy": 0.5793846403651374,
+            "frac_stressed": 0.9276669832225388
+          }
+        }
+      },
+      "2": {
+        "rigidities": {
+          "nu_xy": 0.6628889389695379,
+          "nu_yx": 0.5686567860473128,
+          "E_x": 0.021720643570519654,
+          "E_y": 0.01863297248991891,
+          "poisson": 0.5686567860473127,
+          "young": 0.01863297248991891,
+          "final_loss": 0.25796471679558136,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.7880476706401014,
+          "nu_yx": 0.7911288381250707,
+          "E_x": 0.04440213923965596,
+          "E_y": 0.044575746031206,
+          "poisson": 0.791128838125071,
+          "young": 0.044575746031205996,
+          "final_loss": 0.01428083978060398,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 2546.465370694593,
+            "energy_per_spring": 0.22781046436702387,
+            "normalised_energy": 0.22781046436702387,
+            "max_spring_energy": 20.740755152733765,
+            "frac_stressed": 0.9896224727142602
+          }
+        },
+        "both": {
+          "nu_xy": 0.602550054180806,
+          "nu_yx": 0.5665810783939887,
+          "E_x": 0.02781859137579138,
+          "E_y": 0.026157972091673032,
+          "poisson": 0.5665810783939887,
+          "young": 0.026157972091673025,
+          "final_loss": 0.2528299284379707,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 121.17865394993832,
+            "energy_per_spring": 0.01084081713633372,
+            "normalised_energy": 0.009640534716182078,
+            "max_spring_energy": 0.2743176388381944,
+            "frac_stressed": 0.9400608337806405
+          }
+        }
+      },
+      "3": {
+        "rigidities": {
+          "nu_xy": 0.6614770764444492,
+          "nu_yx": 0.6216221127141518,
+          "E_x": 0.019693148636923015,
+          "E_y": 0.018506607556952825,
+          "poisson": 0.6216221127141519,
+          "young": 0.018506607556952822,
+          "final_loss": 0.2684890907642891,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.8784398251703524,
+          "nu_yx": 0.8808292414521743,
+          "E_x": 0.04714705590020405,
+          "E_y": 0.04727529911024529,
+          "poisson": 0.8808292414521743,
+          "young": 0.047275299110245264,
+          "final_loss": 0.0005320047778082735,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 3764.5285397456,
+            "energy_per_spring": 0.3367801520616926,
+            "normalised_energy": 0.3367801520616926,
+            "max_spring_energy": 37.69063979000685,
+            "frac_stressed": 0.9956163893361961
+          }
+        },
+        "both": {
+          "nu_xy": 0.5654274825362032,
+          "nu_yx": 0.5803883825190507,
+          "E_x": 0.026080010692089886,
+          "E_y": 0.02677007342085187,
+          "poisson": 0.5803883825190507,
+          "young": 0.026770073420851886,
+          "final_loss": 0.2660654562928858,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 99.76072049837,
+            "energy_per_spring": 0.008924737922559493,
+            "normalised_energy": 0.007940749253148282,
+            "max_spring_energy": 0.279030484541577,
+            "frac_stressed": 0.937555913401324
+          }
+        }
+      },
+      "4": {
+        "rigidities": {
+          "nu_xy": 0.37067056297322176,
+          "nu_yx": 0.06613511875114174,
+          "E_x": 4.791376345784771e-11,
+          "E_y": 8.54878361713279e-12,
+          "poisson": 0.06613511875114378,
+          "young": 8.548783617133025e-12,
+          "final_loss": 19.307770471990974,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -1.3248218703487318,
+          "nu_yx": -0.08270006633075463,
+          "E_x": 3.6048556334408204e-11,
+          "E_y": 2.2502783707810887e-12,
+          "poisson": -0.08270006633075289,
+          "young": 2.250278370781035e-12,
+          "final_loss": 19.308014916957852,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 78.76082085432797,
+            "energy_per_spring": 0.007046056616060832,
+            "normalised_energy": 0.007046056616060832,
+            "max_spring_energy": 0.34446100164998866,
+            "frac_stressed": 0.9223474682411881
+          }
+        },
+        "both": {
+          "nu_xy": -0.05182456767302707,
+          "nu_yx": -0.005326183853139563,
+          "E_x": 6.139278336057914e-11,
+          "E_y": 6.309541325987725e-12,
+          "poisson": -0.00532618385313958,
+          "young": 6.309541325987627e-12,
+          "final_loss": 19.292287502079105,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.43397884258702,
+            "energy_per_spring": 0.00791143127953006,
+            "normalised_energy": 0.007037733970278965,
+            "max_spring_energy": 0.33153654791983994,
+            "frac_stressed": 0.91993200930399
+          }
+        }
+      },
+      "5": {
+        "rigidities": {
+          "nu_xy": -0.33179115366780715,
+          "nu_yx": -2.974779435921808,
+          "E_x": 5.04210167285827e-11,
+          "E_y": 4.520657107471594e-10,
+          "poisson": -2.974779435921808,
+          "young": 4.520657107471546e-10,
+          "final_loss": 18.55119962554585,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": -0.3318650367551582,
+          "nu_yx": -2.9347369685047453,
+          "E_x": 5.106626436602108e-11,
+          "E_y": 4.5158735413566946e-10,
+          "poisson": -2.9347369685047453,
+          "young": 4.5158735413566817e-10,
+          "final_loss": 15.403636995895777,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 80.47683674588257,
+            "energy_per_spring": 0.007199573872417478,
+            "normalised_energy": 0.007199573872417478,
+            "max_spring_energy": 0.22888441959930403,
+            "frac_stressed": 0.9221685453569511
+          }
+        },
+        "both": {
+          "nu_xy": -0.33132180623950036,
+          "nu_yx": -2.9679212421969536,
+          "E_x": 5.5370662530928545e-11,
+          "E_y": 4.96000451601032e-10,
+          "poisson": -2.967921242196954,
+          "young": 4.960004516010277e-10,
+          "final_loss": 18.021006113798716,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 90.08707133467732,
+            "energy_per_spring": 0.008059319317827636,
+            "normalised_energy": 0.00716929280300204,
+            "max_spring_energy": 0.3687242413322764,
+            "frac_stressed": 0.9200214707461084
+          }
+        }
+      },
+      "6": {
+        "rigidities": {
+          "nu_xy": -0.0984512037123045,
+          "nu_yx": -0.08942564814374494,
+          "E_x": 0.0007032280738232695,
+          "E_y": 0.0006387593439516634,
+          "poisson": -0.08942564814374496,
+          "young": 0.0006387593439516636,
+          "final_loss": 1.2495854620751627,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.6931381706739651,
+          "nu_yx": 0.6937283161528262,
+          "E_x": 6.20670745742696e-05,
+          "E_y": 6.21199191657174e-05,
+          "poisson": 0.6937283161528262,
+          "young": 6.21199191657174e-05,
+          "final_loss": 0.04987562400243015,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 710.9113487837643,
+            "energy_per_spring": 0.0501100548941823,
+            "normalised_energy": 0.0501100548941823,
+            "max_spring_energy": 152.25053072569153,
+            "frac_stressed": 0.9285966025234369
+          }
+        },
+        "both": {
+          "nu_xy": 0.9733971635880456,
+          "nu_yx": 0.9066181583493428,
+          "E_x": 2.0029596705385313e-05,
+          "E_y": 1.8655484890237154e-05,
+          "poisson": 0.9066181583493426,
+          "young": 1.865548489023711e-05,
+          "final_loss": 0.012116602476314346,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 87.39660833862334,
+            "energy_per_spring": 0.006160330467232208,
+            "normalised_energy": 0.005501888933935351,
+            "max_spring_energy": 0.30061459796895246,
+            "frac_stressed": 0.9223232536829492
+          }
+        }
+      },
+      "7": {
+        "rigidities": {
+          "nu_xy": 0.3824853030633192,
+          "nu_yx": 0.32891736708023267,
+          "E_x": 0.0004148792163648631,
+          "E_y": 0.0003567744392010018,
+          "poisson": 0.32891736708023267,
+          "young": 0.00035677443920100187,
+          "final_loss": 0.6691617544840007,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.06281677989689409,
+          "nu_yx": 0.05845004367012623,
+          "E_x": 0.0011754786634632095,
+          "E_y": 0.0010937647444759157,
+          "poisson": 0.05845004367012623,
+          "young": 0.0010937647444759157,
+          "final_loss": 0.9576332885121979,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 76.57335786900376,
+            "energy_per_spring": 0.005387178687843236,
+            "normalised_energy": 0.005387178687843236,
+            "max_spring_energy": 0.2951912600529478,
+            "frac_stressed": 0.9207119741100324
+          }
+        },
+        "both": {
+          "nu_xy": 0.14658402548841748,
+          "nu_yx": 0.1524313076875302,
+          "E_x": 0.0007151096968551848,
+          "E_y": 0.0007436356442556717,
+          "poisson": 0.15243130768753022,
+          "young": 0.0007436356442556718,
+          "final_loss": 0.7530132630280424,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 88.55499266232614,
+            "energy_per_spring": 0.006230124712419174,
+            "normalised_energy": 0.005566070883074941,
+            "max_spring_energy": 0.4403624914360778,
+            "frac_stressed": 0.9228225692978753
+          }
+        }
+      },
+      "8": {
+        "rigidities": {
+          "nu_xy": -0.3029576249097243,
+          "nu_yx": -0.23358865114575075,
+          "E_x": 0.00016560659424616473,
+          "E_y": 0.0001276872334285375,
+          "poisson": -0.23358865114575078,
+          "young": 0.00012768723342853748,
+          "final_loss": 1.756030913943671,
+          "converged": false,
+          "iterations": 520
+        },
+        "rest_lengths": {
+          "nu_xy": 0.4996835216983366,
+          "nu_yx": 0.5010501748174077,
+          "E_x": 0.0007163329142442502,
+          "E_y": 0.000718292111554215,
+          "poisson": 0.5010501748174077,
+          "young": 0.0007182921115542149,
+          "final_loss": 0.6015146253949496,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 141.78268120555202,
+            "energy_per_spring": 0.009905867477506604,
+            "normalised_energy": 0.009905867477506604,
+            "max_spring_energy": 15.412151441864786,
+            "frac_stressed": 0.9255921190526095
+          }
+        },
+        "both": {
+          "nu_xy": -0.34333251447961144,
+          "nu_yx": -0.35552587444720857,
+          "E_x": 4.5075965721647735e-05,
+          "E_y": 4.6676826265730456e-05,
+          "poisson": -0.35552587444720857,
+          "young": 4.667682626573046e-05,
+          "final_loss": 1.725055847607813,
+          "converged": false,
+          "iterations": 520,
+          "residual_energy": {
+            "total_energy": 86.62618591252964,
+            "energy_per_spring": 0.006052273172118329,
+            "normalised_energy": 0.005403470479696682,
+            "max_spring_energy": 0.8717388538761425,
+            "frac_stressed": 0.9224481240830015
+          }
+        }
+      }
+    }
+  }
+}
