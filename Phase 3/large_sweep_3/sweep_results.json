@@ -6,24 +6,24 @@
         "young": 1.3057650631082842e-09,
         "final_loss": 0.8099999807055459,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.5299859046936035
+        "iterations": 2020,
+        "time_seconds": 13.70328950881958
       },
       "rest_lengths": {
         "poisson": 3.154278123257937e-13,
         "young": 0.16506014406391148,
         "final_loss": 0.8100000000005678,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 5.089759349822998
+        "iterations": 2020,
+        "time_seconds": 13.700353145599365
       },
       "both": {
         "poisson": 2.0928288417597245e-08,
         "young": 8.76022673023103e-09,
         "final_loss": 0.8100000376709197,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.30871319770813
+        "iterations": 2020,
+        "time_seconds": 26.02467179298401
       }
     },
     "aniso_crystal": {
@@ -40,8 +40,8 @@
         "young": 0.0271767944707172,
         "final_loss": 0.0005303955839638477,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.3459205627441406
+        "iterations": 2020,
+        "time_seconds": 20.000256776809692
       },
       "both": {
         "poisson": -0.9000000147416629,
@@ -58,24 +58,24 @@
         "young": 2.1067535523862465e-10,
         "final_loss": 0.017801671989364536,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.8772454261779785
+        "iterations": 2020,
+        "time_seconds": 22.304315328598022
       },
       "rest_lengths": {
         "poisson": -0.8262246446367979,
         "young": 0.006938600553172179,
         "final_loss": 0.005442803058966756,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.416947364807129
+        "iterations": 2020,
+        "time_seconds": 19.374563694000244
       },
       "both": {
         "poisson": -0.7073218579706597,
         "young": 7.083762363803603e-09,
         "final_loss": 0.037124866415878637,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.705864906311035
+        "iterations": 2020,
+        "time_seconds": 34.991068601608276
       }
     },
     "foam_eta02_137": {
@@ -84,16 +84,16 @@
         "young": 2.403770084919192e-07,
         "final_loss": 3.743805723926515e-14,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 2.183166742324829
+        "iterations": 2020,
+        "time_seconds": 17.073400259017944
       },
       "rest_lengths": {
         "poisson": -0.890761774748445,
         "young": 0.009392477118114965,
         "final_loss": 8.534480579846924e-05,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.301473379135132
+        "iterations": 2020,
+        "time_seconds": 23.40184187889099
       },
       "both": {
         "poisson": -0.8999999590080981,
@@ -110,24 +110,24 @@
         "young": 4.4539015456750863e-10,
         "final_loss": 6.491642642314023e-10,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.5838301181793213
+        "iterations": 2020,
+        "time_seconds": 12.922598838806152
       },
       "rest_lengths": {
         "poisson": -0.900032827319233,
         "young": 1.3467602777719235e-09,
         "final_loss": 1.0776328880207561e-09,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.5207865238189697
+        "iterations": 2020,
+        "time_seconds": 12.919894933700562
       },
       "both": {
         "poisson": -0.9000006379321361,
         "young": 6.973308368614277e-10,
         "final_loss": 4.069574102896128e-13,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 1.624828815460205
+        "iterations": 2020,
+        "time_seconds": 13.223164081573486
       }
     },
     "foam_eta045_314": {
@@ -136,24 +136,24 @@
         "young": 5.308322049714553e-08,
         "final_loss": 9.123616348196048e-12,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 2.6532559394836426
+        "iterations": 2020,
+        "time_seconds": 16.41950821876526
       },
       "rest_lengths": {
         "poisson": NaN,
         "young": NaN,
         "final_loss": 3.830212236395049,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 9.560230016708374
+        "iterations": 2020,
+        "time_seconds": 82.29418420791626
       },
       "both": {
         "poisson": -1.1127086600229934,
         "young": 1.883559320505637e-07,
         "final_loss": 0.04524497404877738,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.6689794063568115
+        "iterations": 2020,
+        "time_seconds": 45.58406043052673
       }
     },
     "poisson_999": {
@@ -216,24 +216,24 @@
         "young": 2.22467124909742e-09,
         "final_loss": 0.49000001236494084,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.113886833190918
+        "iterations": 2020,
+        "time_seconds": 9.927228450775146
       },
       "rest_lengths": {
         "poisson": 5.48132114155135e-13,
         "young": 0.16760105023122543,
         "final_loss": 0.4900000000007673,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.4761593341827393
+        "iterations": 2020,
+        "time_seconds": 10.424753189086914
       },
       "both": {
         "poisson": 6.2318282544207425e-09,
         "young": 4.060712922725792e-09,
         "final_loss": 0.49000000872455957,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.9442670345306396
+        "iterations": 2020,
+        "time_seconds": 24.771554231643677
       }
     },
     "aniso_crystal": {
@@ -250,8 +250,8 @@
         "young": 0.04301959203775833,
         "final_loss": 4.6912348534756736e-06,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.2939956188201904
+        "iterations": 2020,
+        "time_seconds": 19.409821271896362
       },
       "both": {
         "poisson": -0.699999993307004,
@@ -268,16 +268,16 @@
         "young": 2.9972319039199207e-10,
         "final_loss": 2.7858936902402736e-05,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.9537510871887207
+        "iterations": 2020,
+        "time_seconds": 33.220961570739746
       },
       "rest_lengths": {
         "poisson": -0.6999972723779971,
         "young": 0.010465035672088755,
         "final_loss": 7.43992179025844e-12,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 3.0209197998046875
+        "iterations": 2020,
+        "time_seconds": 18.10250997543335
       },
       "both": {
         "poisson": -0.699999993871586,
@@ -302,8 +302,8 @@
         "young": 0.011223787525113075,
         "final_loss": 5.729314073991209e-14,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 2.9556610584259033
+        "iterations": 2020,
+        "time_seconds": 18.7779381275177
       },
       "both": {
         "poisson": -0.7000000522034097,
@@ -320,24 +320,24 @@
         "young": 7.602216810316987e-10,
         "final_loss": 4.529373128141022e-09,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.9413425922393799
+        "iterations": 2020,
+        "time_seconds": 17.14134645462036
       },
       "rest_lengths": {
         "poisson": -0.7000342357597709,
         "young": 1.3047312379692294e-05,
         "final_loss": 1.1720872470912148e-09,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.2151947021484375
+        "iterations": 2020,
+        "time_seconds": 9.169399738311768
       },
       "both": {
         "poisson": -0.7000873890531087,
         "young": 6.468783796660783e-10,
         "final_loss": 7.636846603250643e-09,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.6940727233886719
+        "iterations": 2020,
+        "time_seconds": 11.60996961593628
       }
     },
     "foam_eta045_314": {
@@ -346,24 +346,24 @@
         "young": 3.3327611186764807e-08,
         "final_loss": 9.179699117848144e-13,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 1.1841650009155273
+        "iterations": 2020,
+        "time_seconds": 9.676961183547974
       },
       "rest_lengths": {
         "poisson": -0.7065417004994144,
         "young": 1.0405009503584475e-06,
         "final_loss": 4.279384542403983e-05,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.5764784812927246
+        "iterations": 2020,
+        "time_seconds": 11.394721269607544
       },
       "both": {
         "poisson": -0.6859546612966186,
         "young": 2.308336581229045e-07,
         "final_loss": 0.00019727153929270116,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.383995056152344
+        "iterations": 2020,
+        "time_seconds": 19.61201763153076
       }
     },
     "poisson_999": {
@@ -426,24 +426,24 @@
         "young": 4.897151799233291e-11,
         "final_loss": 0.2499985651522214,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.203239917755127
+        "iterations": 2020,
+        "time_seconds": 4.726491212844849
       },
       "rest_lengths": {
         "poisson": 6.228602343495623e-13,
         "young": 0.21321237629249712,
         "final_loss": 0.25000000000062284,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.113323211669922
+        "iterations": 2020,
+        "time_seconds": 5.4769446849823
       },
       "both": {
         "poisson": 1.449939416190023e-08,
         "young": 6.155191313059464e-09,
         "final_loss": 0.25000001449939435,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.516862630844116
+        "iterations": 2020,
+        "time_seconds": 15.492241859436035
       }
     },
     "aniso_crystal": {
@@ -460,8 +460,8 @@
         "young": 0.06261426402351704,
         "final_loss": 4.511921827073987e-07,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.7458574771881104
+        "iterations": 2020,
+        "time_seconds": 9.275409698486328
       },
       "both": {
         "poisson": -0.4999999954214155,
@@ -530,8 +530,8 @@
         "young": 7.780224831168775e-10,
         "final_loss": 8.502252124770391e-10,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.9501171112060547
+        "iterations": 2020,
+        "time_seconds": 6.1052491664886475
       },
       "rest_lengths": {
         "poisson": -0.49999998858508066,
@@ -546,8 +546,8 @@
         "young": 1.4752171186010004e-09,
         "final_loss": 5.548320885893478e-12,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 1.9914791584014893
+        "iterations": 2020,
+        "time_seconds": 8.463755130767822
       }
     },
     "foam_eta045_314": {
@@ -564,16 +564,16 @@
         "young": 2.8150131623358996e-07,
         "final_loss": 2.103394070627271e-10,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.427281618118286
+        "iterations": 2020,
+        "time_seconds": 7.598426580429077
       },
       "both": {
         "poisson": -1.110816971831627,
         "young": 1.8848652768132624e-07,
         "final_loss": 0.3730973730775586,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 5.285845994949341
+        "iterations": 2020,
+        "time_seconds": 22.12245011329651
       }
     },
     "poisson_999": {
@@ -636,24 +636,24 @@
         "young": 7.899717246304269e-09,
         "final_loss": 0.09000001736027881,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.828949213027954
+        "iterations": 2020,
+        "time_seconds": 9.914930582046509
       },
       "rest_lengths": {
         "poisson": 7.246935502288855e-13,
         "young": 0.2564749745635413,
         "final_loss": 0.09000000000043482,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.4969279766082764
+        "iterations": 2020,
+        "time_seconds": 4.504945993423462
       },
       "both": {
         "poisson": 1.6322038826051396e-08,
         "young": 7.040459597337384e-09,
         "final_loss": 0.09000000979322356,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.8949809074401855
+        "iterations": 2020,
+        "time_seconds": 13.090316534042358
       }
     },
     "aniso_crystal": {
@@ -740,24 +740,24 @@
         "young": 7.029320268798764e-10,
         "final_loss": 1.233192370813626e-08,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.1556856632232666
+        "iterations": 2020,
+        "time_seconds": 8.61227560043335
       },
       "rest_lengths": {
         "poisson": -0.30002291962074307,
         "young": 9.570300570764205e-10,
         "final_loss": 5.253090150065398e-10,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.868847370147705
+        "iterations": 2020,
+        "time_seconds": 8.077091455459595
       },
       "both": {
         "poisson": -0.29988088675904867,
         "young": 1.091957905245457e-09,
         "final_loss": 1.4187964169926852e-08,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.0857322216033936
+        "iterations": 2020,
+        "time_seconds": 12.12717604637146
       }
     },
     "foam_eta045_314": {
@@ -766,24 +766,24 @@
         "young": 1.3178049892022012e-08,
         "final_loss": 3.3123318169732523e-12,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 1.7669737339019775
+        "iterations": 2020,
+        "time_seconds": 6.626204967498779
       },
       "rest_lengths": {
         "poisson": -0.2999087670419028,
         "young": 2.9014550571559846e-07,
         "final_loss": 8.323452643167153e-09,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.413550853729248
+        "iterations": 2020,
+        "time_seconds": 7.6212477684021
       },
       "both": {
         "poisson": -0.49397348512646755,
         "young": -928473.963452293,
         "final_loss": 0.03762571293210793,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.418257474899292
+        "iterations": 2020,
+        "time_seconds": 10.818068027496338
       }
     },
     "poisson_999": {
@@ -846,24 +846,24 @@
         "young": 1.7077210121844185e-09,
         "final_loss": 0.010000003700356159,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.2210657596588135
+        "iterations": 2020,
+        "time_seconds": 4.859013557434082
       },
       "rest_lengths": {
         "poisson": 2.926585201240614e-12,
         "young": 0.5200786048306433,
         "final_loss": 0.010000000000585318,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.6161246299743652
+        "iterations": 2020,
+        "time_seconds": 5.148285627365112
       },
       "both": {
         "poisson": 1.8170573032932297e-08,
         "young": 7.015354298393459e-09,
         "final_loss": 0.010000003634114938,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.604546070098877
+        "iterations": 2020,
+        "time_seconds": 14.236713886260986
       }
     },
     "aniso_crystal": {
@@ -950,24 +950,24 @@
         "young": 6.119461133194555e-10,
         "final_loss": 5.755607934445157e-11,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.1777150630950928
+        "iterations": 2020,
+        "time_seconds": 8.27776551246643
       },
       "rest_lengths": {
         "poisson": -0.09998242115166867,
         "young": 5.711715941903021e-10,
         "final_loss": 3.0901590865625286e-10,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.1623117923736572
+        "iterations": 2020,
+        "time_seconds": 7.624892473220825
       },
       "both": {
         "poisson": -0.10001079753334206,
         "young": 6.222642775055301e-10,
         "final_loss": 1.165867262728522e-10,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.0313875675201416
+        "iterations": 2020,
+        "time_seconds": 12.815807342529297
       }
     },
     "foam_eta045_314": {
@@ -984,16 +984,16 @@
         "young": 2.4603096344173365e-07,
         "final_loss": 2.985287128225057,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.2880213260650635
+        "iterations": 2020,
+        "time_seconds": 18.344702005386353
       },
       "both": {
         "poisson": NaN,
         "young": NaN,
         "final_loss": 7.82239021541124,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 11.758381366729736
+        "iterations": 2020,
+        "time_seconds": 54.516292333602905
       }
     },
     "poisson_999": {
@@ -1056,24 +1056,24 @@
         "young": 7.479546612734983e-08,
         "final_loss": 9.90694263647977e-14,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 0.43029260635375977
+        "iterations": 2020,
+        "time_seconds": 1.571028709411621
       },
       "rest_lengths": {
         "poisson": 5.994944355646364e-07,
         "young": 0.19538425391274886,
         "final_loss": 3.593935782729619e-13,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 3.936612367630005
+        "iterations": 2020,
+        "time_seconds": 5.427746057510376
       },
       "both": {
         "poisson": 1.0695458061506156e-06,
         "young": 3.1431737746733326e-07,
         "final_loss": 1.1439282314543703e-12,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 5.053727388381958
+        "iterations": 2020,
+        "time_seconds": 13.675970554351807
       }
     },
     "aniso_crystal": {
@@ -1160,24 +1160,24 @@
         "young": 3.569677393589201e-13,
         "final_loss": 5.743383571707937e-07,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.2237696647644043
+        "iterations": 2020,
+        "time_seconds": 10.376204013824463
       },
       "rest_lengths": {
         "poisson": -0.0007409448859776644,
         "young": 6.963565069669844e-11,
         "final_loss": 5.48999324056454e-07,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.2286555767059326
+        "iterations": 2020,
+        "time_seconds": 10.93834376335144
       },
       "both": {
         "poisson": -0.0007880470900398287,
         "young": 4.51593883140222e-12,
         "final_loss": 6.210182161202419e-07,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.469346046447754
+        "iterations": 2020,
+        "time_seconds": 16.088615655899048
       }
     },
     "foam_eta045_314": {
@@ -1186,24 +1186,24 @@
         "young": 1.2757386829115227e-13,
         "final_loss": 2.752439828894429e-06,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.0442206859588623
+        "iterations": 2020,
+        "time_seconds": 4.251882791519165
       },
       "rest_lengths": {
         "poisson": -2.017670949652942,
         "young": 2.333606529057326e-07,
         "final_loss": 4.070996061073404,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.601500988006592
+        "iterations": 2020,
+        "time_seconds": 15.289780139923096
       },
       "both": {
         "poisson": 0.10187917590784344,
         "young": 1.5052888828317677e-07,
         "final_loss": 0.010379366483661308,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.357154130935669
+        "iterations": 2020,
+        "time_seconds": 14.645397663116455
       }
     },
     "poisson_999": {
@@ -1370,24 +1370,24 @@
         "young": 3.855702786188642e-14,
         "final_loss": 0.0101389286429568,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.3152949810028076
+        "iterations": 2020,
+        "time_seconds": 8.072950601577759
       },
       "rest_lengths": {
         "poisson": -0.0007524859903362788,
         "young": 7.690203824385044e-11,
         "final_loss": 0.01015106343323291,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.116731882095337
+        "iterations": 2020,
+        "time_seconds": 11.148941040039062
       },
       "both": {
         "poisson": -0.0008009988000328857,
         "young": 3.1911890165056254e-12,
         "final_loss": 0.010160841359084231,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.363416910171509
+        "iterations": 2020,
+        "time_seconds": 13.66540265083313
       }
     },
     "foam_eta045_314": {
@@ -1396,24 +1396,24 @@
         "young": 2.7412737895283364e-12,
         "final_loss": 0.010341248178602623,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.9548370838165283
+        "iterations": 2020,
+        "time_seconds": 10.395981311798096
       },
       "rest_lengths": {
         "poisson": 0.13301727073012493,
         "young": 6.130650613234861e-07,
         "final_loss": 0.0010901401664663638,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.3943002223968506
+        "iterations": 2020,
+        "time_seconds": 11.54947280883789
       },
       "both": {
         "poisson": -0.001691146982424652,
         "young": 2.3979036938811722e-11,
         "final_loss": 0.010341089374601094,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.061807632446289
+        "iterations": 2020,
+        "time_seconds": 14.120766878128052
       }
     },
     "poisson_999": {
@@ -1580,24 +1580,24 @@
         "young": 2.696766963085665e-13,
         "final_loss": 0.0904288940882607,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.9004533290863037
+        "iterations": 2020,
+        "time_seconds": 10.315134763717651
       },
       "rest_lengths": {
         "poisson": -0.0008192671524187854,
         "young": 1.1605115828594804e-10,
         "final_loss": 0.09049223149011831,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.996985673904419
+        "iterations": 2020,
+        "time_seconds": 10.192716121673584
       },
       "both": {
         "poisson": -0.0007371718863899948,
         "young": 1.624324452446427e-12,
         "final_loss": 0.09044284655422408,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.895991325378418
+        "iterations": 2020,
+        "time_seconds": 11.574156045913696
       }
     },
     "foam_eta045_314": {
@@ -1606,24 +1606,24 @@
         "young": 3.1342970611500893e-12,
         "final_loss": 0.09102144176086296,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.102036476135254
+        "iterations": 2020,
+        "time_seconds": 11.278279781341553
       },
       "rest_lengths": {
         "poisson": 0.24138585544710606,
         "young": 4.87677446317188e-07,
         "final_loss": 0.0034356179416675453,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.5124175548553467
+        "iterations": 2020,
+        "time_seconds": 10.582267999649048
       },
       "both": {
         "poisson": 0.3039261050993058,
         "young": 7.641824823718513e-07,
         "final_loss": 1.5414301250794996e-05,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.5054404735565186
+        "iterations": 2020,
+        "time_seconds": 20.274735689163208
       }
     },
     "poisson_999": {
@@ -1790,24 +1790,24 @@
         "young": 3.531493778695441e-13,
         "final_loss": 0.0271387058674532,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.5706253051757812
+        "iterations": 2020,
+        "time_seconds": 7.72236704826355
       },
       "rest_lengths": {
         "poisson": -0.0007262421043139216,
         "young": 6.574091360972533e-11,
         "final_loss": 0.25072676953190803,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.6720316410064697
+        "iterations": 2020,
+        "time_seconds": 8.848208904266357
       },
       "both": {
         "poisson": -0.0007803164631601695,
         "young": 2.0312429529011973e-12,
         "final_loss": 0.2507809253569428,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.399486780166626
+        "iterations": 2020,
+        "time_seconds": 12.835777521133423
       }
     },
     "foam_eta045_314": {
@@ -1816,24 +1816,24 @@
         "young": 5.818503126701736e-12,
         "final_loss": 0.251730576550991,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.7903401851654053
+        "iterations": 2020,
+        "time_seconds": 9.71935772895813
       },
       "rest_lengths": {
         "poisson": 0.5715542409274567,
         "young": 5.727205404526087e-07,
         "final_loss": 0.005120009394704514,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.4952337741851807
+        "iterations": 2020,
+        "time_seconds": 15.328643798828125
       },
       "both": {
         "poisson": 0.4772219884721567,
         "young": -542271997.5826336,
         "final_loss": 0.0005188378091625628,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.938185691833496
+        "iterations": 2020,
+        "time_seconds": 13.494809865951538
       }
     },
     "poisson_999": {
@@ -2000,24 +2000,24 @@
         "young": 5.009320865092834e-13,
         "final_loss": 0.4910241654177175,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.8215460777282715
+        "iterations": 2020,
+        "time_seconds": 9.902343273162842
       },
       "rest_lengths": {
         "poisson": -0.0007500495392939904,
         "young": 8.563910289032029e-11,
         "final_loss": 0.49105063192932297,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 5.352791786193848
+        "iterations": 2020,
+        "time_seconds": 21.77811908721924
       },
       "both": {
         "poisson": -0.0007762689942418584,
         "young": 6.134807806088318e-12,
         "final_loss": 0.49108737918549,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.086735963821411
+        "iterations": 2020,
+        "time_seconds": 11.061448335647583
       }
     },
     "foam_eta045_314": {
@@ -2026,24 +2026,24 @@
         "young": 3.1531689265446723e-12,
         "final_loss": 0.4923769815594396,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.564732074737549
+        "iterations": 2020,
+        "time_seconds": 9.976120471954346
       },
       "rest_lengths": {
         "poisson": 0.5900901055848885,
         "young": 8.439030568798215e-06,
         "final_loss": 0.012080184890340948,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 1.9327929019927979
+        "iterations": 2020,
+        "time_seconds": 8.49897313117981
       },
       "both": {
         "poisson": 0.5055415693613322,
         "young": 3.221713778029273e-07,
         "final_loss": 0.03781408124645355,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 4.380606651306152
+        "iterations": 2020,
+        "time_seconds": 20.222499132156372
       }
     },
     "poisson_999": {
@@ -2210,24 +2210,24 @@
         "young": 3.236967517959772e-13,
         "final_loss": 0.811273085862522,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.1645665168762207
+        "iterations": 2020,
+        "time_seconds": 10.995657682418823
       },
       "rest_lengths": {
         "poisson": -0.0007218347167514735,
         "young": 6.752488002899765e-11,
         "final_loss": 0.811299823535511,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.254373550415039
+        "iterations": 2020,
+        "time_seconds": 12.313705444335938
       },
       "both": {
         "poisson": -0.0007621808567511008,
         "young": 2.890513099096186e-12,
         "final_loss": 0.8113725064618104,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 3.837184429168701
+        "iterations": 2020,
+        "time_seconds": 14.631996393203735
       }
     },
     "foam_eta045_314": {
@@ -2236,24 +2236,24 @@
         "young": 3.6448597570568415e-12,
         "final_loss": 0.8130645995398644,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.903918504714966
+        "iterations": 2020,
+        "time_seconds": 9.315433502197266
       },
       "rest_lengths": {
         "poisson": 0.8670707916967443,
         "young": 8.107722557759402e-07,
         "final_loss": 0.0010843327594792069,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 2.02988600730896
+        "iterations": 2020,
+        "time_seconds": 10.323812007904053
       },
       "both": {
         "poisson": NaN,
         "young": NaN,
         "final_loss": 0.011775311491814704,
         "converged": false,
-        "iterations": 520,
-        "time_seconds": 11.81208324432373
+        "iterations": 2020,
+        "time_seconds": 54.29596948623657
       }
     },
     "poisson_999": {
@@ -2278,8 +2278,8 @@
         "young": 3.7252534821115315e-06,
         "final_loss": 2.252287447743224e-14,
         "converged": true,
-        "iterations": 520,
-        "time_seconds": 1.7655904293060303
+        "iterations": 2020,
+        "time_seconds": 6.473835229873657
       }
     },
     "poisson_1337": {

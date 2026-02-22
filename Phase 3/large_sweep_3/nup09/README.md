@@ -1,11 +1,11 @@
-# Target Poisson Ratio: nu = +0.9
+# Target Poisson Ratio: nu = 0.9
 
 ## Run Configuration
 
-- **Target nu**: +0.9
+- **Target nu**: 0.9
 - **Mesh size**: (10, 10)
 - **Design variables**: rigidities, rest_lengths, both
-- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=500
+- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=2000
 - **Random restarts per case**: 3 (seeds: 7, 144, 281)
 
 ## Summary
@@ -57,18 +57,18 @@ _Foam eta=0.45 (seed 256) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.000707 | 8.11e-01 | No | 520 | 3.2 |
-| rest_lengths | -0.000722 | 8.11e-01 | No | 520 | 3.3 |
-| both | -0.000762 | 8.11e-01 | No | 520 | 3.8 |
+| rigidities | -0.000707 | 8.11e-01 | No | 2020 | 11.0 |
+| rest_lengths | -0.000722 | 8.11e-01 | No | 2020 | 12.3 |
+| both | -0.000762 | 8.11e-01 | No | 2020 | 14.6 |
 
 ### foam_eta045_314
 _Foam eta=0.45 (seed 314) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.001701 | 8.13e-01 | No | 520 | 2.9 |
-| rest_lengths | +0.867071 | 1.08e-03 | No | 520 | 2.0 |
-| both | NaN | 1.18e-02 | No | 520 | 11.8 |
+| rigidities | -0.001701 | 8.13e-01 | No | 2020 | 9.3 |
+| rest_lengths | +0.867071 | 1.08e-03 | No | 2020 | 10.3 |
+| both | NaN | 1.18e-02 | No | 2020 | 54.3 |
 
 ### poisson_999
 _Poisson random network (seed 999) — Delaunay AFTER perturbation, eta=0.3_
@@ -77,7 +77,7 @@ _Poisson random network (seed 999) — Delaunay AFTER perturbation, eta=0.3_
 |---|---|---|---|---|---|
 | rigidities | +0.900000 | 3.22e-17 | Yes | 60 | 0.5 |
 | rest_lengths | +0.900000 | 6.74e-17 | Yes | 60 | 0.6 |
-| both | +0.900000 | 2.25e-14 | Yes | 520 | 1.8 |
+| both | +0.900000 | 2.25e-14 | Yes | 2020 | 6.5 |
 
 ### poisson_1337
 _Poisson random network (seed 1337) — Delaunay AFTER perturbation, eta=0.3_

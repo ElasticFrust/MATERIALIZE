@@ -5,7 +5,7 @@
 - **Target nu**: -0.5
 - **Mesh size**: (10, 10)
 - **Design variables**: rigidities, rest_lengths, both
-- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=500
+- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=2000
 - **Random restarts per case**: 3 (seeds: 7, 144, 281)
 
 ## Summary
@@ -21,9 +21,9 @@ _Isotropic crystal — regular triangular lattice, shape=(1,1), orientation=0_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.000001 | 2.50e-01 | No | 520 | 1.2 |
-| rest_lengths | +0.000000 | 2.50e-01 | No | 520 | 4.1 |
-| both | +0.000000 | 2.50e-01 | No | 520 | 4.5 |
+| rigidities | -0.000001 | 2.50e-01 | No | 2020 | 4.7 |
+| rest_lengths | +0.000000 | 2.50e-01 | No | 2020 | 5.5 |
+| both | +0.000000 | 2.50e-01 | No | 2020 | 15.5 |
 
 ### aniso_crystal
 _Anisotropic crystal — stretched lattice, shape=(1.5, 0.8), orientation=pi/6_
@@ -31,7 +31,7 @@ _Anisotropic crystal — stretched lattice, shape=(1.5, 0.8), orientation=pi/6_
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
 | rigidities | -0.500000 | 7.79e-15 | Yes | 40 | 0.5 |
-| rest_lengths | -0.499328 | 4.51e-07 | No | 520 | 2.7 |
+| rest_lengths | -0.499328 | 4.51e-07 | No | 2020 | 9.3 |
 | both | -0.500000 | 2.10e-17 | Yes | 60 | 0.9 |
 
 ### foam_eta02_42
@@ -57,9 +57,9 @@ _Foam eta=0.45 (seed 256) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.499971 | 8.50e-10 | No | 520 | 2.0 |
+| rigidities | -0.499971 | 8.50e-10 | No | 2020 | 6.1 |
 | rest_lengths | -0.500000 | 1.30e-16 | Yes | 40 | 0.3 |
-| both | -0.500002 | 5.55e-12 | Yes | 520 | 2.0 |
+| both | -0.500002 | 5.55e-12 | Yes | 2020 | 8.5 |
 
 ### foam_eta045_314
 _Foam eta=0.45 (seed 314) — Delaunay BEFORE perturbation_
@@ -67,8 +67,8 @@ _Foam eta=0.45 (seed 314) — Delaunay BEFORE perturbation_
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
 | rigidities | -0.500000 | 1.58e-18 | Yes | 40 | 0.2 |
-| rest_lengths | -0.500015 | 2.10e-10 | No | 520 | 2.4 |
-| both | -1.110817 | 3.73e-01 | No | 520 | 5.3 |
+| rest_lengths | -0.500015 | 2.10e-10 | No | 2020 | 7.6 |
+| both | -1.110817 | 3.73e-01 | No | 2020 | 22.1 |
 
 ### poisson_999
 _Poisson random network (seed 999) — Delaunay AFTER perturbation, eta=0.3_

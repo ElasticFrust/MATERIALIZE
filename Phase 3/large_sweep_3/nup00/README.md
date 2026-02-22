@@ -1,11 +1,11 @@
-# Target Poisson Ratio: nu = +0.0
+# Target Poisson Ratio: nu = 0.0
 
 ## Run Configuration
 
-- **Target nu**: +0.0
+- **Target nu**: 0.0
 - **Mesh size**: (10, 10)
 - **Design variables**: rigidities, rest_lengths, both
-- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=500
+- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=2000
 - **Random restarts per case**: 3 (seeds: 7, 144, 281)
 
 ## Summary
@@ -21,9 +21,9 @@ _Isotropic crystal — regular triangular lattice, shape=(1,1), orientation=0_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | +0.000000 | 9.91e-14 | Yes | 520 | 0.4 |
-| rest_lengths | +0.000001 | 3.59e-13 | Yes | 520 | 3.9 |
-| both | +0.000001 | 1.14e-12 | Yes | 520 | 5.1 |
+| rigidities | +0.000000 | 9.91e-14 | Yes | 2020 | 1.6 |
+| rest_lengths | +0.000001 | 3.59e-13 | Yes | 2020 | 5.4 |
+| both | +0.000001 | 1.14e-12 | Yes | 2020 | 13.7 |
 
 ### aniso_crystal
 _Anisotropic crystal — stretched lattice, shape=(1.5, 0.8), orientation=pi/6_
@@ -57,18 +57,18 @@ _Foam eta=0.45 (seed 256) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.000758 | 5.74e-07 | No | 520 | 3.2 |
-| rest_lengths | -0.000741 | 5.49e-07 | No | 520 | 3.2 |
-| both | -0.000788 | 6.21e-07 | No | 520 | 4.5 |
+| rigidities | -0.000758 | 5.74e-07 | No | 2020 | 10.4 |
+| rest_lengths | -0.000741 | 5.49e-07 | No | 2020 | 10.9 |
+| both | -0.000788 | 6.21e-07 | No | 2020 | 16.1 |
 
 ### foam_eta045_314
 _Foam eta=0.45 (seed 314) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.001659 | 2.75e-06 | No | 520 | 1.0 |
-| rest_lengths | -2.017671 | 4.07e+00 | No | 520 | 3.6 |
-| both | +0.101879 | 1.04e-02 | No | 520 | 3.4 |
+| rigidities | -0.001659 | 2.75e-06 | No | 2020 | 4.3 |
+| rest_lengths | -2.017671 | 4.07e+00 | No | 2020 | 15.3 |
+| both | +0.101879 | 1.04e-02 | No | 2020 | 14.6 |
 
 ### poisson_999
 _Poisson random network (seed 999) — Delaunay AFTER perturbation, eta=0.3_

@@ -5,7 +5,7 @@
 - **Target nu**: -0.3
 - **Mesh size**: (10, 10)
 - **Design variables**: rigidities, rest_lengths, both
-- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=500
+- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=2000
 - **Random restarts per case**: 3 (seeds: 7, 144, 281)
 
 ## Summary
@@ -21,9 +21,9 @@ _Isotropic crystal — regular triangular lattice, shape=(1,1), orientation=0_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | +0.000000 | 9.00e-02 | No | 520 | 2.8 |
-| rest_lengths | +0.000000 | 9.00e-02 | No | 520 | 3.5 |
-| both | +0.000000 | 9.00e-02 | No | 520 | 3.9 |
+| rigidities | +0.000000 | 9.00e-02 | No | 2020 | 9.9 |
+| rest_lengths | +0.000000 | 9.00e-02 | No | 2020 | 4.5 |
+| both | +0.000000 | 9.00e-02 | No | 2020 | 13.1 |
 
 ### aniso_crystal
 _Anisotropic crystal — stretched lattice, shape=(1.5, 0.8), orientation=pi/6_
@@ -57,18 +57,18 @@ _Foam eta=0.45 (seed 256) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.299889 | 1.23e-08 | No | 520 | 2.2 |
-| rest_lengths | -0.300023 | 5.25e-10 | No | 520 | 1.9 |
-| both | -0.299881 | 1.42e-08 | No | 520 | 3.1 |
+| rigidities | -0.299889 | 1.23e-08 | No | 2020 | 8.6 |
+| rest_lengths | -0.300023 | 5.25e-10 | No | 2020 | 8.1 |
+| both | -0.299881 | 1.42e-08 | No | 2020 | 12.1 |
 
 ### foam_eta045_314
 _Foam eta=0.45 (seed 314) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.300002 | 3.31e-12 | Yes | 520 | 1.8 |
-| rest_lengths | -0.299909 | 8.32e-09 | No | 520 | 2.4 |
-| both | -0.493973 | 3.76e-02 | No | 520 | 2.4 |
+| rigidities | -0.300002 | 3.31e-12 | Yes | 2020 | 6.6 |
+| rest_lengths | -0.299909 | 8.32e-09 | No | 2020 | 7.6 |
+| both | -0.493973 | 3.76e-02 | No | 2020 | 10.8 |
 
 ### poisson_999
 _Poisson random network (seed 999) — Delaunay AFTER perturbation, eta=0.3_

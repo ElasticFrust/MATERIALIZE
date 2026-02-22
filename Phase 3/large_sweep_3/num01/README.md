@@ -5,7 +5,7 @@
 - **Target nu**: -0.1
 - **Mesh size**: (10, 10)
 - **Design variables**: rigidities, rest_lengths, both
-- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=500
+- **Optimizer**: L-BFGS, lr=0.05, tol=1e-14, max_iter=2000
 - **Random restarts per case**: 3 (seeds: 7, 144, 281)
 
 ## Summary
@@ -21,9 +21,9 @@ _Isotropic crystal — regular triangular lattice, shape=(1,1), orientation=0_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | +0.000000 | 1.00e-02 | No | 520 | 1.2 |
-| rest_lengths | +0.000000 | 1.00e-02 | No | 520 | 3.6 |
-| both | +0.000000 | 1.00e-02 | No | 520 | 4.6 |
+| rigidities | +0.000000 | 1.00e-02 | No | 2020 | 4.9 |
+| rest_lengths | +0.000000 | 1.00e-02 | No | 2020 | 5.1 |
+| both | +0.000000 | 1.00e-02 | No | 2020 | 14.2 |
 
 ### aniso_crystal
 _Anisotropic crystal — stretched lattice, shape=(1.5, 0.8), orientation=pi/6_
@@ -57,9 +57,9 @@ _Foam eta=0.45 (seed 256) — Delaunay BEFORE perturbation_
 
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
-| rigidities | -0.099992 | 5.76e-11 | No | 520 | 2.2 |
-| rest_lengths | -0.099982 | 3.09e-10 | No | 520 | 2.2 |
-| both | -0.100011 | 1.17e-10 | No | 520 | 3.0 |
+| rigidities | -0.099992 | 5.76e-11 | No | 2020 | 8.3 |
+| rest_lengths | -0.099982 | 3.09e-10 | No | 2020 | 7.6 |
+| both | -0.100011 | 1.17e-10 | No | 2020 | 12.8 |
 
 ### foam_eta045_314
 _Foam eta=0.45 (seed 314) — Delaunay BEFORE perturbation_
@@ -67,8 +67,8 @@ _Foam eta=0.45 (seed 314) — Delaunay BEFORE perturbation_
 | Design Variable | Achieved nu | Loss | Converged | Iterations | Time (s) |
 |---|---|---|---|---|---|
 | rigidities | -0.100000 | 1.00e-16 | Yes | 40 | 0.2 |
-| rest_lengths | -1.827798 | 2.99e+00 | No | 520 | 4.3 |
-| both | NaN | 7.82e+00 | No | 520 | 11.8 |
+| rest_lengths | -1.827798 | 2.99e+00 | No | 2020 | 18.3 |
+| both | NaN | 7.82e+00 | No | 2020 | 54.5 |
 
 ### poisson_999
 _Poisson random network (seed 999) — Delaunay AFTER perturbation, eta=0.3_
