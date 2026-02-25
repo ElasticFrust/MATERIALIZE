@@ -1,9 +1,19 @@
 #!/usr/bin/env python
 """Large sweep 6 — Robust isotropic Poisson-ratio targeting (15×15 meshes).
 
-Same as sweep 5 but on LARGER meshes (15×15) with 5 restarts to keep
-runtime reasonable. Larger meshes have more edges → more design freedom
-→ potentially better optimisation.
+Key improvements over sweep 4:
+  - Wider, multi-scale random restarts (10 seeds, 3 init widths)
+  - Rigidity clamping during optimisation to prevent NaN/overflow
+  - Degenerate-init detection: skip seeds where |nu_init| > 5
+  - Reports both nu_xy and nu_yx
+  - Aggregated statistics by topology *class*
+  - Per-target: mesh plots, polar plots, histograms, residual energy
+
+Topology classes:
+  crystal   — iso_crystal, aniso_crystal
+  foam_02   — foam_eta02_{42,137}
+  foam_045  — foam_eta045_{256,314}
+  poisson   — poisson_{999,1337}
 
 Total: 11 targets × 8 topos × 3 DVs = 264 cases
 """
@@ -42,7 +52,7 @@ SUCCESS_THRESH  = 0.01
 K_CLAMP         = (1e-6, 1e6)        # clamp rigidities to prevent overflow
 RL_CLAMP        = (1e-4, 1e4)        # clamp rest lengths
 NU_INIT_LIMIT   = 5.0                # reject init if |nu| > this
-N_RESTARTS      = 5                  # random restarts per case (fewer for larger mesh)
+N_RESTARTS      = 5                  # random restarts per case
 INIT_WIDTHS     = [0.5, 1.5, 2.5]   # spread for log-normal init
 OUT             = os.path.dirname(os.path.abspath(__file__))
 
@@ -385,28 +395,48 @@ for t in topologies:
 print(f"\nTotal: {N_TOPOS} topologies")
 
 
-# ── Main optimisation loop ───────────────────────────────────────────────
+# ── Main optimisation loop (with checkpointing) ─────────────────────────
 N_CASES = len(POISSON_TARGETS) * N_TOPOS * len(DESIGN_VARS)
+json_path = os.path.join(OUT, 'sweep_results.json')
+
+# Resume from checkpoint if it exists
+if os.path.exists(json_path):
+    with open(json_path) as f:
+        results = json.load(f)
+    n_existing = sum(1 for k in results for tn in results[k] for dv in results[k][tn])
+    print(f"\nResuming from checkpoint: {n_existing} cases already done")
+else:
+    results = {}
+
 print(f"\n{'='*70}")
 print(f"Running ISOTROPIC sweep: {len(POISSON_TARGETS)} targets × {N_TOPOS} topos"
       f" × {len(DESIGN_VARS)} dvs = {N_CASES} cases")
 print(f"  restarts per case = {N_RESTARTS}, init widths = {INIT_WIDTHS}")
 print(f"{'='*70}")
 
-results = {}
 t_start = time.time()
 case_num = 0
+n_skipped = 0
 
 for target_nu in POISSON_TARGETS:
     key = f"{target_nu:+.1f}"
-    results[key] = {}
+    if key not in results:
+        results[key] = {}
     for topo in topologies:
-        results[key][topo['name']] = {}
+        if topo['name'] not in results[key]:
+            results[key][topo['name']] = {}
         for dv in DESIGN_VARS:
             case_num += 1
+
+            # Skip already computed cases
+            if dv in results[key][topo['name']]:
+                n_skipped += 1
+                continue
+
+            n_done = case_num - n_skipped
             elapsed_total = time.time() - t_start
-            if case_num > 1:
-                eta_s = elapsed_total / (case_num - 1) * (N_CASES - case_num + 1)
+            if n_done > 1:
+                eta_s = elapsed_total / (n_done - 1) * (N_CASES - case_num)
             else:
                 eta_s = 0
 
@@ -445,15 +475,14 @@ for target_nu in POISSON_TARGETS:
                   f"topo={topo['name']:25s}  dv={dv:13s}  "
                   f"nu_xy={nu_str}  "
                   f"loss={results[key][topo['name']][dv]['final_loss']:.2e}  "
-                  f"{tag}  [ETA {eta_s:.0f}s]")
+                  f"{tag}  [ETA {eta_s:.0f}s]", flush=True)
+
+            # Checkpoint after every case
+            with open(json_path, 'w') as f:
+                json.dump(results, f, indent=2, default=str)
 
 total_time = time.time() - t_start
-print(f"\nSweep complete in {total_time:.1f}s")
-
-# Save JSON
-json_path = os.path.join(OUT, 'sweep_results.json')
-with open(json_path, 'w') as f:
-    json.dump(results, f, indent=2, default=str)
+print(f"\nSweep complete in {total_time:.1f}s (skipped {n_skipped} cached)")
 print(f"Saved {json_path}")
 
 
