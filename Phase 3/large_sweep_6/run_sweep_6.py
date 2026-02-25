@@ -33,7 +33,7 @@ from forward_solver_torch import from_triangulation
 POISSON_TARGETS = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.0, 0.1, 0.3, 0.5, 0.7, 0.9]
 DESIGN_VARS     = ['rigidities', 'rest_lengths', 'both']
 MESH_SIZE       = (15, 15)
-MAX_ITER        = 2000
+MAX_ITER        = 1000
 LR              = 0.05
 TOL             = 1e-14
 ISOTROPIC       = True

@@ -43,7 +43,7 @@ from forward_solver_torch import from_triangulation
 POISSON_TARGETS = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.0, 0.1, 0.3, 0.5, 0.7, 0.9]
 DESIGN_VARS     = ['rigidities', 'rest_lengths', 'both']
 MESH_SIZE       = (10, 10)
-MAX_ITER        = 2000
+MAX_ITER        = 1000
 LR              = 0.05
 TOL             = 1e-14
 ISOTROPIC       = True
@@ -52,7 +52,7 @@ SUCCESS_THRESH  = 0.01
 K_CLAMP         = (1e-6, 1e6)        # clamp rigidities to prevent overflow
 RL_CLAMP        = (1e-4, 1e4)        # clamp rest lengths
 NU_INIT_LIMIT   = 5.0                # reject init if |nu| > this
-N_RESTARTS      = 10                 # random restarts per case
+N_RESTARTS      = 5                  # random restarts per case
 INIT_WIDTHS     = [0.5, 1.5, 2.5]   # spread for log-normal init
 OUT             = os.path.dirname(os.path.abspath(__file__))
 
