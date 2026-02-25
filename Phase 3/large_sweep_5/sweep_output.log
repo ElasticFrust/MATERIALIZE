@@ -1,0 +1,22 @@
+======================================================================
+Generating topologies ...
+======================================================================
+  iso_crystal                 944 tri  natural nu=+0.3333  class=crystal
+  aniso_crystal              1154 tri  natural nu=+0.1708  class=crystal
+  foam_eta02_42               944 tri  natural nu=+0.2669  class=foam_02
+  foam_eta02_137              944 tri  natural nu=+0.2667  class=foam_02
+  foam_eta045_256             944 tri  natural nu=-0.0339  class=foam_045
+  foam_eta045_314             944 tri  natural nu=-2.8824  class=foam_045
+  poisson_999                 926 tri  natural nu=+0.1762  class=poisson
+  poisson_1337                913 tri  natural nu=+0.1616  class=poisson
+
+Total: 8 topologies
+
+======================================================================
+Running ISOTROPIC sweep: 11 targets × 8 topos × 3 dvs = 264 cases
+  restarts per case = 10, init widths = [0.5, 1.5, 2.5]
+======================================================================
+  [  1/264] nu*=-0.9  topo=iso_crystal                dv=rigidities     nu_xy=+0.3333  loss=1.50e+00  [  ]  [ETA 0s]
+  [  2/264] nu*=-0.9  topo=iso_crystal                dv=rest_lengths   nu_xy=-0.2827  loss=1.49e+00  [  ]  [ETA 33259s]
+  [  3/264] nu*=-0.9  topo=iso_crystal                dv=both           nu_xy=+0.3333  loss=1.50e+00  [  ]  [ETA 39233s]
+  [  4/264] nu*=-0.9  topo=aniso_crystal              dv=rigidities     nu_xy=+0.2224  loss=1.51e+00  [  ]  [ETA 37463s]
