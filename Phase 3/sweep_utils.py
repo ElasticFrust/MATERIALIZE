@@ -117,6 +117,99 @@ def generate_all_topologies(mesh_size):
     return topologies
 
 
+# ── Virtual distortion rigidity assignment ────────────────────────────────
+def virtual_distortion_rigidities(size, eta, a, seed=None):
+    """Assign heterogeneous rigidities to a regular lattice via virtual distortion.
+
+    Method
+    ------
+    1. Create a regular triangular lattice and Delaunay-triangulate it.
+    2. Clone the node positions and perturb each node by a random displacement
+       of magnitude *eta* (uniform random angle).
+    3. For every edge, measure the deformed length *l* in the clone and the
+       original rest length *l0* in the undeformed lattice.
+    4. Assign per-edge rigidity  k = 1 + tanh(a * (l - l0)).
+
+    The **topology** (simplices, edges) comes from the original undeformed
+    lattice and is never recomputed.  Only the clone's node positions are
+    perturbed to obtain the heterogeneous rigidities.
+
+    Parameters
+    ----------
+    size : tuple of int
+        (sx, sy) — half-extent of the mesh bounding box.
+    eta : float
+        Amplitude of the virtual perturbation applied to each node.
+    a : float
+        Sensitivity parameter controlling how strongly length changes
+        map to rigidity changes.
+    seed : int or None
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    dict with keys
+        tri           — scipy Delaunay triangulation (original, undeformed)
+        solver        — ElasticSolver built on the original geometry
+        rigidities    — torch.Tensor (N, 3) per-edge rigidities
+        rigidities_np — numpy array  (N, 3) same
+        n_tri         — number of triangles
+        default_rl    — torch.Tensor (N, 3) actual edge lengths
+        eta, a        — the parameters used
+        l0            — numpy (N, 3) original edge lengths
+        l_deformed    — numpy (N, 3) deformed edge lengths
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    # 1. Regular triangular lattice (equilateral, edge length ≈ 1)
+    tri = D2C.generate_cryratl_points(size=size, shape=(1, 1), orientation=0)
+
+    # 2. Clone and perturb node positions
+    original_points = tri.points.copy()
+    deformed_points = original_points.copy()
+    thetas = 2 * np.pi * np.random.rand(len(deformed_points))
+    deformed_points[:, 0] += eta * np.cos(thetas)
+    deformed_points[:, 1] += eta * np.sin(thetas)
+
+    # 3. Edge index pairs (same topology for both original and clone)
+    edges = np.array([
+        [(s[i], s[j]) for i in range(3) for j in range(i + 1, 3)]
+        for s in tri.simplices
+    ])  # (N, 3, 2)
+
+    node_a = edges[:, :, 0]
+    node_b = edges[:, :, 1]
+
+    # Original edge lengths
+    orig_vecs = original_points[node_a] - original_points[node_b]
+    l0 = np.sqrt(np.sum(orig_vecs ** 2, axis=2))  # (N, 3)
+
+    # Deformed edge lengths (same topology, perturbed positions)
+    def_vecs = deformed_points[node_a] - deformed_points[node_b]
+    l_def = np.sqrt(np.sum(def_vecs ** 2, axis=2))  # (N, 3)
+
+    # 4. Rigidity rule
+    rigidities = 1.0 + np.tanh(a * (l_def - l0))  # (N, 3)
+
+    # Build solver from the ORIGINAL undeformed geometry
+    solver, _, default_rl = from_triangulation(tri)
+    rigs_torch = torch.tensor(rigidities, dtype=torch.float64)
+
+    return {
+        'tri': tri,
+        'solver': solver,
+        'rigidities': rigs_torch,
+        'rigidities_np': rigidities,
+        'n_tri': len(tri.simplices),
+        'default_rl': default_rl,
+        'eta': eta,
+        'a': a,
+        'l0': l0,
+        'l_deformed': l_def,
+    }
+
+
 # ── Single optimisation run ──────────────────────────────────────────────
 def run_optimisation(solver, n_tri, target_nu, dv, seed, init_width=0.5,
                      weight_isotropy=10.0, max_iter=1000, lr=0.05):
