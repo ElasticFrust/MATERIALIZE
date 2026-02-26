@@ -207,6 +207,7 @@ def virtual_distortion_rigidities(size, eta, a, seed=None):
         'a': a,
         'l0': l0,
         'l_deformed': l_def,
+        'deformed_points': deformed_points,
     }
 
 
