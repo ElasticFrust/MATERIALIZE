@@ -13,7 +13,7 @@ Usage:
     python postprocess_all_meshes.py /path/to  # uses given folder
 """
 
-import sys, os, json, time, warnings
+import sys, os, json, warnings
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'Phase 2'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'Phase 3'))
@@ -21,41 +21,23 @@ os.environ['MPLBACKEND'] = 'Agg'
 warnings.filterwarnings('ignore', category=UserWarning)
 
 import numpy as np
-import scipy as sp
-import torch
-import torch.nn.functional as F
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
-from matplotlib.colors import TwoSlopeNorm, LogNorm
-import matplotlib.cm as cm
+from matplotlib.colors import TwoSlopeNorm
 
-import Disc_2_Cont_optimized as D2C
-from forward_solver_torch import from_triangulation
+from sweep_utils import (
+    generate_all_topologies, run_optimisation, run_case,
+    plot_mesh, plot_plain_mesh, get_edge_angles, compute_residual_energy,
+    TOPO_CLASSES,
+)
 
 # ── Configuration ─────────────────────────────────────────────────────────
 POISSON_TARGETS = [-0.9, -0.7, -0.5, -0.3, -0.1, 0.0, 0.1, 0.3, 0.5, 0.7, 0.9]
 DESIGN_VARS     = ['rigidities', 'rest_lengths', 'both']
 SUCCESS_THRESH  = 0.01
-K_CLAMP         = (1e-6, 1e6)
-RL_CLAMP        = (1e-4, 1e4)
-NU_INIT_LIMIT   = 5.0
-MAX_ITER        = 1000
-LR              = 0.05
 N_RESTARTS_ANISO = 5
 INIT_WIDTHS     = [0.5, 1.5, 2.5]
-
-TOPO_CLASSES = {
-    'iso_crystal':    'crystal',
-    'aniso_crystal':  'crystal',
-    'foam_eta02_42':  'foam_02',
-    'foam_eta02_137': 'foam_02',
-    'foam_eta045_256':'foam_045',
-    'foam_eta045_314':'foam_045',
-    'poisson_999':    'poisson',
-    'poisson_1337':   'poisson',
-}
 
 # ── Determine paths ───────────────────────────────────────────────────────
 if len(sys.argv) > 1:
@@ -70,13 +52,13 @@ with open(json_path) as f:
     results = json.load(f)
 
 # Detect mesh size from the run_sweep script
+MESH_SIZE = (10, 10)
 for fn in ['run_sweep_5.py', 'run_sweep_6.py', 'run_sweep_7.py']:
     spath = os.path.join(OUT, fn)
     if os.path.exists(spath):
         with open(spath) as f:
             for line in f:
                 if 'MESH_SIZE' in line and '=' in line:
-                    # Parse MESH_SIZE = (10, 10) or similar
                     try:
                         val = line.split('=', 1)[1].strip()
                         MESH_SIZE = eval(val)
@@ -86,313 +68,37 @@ for fn in ['run_sweep_5.py', 'run_sweep_6.py', 'run_sweep_7.py']:
                     break
         break
 else:
-    MESH_SIZE = (10, 10)
     print(f"Using default MESH_SIZE = {MESH_SIZE}")
-
-
-# ── Parameterisation ──────────────────────────────────────────────────────
-def raw_to_k(raw):
-    return F.softplus(raw, beta=5.0)
-
-def k_to_raw(k):
-    return torch.log(torch.expm1(5.0 * k)) / 5.0
-
-
-# ── Poisson random network ───────────────────────────────────────────────
-def generate_poisson_network(size, eta):
-    v1 = np.array([1, 0])
-    v2 = np.array([0.5, np.sqrt(3)/2])
-    MaxPos = int(round(2 * (max(size) / min([np.sqrt(3)/2, 1]))))
-    points = []
-    for n in range(-MaxPos, MaxPos):
-        for m in range(-MaxPos, MaxPos):
-            theta = 2 * np.pi * np.random.rand()
-            pt = n*v1 + m*v2 + eta * np.array([np.cos(theta), np.sin(theta)])
-            points.append(pt)
-    points = np.array(points)
-    mask = ((points[:, 0] <= size[0]+2) & (points[:, 0] >= -(size[0]+2)) &
-            (points[:, 1] <= size[1]+2) & (points[:, 1] >= -(size[1]+2)))
-    points = points[mask]
-    DM = sp.spatial.Delaunay(points)
-    centroids = np.mean(DM.points[DM.simplices], axis=1)
-    goods = (np.abs(centroids[:, 0]) <= size[0]) & (np.abs(centroids[:, 1]) <= size[1])
-    DM.all_simplices = DM.simplices
-    DM.simplices = DM.simplices[np.where(goods)]
-    return DM
-
-
-# ── Optimisation (supports both isotropic and anisotropic) ────────────────
-def run_optimisation(solver, n_tri, target_nu, dv, seed, init_width=0.5,
-                     weight_isotropy=10.0):
-    """One L-BFGS run. weight_isotropy=0 for pure nu targeting (anisotropic)."""
-    torch.manual_seed(seed)
-    shape = (n_tri, 3)
-    actual_lengths = solver.actual_length2.sqrt()
-
-    opt_params = []
-    if dv in ('rigidities', 'both'):
-        init_k = torch.exp(init_width * torch.randn(*shape, dtype=torch.float64)).clamp(*K_CLAMP)
-        raw_k = k_to_raw(init_k).clone().detach().requires_grad_(True)
-        opt_params.append(raw_k)
-    else:
-        raw_k = None
-        fixed_k = torch.ones(*shape, dtype=torch.float64)
-
-    if dv in ('rest_lengths', 'both'):
-        init_rl = (actual_lengths * torch.exp(init_width * torch.randn(*shape, dtype=torch.float64))).clamp(*RL_CLAMP)
-        raw_rl = k_to_raw(init_rl).clone().detach().requires_grad_(True)
-        opt_params.append(raw_rl)
-    else:
-        raw_rl = None
-
-    with torch.no_grad():
-        k0 = raw_to_k(raw_k) if raw_k is not None else fixed_k
-        rl0 = raw_to_k(raw_rl) if raw_rl is not None else None
-        try:
-            r0 = solver(k0, rest_lengths=rl0)
-        except Exception:
-            return None
-        nu0 = r0['poisson'].item()
-        if np.isnan(nu0) or np.isinf(nu0) or abs(nu0) > NU_INIT_LIMIT:
-            return None
-
-    best_loss = float('inf')
-    best_params = [p.clone().detach() for p in opt_params]
-
-    def compute_loss():
-        optimizer.zero_grad()
-        k = raw_to_k(raw_k).clamp(*K_CLAMP) if raw_k is not None else fixed_k
-        rl = raw_to_k(raw_rl).clamp(*RL_CLAMP) if raw_rl is not None else None
-        result = solver(k, rest_lengths=rl)
-        C = result['elastic_tensor']
-        if torch.isnan(C).any() or torch.isinf(C).any():
-            return torch.tensor(float('inf'), dtype=torch.float64, requires_grad=True)
-
-        nu_iso = C[2] / C[0]
-        loss = (nu_iso - target_nu) ** 2
-
-        if weight_isotropy > 0:
-            scale2 = (C[0]**2 + C[5]**2).detach().clamp(min=1e-30)
-            loss = loss + weight_isotropy * (C[0] - C[5])**2 / scale2
-            loss = loss + weight_isotropy * C[1]**2 / scale2
-            loss = loss + weight_isotropy * C[4]**2 / scale2
-            loss = loss + weight_isotropy * (C[3] - (C[0] - C[2]) / 2)**2 / scale2
-
-        if torch.isnan(loss) or torch.isinf(loss):
-            return torch.tensor(float('inf'), dtype=torch.float64, requires_grad=True)
-        loss.backward()
-        for p in opt_params:
-            if p.grad is not None:
-                p.grad.clamp_(-1e3, 1e3)
-        return loss
-
-    optimizer = torch.optim.LBFGS(
-        opt_params, lr=LR, max_iter=20, line_search_fn='strong_wolfe',
-        tolerance_grad=1e-14, tolerance_change=1e-16)
-
-    nan_streak = 0
-    for outer in range(MAX_ITER // 20 + 1):
-        try:
-            loss_val = optimizer.step(compute_loss)
-        except Exception:
-            nan_streak += 1
-            if nan_streak > 3:
-                break
-            continue
-        current = loss_val.item()
-        if np.isnan(current) or np.isinf(current):
-            nan_streak += 1
-            if nan_streak > 3:
-                break
-            continue
-        nan_streak = 0
-        if current < best_loss:
-            best_loss = current
-            best_params = [p.clone().detach() for p in opt_params]
-        if current < 1e-14:
-            break
-
-    if np.isnan(best_loss) or np.isinf(best_loss):
-        return None
-
-    with torch.no_grad():
-        pi = 0
-        if raw_k is not None:
-            k_best = raw_to_k(best_params[pi]).clamp(*K_CLAMP); pi += 1
-        else:
-            k_best = fixed_k
-        if raw_rl is not None:
-            rl_best = raw_to_k(best_params[pi]).clamp(*RL_CLAMP)
-        else:
-            rl_best = actual_lengths
-        result = solver(k_best, rest_lengths=rl_best if raw_rl is not None else None)
-
-    C_np = result['elastic_tensor'].numpy()
-    C_voigt = np.array([
-        [C_np[0], C_np[2], C_np[1]],
-        [C_np[2], C_np[5], C_np[4]],
-        [C_np[1], C_np[4], C_np[3]],
-    ])
-    try:
-        S = np.linalg.inv(C_voigt)
-        nu_xy = -S[1, 0] / S[0, 0]
-        nu_yx = -S[0, 1] / S[1, 1]
-    except np.linalg.LinAlgError:
-        nu_xy = nu_yx = float('nan')
-
-    return {
-        'final_loss': best_loss,
-        'rigidities': k_best.numpy(),
-        'rest_lengths': rl_best.numpy(),
-        'poisson': result['poisson'].item(),
-        'nu_xy': nu_xy,
-        'nu_yx': nu_yx,
-        'pred_tensor': C_np,
-        'seed': seed,
-        'init_width': init_width,
-    }
 
 
 def run_case_aniso(solver, n_tri, target_nu, dv):
     """Run non-isotropic optimisation (just target nu, no isotropy penalty)."""
-    best = None
-    for restart_idx in range(N_RESTARTS_ANISO):
-        width = INIT_WIDTHS[restart_idx % len(INIT_WIDTHS)]
-        seed = restart_idx * 137 + 42
-        r = run_optimisation(solver, n_tri, target_nu, dv, seed=seed,
-                             init_width=width, weight_isotropy=0.0)
-        if r is not None and (best is None or r['final_loss'] < best['final_loss']):
-            best = r
-    return best
+    return run_case(solver, n_tri, target_nu, dv,
+                    n_restarts=N_RESTARTS_ANISO, init_widths=INIT_WIDTHS,
+                    weight_isotropy=0.0)
 
 
-# ── Mesh plot ─────────────────────────────────────────────────────────────
-def plot_mesh(tri_obj, rigs, rl, actual_rl, dv, ax, title_extra=''):
-    points = tri_obj.points
-    simplices = tri_obj.simplices
-    segments, colors, lws = [], [], []
-
-    if dv == 'rest_lengths':
-        vals = (rl / actual_rl).ravel()
-        label = 'l0/l_actual'
-        p2, p98 = np.percentile(vals, [2, 98])
-        if abs(p2 - p98) < 1e-10:
-            p2, p98 = vals.min(), vals.max()
-        if p2 == p98:
-            p2, p98 = p2 - 0.1, p98 + 0.1
-        norm = TwoSlopeNorm(vmin=min(p2, 0.5), vcenter=1.0, vmax=max(p98, 2.0))
-        cmap = 'coolwarm'
-        for ti, sv in enumerate(simplices):
-            for ei, (a, b) in enumerate([(sv[0],sv[1]),(sv[0],sv[2]),(sv[1],sv[2])]):
-                segments.append([points[a], points[b]])
-                v = rl[ti, ei] / actual_rl[ti, ei]
-                colors.append(v)
-                lws.append(0.3 + 2.0 * abs(v - 1.0))
-    else:
-        vals = rigs.ravel()
-        vals_pos = vals[vals > 0]
-        if len(vals_pos) == 0:
-            vals_pos = np.array([1.0])
-        p2, p98 = np.percentile(vals_pos, [2, 98])
-        if p98 / max(p2, 1e-15) < 100:
-            p2 = p98 / 100
-        norm = LogNorm(vmin=max(p2, 1e-10), vmax=max(p98, p2*100), clip=True)
-        cmap = 'inferno'
-        label = 'Rigidity k'
-        for ti, sv in enumerate(simplices):
-            for ei, (a, b) in enumerate([(sv[0],sv[1]),(sv[0],sv[2]),(sv[1],sv[2])]):
-                segments.append([points[a], points[b]])
-                c = max(rigs[ti, ei], 1e-10)
-                colors.append(c)
-                log_c = np.log10(c)
-                log_lo = np.log10(max(p2, 1e-10))
-                log_hi = np.log10(max(p98, p2*100))
-                frac = (log_c - log_lo) / max(log_hi - log_lo, 1e-10)
-                lws.append(0.15 + 2.35 * np.clip(frac, 0, 1))
-
-    colors = np.array(colors)
-    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidths=lws)
-    lc.set_array(colors)
-    ax.add_collection(lc)
-    ax.set_xlim(points[:, 0].min()-0.5, points[:, 0].max()+0.5)
-    ax.set_ylim(points[:, 1].min()-0.5, points[:, 1].max()+0.5)
-    ax.set_aspect('equal')
-    ax.set_title(title_extra, fontsize=7)
-    plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax,
-                 label=label, shrink=0.7, pad=0.02)
-
-
-def get_edge_angles(tri_obj):
-    points = tri_obj.points
-    simplices = tri_obj.simplices
-    angles = np.zeros((len(simplices), 3))
-    for ti, sv in enumerate(simplices):
-        for ei, (a, b) in enumerate([(sv[0],sv[1]),(sv[0],sv[2]),(sv[1],sv[2])]):
-            dx = points[b, 0] - points[a, 0]
-            dy = points[b, 1] - points[a, 1]
-            angles[ti, ei] = np.arctan2(dy, dx)
-    return angles
-
-
-def compute_residual_energy(solver, rigs, rl):
-    actual_l = solver.actual_length2.sqrt().numpy()
-    return 0.5 * rigs * (actual_l - rl) ** 2
-
-
-# ── Generate topologies (same as sweep scripts) ─────────────────────────
+# ── Generate topologies ─────────────────────────────────────────────────
 print("=" * 70)
 print("Generating topologies ...")
 print("=" * 70)
 
-topologies = []
-
-def add_topo(name, tri, seed_val):
-    solver, default_rigs, _ = from_triangulation(tri)
-    n_tri = len(tri.simplices)
-    actual_rl = solver.actual_length2.sqrt().numpy()
-    with torch.no_grad():
-        gt = solver(default_rigs)
-    topologies.append({
-        'name': name, 'tri': tri, 'solver': solver,
-        'n_tri': n_tri, 'default_rigs': default_rigs,
-        'actual_rl': actual_rl,
-        'natural_poisson': gt['poisson'].item(),
-        'topo_class': TOPO_CLASSES[name],
-    })
-
-tri = D2C.generate_cryratl_points(size=MESH_SIZE, shape=(1, 1), orientation=0)
-add_topo('iso_crystal', tri, 0)
-tri = D2C.generate_cryratl_points(size=MESH_SIZE, shape=(1.5, 0.8), orientation=np.pi/6)
-add_topo('aniso_crystal', tri, 0)
-for seed in [42, 137]:
-    np.random.seed(seed)
-    tri = D2C.generate_foam_points(size=MESH_SIZE, eta=0.2)
-    add_topo(f'foam_eta02_{seed}', tri, seed)
-for seed in [256, 314]:
-    np.random.seed(seed)
-    tri = D2C.generate_foam_points(size=MESH_SIZE, eta=0.45)
-    add_topo(f'foam_eta045_{seed}', tri, seed)
-for seed in [999, 1337]:
-    np.random.seed(seed)
-    tri = generate_poisson_network(size=MESH_SIZE, eta=0.3)
-    add_topo(f'poisson_{seed}', tri, seed)
-
+topologies = generate_all_topologies(MESH_SIZE)
 for t in topologies:
     print(f"  {t['name']:25s}  {t['n_tri']:4d} tri  class={t['topo_class']}")
 
-# Build lookup
 topo_by_name = {t['name']: t for t in topologies}
 
 # ── Output directory ──────────────────────────────────────────────────────
 all_meshes_dir = os.path.join(OUT, 'all_meshes')
 os.makedirs(all_meshes_dir, exist_ok=True)
 
-# ── Process every target × topology ──────────────────────────────────────
+# ── Process every target x topology ──────────────────────────────────────
 print(f"\n{'='*70}")
 print("Generating plots for ALL cases (including non-converged) ...")
 print(f"{'='*70}")
 
-aniso_results = {}  # cache non-isotropic results
+aniso_results = {}
 
 for target_nu in POISSON_TARGETS:
     key = f"{target_nu:+.1f}"
@@ -414,7 +120,7 @@ for target_nu in POISSON_TARGETS:
         if tname not in results[key]:
             continue
 
-        # Find best DV for this topo (lowest isotropic loss)
+        # Find best DV (lowest isotropic loss)
         best_dv = None
         best_loss = float('inf')
         for dv in DESIGN_VARS:
@@ -434,7 +140,7 @@ for target_nu in POISSON_TARGETS:
         rd_best = results[key][tname][best_dv]
         converged = rd_best.get('converged', False)
 
-        # ── Re-run best isotropic case to get per-edge arrays ─────────
+        # Re-run best isotropic case to get per-edge arrays
         iso_edge = None
         if rd_best.get('seed') is not None:
             iso_edge = run_optimisation(
@@ -443,14 +149,14 @@ for target_nu in POISSON_TARGETS:
                 init_width=rd_best.get('init_width', 0.5),
                 weight_isotropy=10.0)
 
-        # ── For non-converged: also run non-isotropic ─────────────────
+        # For non-converged: also run non-isotropic
         aniso_edge = None
+        aniso_dv = None
         if not converged:
             cache_key = f"{key}|{tname}"
             if cache_key not in aniso_results:
                 print(f"    Running non-isotropic opt: nu*={target_nu:+.1f}  {tname:25s} ...",
                       end='', flush=True)
-                # Try all 3 DVs for aniso too, pick best
                 best_aniso = None
                 best_aniso_dv = None
                 for adv in DESIGN_VARS:
@@ -465,7 +171,6 @@ for target_nu in POISSON_TARGETS:
                     print("  FAILED")
             aniso_edge, aniso_dv = aniso_results[cache_key]
 
-        # ── Decide layout ─────────────────────────────────────────────
         has_aniso = aniso_edge is not None and not converged
         ncols = 2 if has_aniso else 1
 
@@ -476,7 +181,6 @@ for target_nu in POISSON_TARGETS:
         if ncols == 1:
             axes = [axes]
 
-        # Left: isotropic best
         if iso_edge is not None:
             plot_mesh(topo['tri'], iso_edge['rigidities'], iso_edge['rest_lengths'],
                       topo['actual_rl'], best_dv, axes[0],
@@ -484,22 +188,9 @@ for target_nu in POISSON_TARGETS:
                       f'nu_xy={iso_edge["nu_xy"]:+.4f}  nu_yx={iso_edge["nu_yx"]:+.4f}\n'
                       f'loss={iso_edge["final_loss"]:.2e}  {"CONVERGED" if converged else "NOT converged"}')
         else:
-            # Plot plain mesh
-            pts = topo['tri'].points
-            simps = topo['tri'].simplices
-            segs = []
-            for sv in simps:
-                for a, b in [(sv[0],sv[1]),(sv[0],sv[2]),(sv[1],sv[2])]:
-                    segs.append([pts[a], pts[b]])
-            lc = LineCollection(segs, colors='gray', linewidths=0.3)
-            axes[0].add_collection(lc)
-            axes[0].set_xlim(pts[:,0].min()-0.5, pts[:,0].max()+0.5)
-            axes[0].set_ylim(pts[:,1].min()-0.5, pts[:,1].max()+0.5)
-            axes[0].set_aspect('equal')
-            axes[0].set_title(f'ISOTROPIC (w=10)\nNo valid optimisation result\nloss={best_loss:.2e}',
-                              fontsize=8)
+            plot_plain_mesh(topo['tri'], axes[0],
+                            f'ISOTROPIC (w=10)\nNo valid optimisation result\nloss={best_loss:.2e}')
 
-        # Right: non-isotropic best (only for failed cases)
         if has_aniso:
             plot_mesh(topo['tri'], aniso_edge['rigidities'], aniso_edge['rest_lengths'],
                       topo['actual_rl'], aniso_dv, axes[1],
@@ -531,7 +222,6 @@ for target_nu in POISSON_TARGETS:
             if col_idx >= ncols or edge_r is None:
                 continue
 
-            # Top: histograms
             ax_h = axes[0, col_idx]
             rl_ratio = (edge_r['rest_lengths'] / topo['actual_rl']).ravel()
             rigs_flat = edge_r['rigidities'].ravel()
@@ -551,7 +241,6 @@ for target_nu in POISSON_TARGETS:
             ax_h2.set_ylabel('Density (log10 k)', color='orange')
             ax_h2.tick_params(axis='y', labelcolor='orange')
 
-            # Bottom: polar
             axes[1, col_idx].remove()
             ax_p = fig.add_subplot(2, ncols, ncols + col_idx + 1, projection='polar')
             ratios_flat = (edge_r['rest_lengths'] / topo['actual_rl']).ravel()
@@ -614,6 +303,10 @@ for target_nu in POISSON_TARGETS:
         # ============================================================
         # RESIDUAL ENERGY
         # ============================================================
+        from matplotlib.collections import LineCollection
+        from matplotlib.colors import LogNorm
+        import matplotlib.cm as cm
+
         fig, axes = plt.subplots(1, ncols, figsize=(8*ncols, 6))
         if ncols == 1:
             axes = [axes]
@@ -689,7 +382,6 @@ for target_nu in POISSON_TARGETS:
         tname = topo['name']
         if tname not in results[key]:
             continue
-        # Find best iso
         best_loss = float('inf')
         best_nu = float('nan')
         for dv in DESIGN_VARS:

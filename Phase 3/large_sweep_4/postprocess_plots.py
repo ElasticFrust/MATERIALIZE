@@ -40,20 +40,17 @@ SUCCESS_THRESHOLD = 0.01
 OUT = os.path.dirname(os.path.abspath(__file__))
 
 
-def generate_poisson_network(size, eta):
-    v1 = np.array([1, 0])
-    v2 = np.array([0.5, np.sqrt(3)/2])
-    MaxPos = int(round(2 * (max(size) / min([np.sqrt(3)/2, 1]))))
-    points = []
-    for n in range(-MaxPos, MaxPos):
-        for m in range(-MaxPos, MaxPos):
-            theta = 2 * np.pi * np.random.rand()
-            pt = n*v1 + m*v2 + eta * np.array([np.cos(theta), np.sin(theta)])
-            points.append(pt)
-    points = np.array(points)
-    mask = ((points[:, 0] <= size[0]+2) & (points[:, 0] >= -(size[0]+2)) &
-            (points[:, 1] <= size[1]+2) & (points[:, 1] >= -(size[1]+2)))
-    points = points[mask]
+def generate_poisson_network(size):
+    """True Poisson point process: uniform random points + Delaunay."""
+    density = 2.0 / np.sqrt(3)
+    x_lo, x_hi = -(size[0] + 2), size[0] + 2
+    y_lo, y_hi = -(size[1] + 2), size[1] + 2
+    area = (x_hi - x_lo) * (y_hi - y_lo)
+    n_points = int(round(density * area))
+    points = np.column_stack([
+        np.random.uniform(x_lo, x_hi, n_points),
+        np.random.uniform(y_lo, y_hi, n_points),
+    ])
     DM = sp.spatial.Delaunay(points)
     centroids = np.mean(DM.points[DM.simplices], axis=1)
     goods = ((np.abs(centroids[:, 0]) <= size[0]) &
@@ -96,7 +93,7 @@ for seed in [256, 314]:
     add_topo(f'foam_eta045_{seed}', tri, seed)
 for seed in [999, 1337]:
     np.random.seed(seed)
-    tri = generate_poisson_network(size=MESH_SIZE, eta=0.3)
+    tri = generate_poisson_network(size=MESH_SIZE)
     add_topo(f'poisson_{seed}', tri, seed)
 
 N_TOPOLOGIES = len(topologies)
