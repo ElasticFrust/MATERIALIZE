@@ -197,3 +197,38 @@ Area-fixed analytical computation
   For uniform configs (A,C), the ratio is close to 1.0.
   For heterogeneous configs (B,D), KUBC over-estimates stiffness
   because the fixed boundary layer prevents full non-affine relaxation.
+
+
+================================================================================
+5.  THREE-WAY COMPARISON: D2C (1/16) vs D2C (1/Area) vs KUBC Simulation
+================================================================================
+
+The 1/Area_s normalization replaces the hardcoded 1/16 factor with each
+triangle's actual area (see benchmarking/one_over_area_fix/ for details).
+Three changes: (1) bare tensor factor k/l²/16 → k/l²/Area_s,
+(2) Woodbury coupling: uniform 1/N → area weights w_s = A_s/Σ(A),
+(3) final averaging: simple mean → area-weighted average.
+
+  Config                     D2C (1/16)   D2C (1/A)    KUBC Sim   err(1/16)    err(1/A)
+  -----------------------------------------------------------------------------------
+  A) Regular, k=1               +0.3333     +0.3333     +0.3303        0.9%        0.9%
+  B) Regular, VD rigs           +0.3487     +0.3487     +0.2055       69.7%       69.7%
+  C) Deformed, k=1              +0.2992     +0.2961     +0.3146        4.9%        5.9%
+  D) Deformed + VD rigs         +0.0485     +0.5064     +0.1065       54.5%      375.5%
+
+  err = |nu_method - nu_sim| / |nu_sim| × 100%
+
+Observations:
+  - Config A: All three agree at ~1/3. Baseline is well-captured.
+  - Config B: Area fix is IDENTICAL to standard (on a regular lattice all
+    triangles have the same area, so 1/Area_s is a global rescaling that
+    cancels in the Poisson ratio).
+  - Config C: Both analytical methods are within 5% of simulation. Area fix
+    makes negligible difference (0.296 vs 0.299).
+  - Config D: Area fix CATASTROPHICALLY FAILS — produces nu=0.506, which is
+    unphysical and far worse than the standard 1/16 (nu=0.049). This strongly
+    supports the recommendation in Summary.txt to NOT adopt the 1/Area fix.
+
+  The 1/Area normalization lacks theoretical justification. For heterogeneous
+  networks with both geometric distortion and rigidity variation, it breaks
+  the self-consistent coupling and produces meaningless results.
