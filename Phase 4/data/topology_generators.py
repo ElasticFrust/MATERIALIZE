@@ -268,36 +268,35 @@ def generate_blue_noise(size, min_dist=0.6):
     )
 
 
-def generate_clustered(size, n_clusters=5, cluster_std=0.8):
+def generate_clustered(size, cluster_spacing=2.0, cluster_std=0.4, pts_per_cluster=15):
     """Gaussian mixture model point process -> Delaunay.
 
     Dense cluster cores have high coordination (8-12+),
     sparse bridge regions have low coordination (3-4).
+    Cluster centers are placed on a jittered grid so the overall
+    structure remains spatially uniform.
 
     Args:
         size: (sx, sy) half-extents.
-        n_clusters: number of Gaussian clusters.
+        cluster_spacing: approx distance between cluster centers.
         cluster_std: standard deviation of each cluster.
+        pts_per_cluster: number of points per cluster.
     """
-    density = 2.0 / np.sqrt(3)
     x_lo, x_hi = -(size[0] + 2), size[0] + 2
     y_lo, y_hi = -(size[1] + 2), size[1] + 2
-    area = (x_hi - x_lo) * (y_hi - y_lo)
-    n_total = int(round(density * area))
 
-    # Cluster centers uniformly in the domain
-    centers = np.column_stack([
-        np.random.uniform(x_lo + 1, x_hi - 1, n_clusters),
-        np.random.uniform(y_lo + 1, y_hi - 1, n_clusters),
-    ])
+    # Place cluster centers on a grid, then jitter
+    xs = np.arange(x_lo + cluster_spacing / 2, x_hi, cluster_spacing)
+    ys = np.arange(y_lo + cluster_spacing / 2, y_hi, cluster_spacing)
+    cx, cy = np.meshgrid(xs, ys)
+    centers = np.column_stack([cx.ravel(), cy.ravel()])
+    # Jitter centers by up to 30% of spacing
+    centers += np.random.uniform(-0.3 * cluster_spacing, 0.3 * cluster_spacing,
+                                 centers.shape)
 
-    # Assign points to clusters (roughly equal per cluster)
     points = []
-    per_cluster = n_total // n_clusters
-    for ci in range(n_clusters):
-        n_pts = per_cluster if ci < n_clusters - 1 else n_total - per_cluster * (n_clusters - 1)
-        cluster_pts = centers[ci] + cluster_std * np.random.randn(n_pts, 2)
-        # Clip to domain
+    for c in centers:
+        cluster_pts = c + cluster_std * np.random.randn(pts_per_cluster, 2)
         cluster_pts[:, 0] = np.clip(cluster_pts[:, 0], x_lo, x_hi)
         cluster_pts[:, 1] = np.clip(cluster_pts[:, 1], y_lo, y_hi)
         points.append(cluster_pts)
@@ -722,7 +721,7 @@ def generate_square_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
 
 # ── Penrose quasicrystal ─────────────────────────────────────────────────────
 
-def generate_penrose(size):
+def generate_penrose(size, spacing=4.0):
     """Penrose quasicrystal point set -> Delaunay triangulation.
 
     Uses the cut-and-project method: project from a 5D hypercubic lattice
@@ -736,6 +735,8 @@ def generate_penrose(size):
 
     Args:
         size: (sx, sy) half-extents of the interior region.
+        spacing: scale factor for inter-point distance. Default 4.0 gives
+                 ~700 points at size=(10,10), comparable to the triangular lattice.
     """
     # Projection matrices for Penrose (5-fold) quasicrystal
     # Parallel-space: project onto plane with 5-fold symmetry
@@ -746,8 +747,8 @@ def generate_penrose(size):
     P_par = np.array([np.cos(angles_par), np.sin(angles_par)])      # (2, 5)
     P_perp = np.array([np.cos(angles_perp), np.sin(angles_perp)])    # (2, 5)
 
-    # Normalization
-    P_par *= np.sqrt(2.0 / 5)
+    # Normalization — spacing scales the physical-space lattice constant
+    P_par *= np.sqrt(2.0 / 5) * spacing
     P_perp *= np.sqrt(2.0 / 5)
 
     # Acceptance window radius in perpendicular space (decagonal window)
@@ -827,95 +828,42 @@ def generate_penrose(size):
     )
 
 
-# ── Re-entrant (auxetic) honeycomb ──────────────────────────────────────────
+# ── Lieb lattice (decorated square) ──────────────────────────────────────────
 
-def generate_reentrant_honeycomb(size, theta=np.radians(30), k_soft_ratio=1e-3):
-    """Re-entrant honeycomb — the classic auxetic metamaterial structure.
+def generate_lieb_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
+    """Lieb lattice — square lattice with atoms on edge midpoints.
 
-    In a regular honeycomb, all vertices bow outward. In the re-entrant
-    version, alternating rows of vertices bow inward, creating a bowtie
-    pattern. Under tension, the re-entrant cells unfold and expand
-    laterally, giving a negative Poisson's ratio.
+    The Lieb lattice has 3 atoms per unit cell: one at the corner and
+    two at the midpoints of the horizontal and vertical edges. This
+    creates a mix of z=4 (corner) and z=2 (edge-midpoint) sites.
 
-    The structure is z=3 (3 bonds per vertex). We Delaunay triangulate
-    and mark re-entrant bonds as hard, fill-in diagonals as soft.
+    Known for its flat phonon band and interesting mechanical properties.
+    The structure is not fully triangulated: we Delaunay-triangulate
+    and mark the Lieb bonds (corner-to-midpoint) as hard.
 
     Args:
         size: (sx, sy) half-extents.
-        theta: re-entrant angle (0 = flat, pi/6 = moderate, pi/3 = extreme).
+        spacing: lattice constant (distance between corner sites).
         k_soft_ratio: rigidity of soft (fill-in) springs.
     """
-    h = np.cos(theta)   # vertical projection of angled struts
-    l = np.sin(theta)   # horizontal projection of angled struts
-    H = 1.0             # vertical strut length
+    a1 = np.array([spacing, 0.0])
+    a2 = np.array([0.0, spacing])
 
-    # Unit cell: 4 vertices per cell
-    # Row spacing in y: H + h
-    # Column spacing in x: 2 * l
-    dy = H + h
-    dx = 2 * l
+    # 3-atom basis: corner + midpoints of two edges
+    basis = np.array([
+        [0.0, 0.0],               # corner (A site)
+        [spacing / 2, 0.0],       # horizontal edge midpoint (B site)
+        [0.0, spacing / 2],       # vertical edge midpoint (C site)
+    ])
 
-    buf = 3
-    nx = int(np.ceil((size[0] + buf) / dx)) + 1
-    ny = int(np.ceil((size[1] + buf) / dy)) + 1
+    points, interior = _generate_lattice_points(size, a1, a2, basis)
 
-    points = []
-    for iy in range(-ny, ny + 1):
-        for ix in range(-nx, nx + 1):
-            # Base position of unit cell
-            x0 = ix * dx
-            y0 = iy * dy
+    # Lieb bonds: corner to its 4 nearest midpoint neighbors
+    # Bond distance = spacing / 2
+    bond_dist = spacing / 2 * 1.05
+    hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
 
-            # 4 vertices of the re-entrant unit cell:
-            #   top-left, top-right (outward)
-            #   bottom-left, bottom-right (inward / re-entrant)
-            points.append([x0 - l, y0 + H + h])  # top-left
-            points.append([x0 + l, y0 + H + h])  # top-right
-            points.append([x0,     y0 + H])       # top-center (joint)
-            points.append([x0,     y0])            # bottom-center (joint)
-
-    points = np.array(points)
-
-    # Remove duplicate points
-    from scipy.spatial import cKDTree
-    tree = cKDTree(points)
-    pairs = tree.query_pairs(r=1e-6)
-    # Merge duplicates: keep lower index
-    parent = list(range(len(points)))
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-    for i, j in pairs:
-        pi, pj = find(i), find(j)
-        if pi != pj:
-            parent[max(pi, pj)] = min(pi, pj)
-
-    # Build mapping from old indices to new
-    roots = sorted(set(find(i) for i in range(len(points))))
-    root_to_new = {r: k for k, r in enumerate(roots)}
-    old_to_new = {i: root_to_new[find(i)] for i in range(len(points))}
-    new_points = points[roots]
-
-    # Build hard edges: connect each unit cell's bonds
-    hard_edges = set()
-    for iy in range(-ny, ny + 1):
-        for ix in range(-nx, nx + 1):
-            base = (iy + ny) * (2 * nx + 1) * 4 + (ix + nx) * 4
-            tl = old_to_new[base + 0]  # top-left
-            tr = old_to_new[base + 1]  # top-right
-            tc = old_to_new[base + 2]  # top-center
-            bc = old_to_new[base + 3]  # bottom-center
-
-            # Angled struts: tc -> tl, tc -> tr (these bow outward or inward)
-            hard_edges.add(frozenset((tc, tl)))
-            hard_edges.add(frozenset((tc, tr)))
-            # Vertical strut: tc -> bc
-            hard_edges.add(frozenset((tc, bc)))
-
-    # Delaunay triangulate and mark hard/soft
-    DM = scipy.spatial.Delaunay(new_points)
+    DM = scipy.spatial.Delaunay(points)
     simplices = _filter_interior(DM.points, DM.simplices, size)
 
     return TriangulationResult(
@@ -923,8 +871,8 @@ def generate_reentrant_honeycomb(size, theta=np.radians(30), k_soft_ratio=1e-3):
         simplices=simplices,
         hard_edge_set=hard_edges,
         k_soft_ratio=k_soft_ratio,
-        topo_name='reentrant',
-        topo_class='reentrant',
+        topo_name='lieb',
+        topo_class='lieb',
     )
 
 
@@ -985,8 +933,6 @@ TOPOLOGY_GENERATORS = {
     'aniso_crystal':     lambda size: generate_aniso_crystal(size),
     'foam_eta02':        lambda size: generate_foam(size, eta=0.2),
     'foam_eta045':       lambda size: generate_foam(size, eta=0.45),
-    'foam_retri_eta02':  lambda size: generate_foam_retriangulated(size, eta=0.2),
-    'foam_retri_eta045': lambda size: generate_foam_retriangulated(size, eta=0.45),
 
     # Category 2: Fully random
     'poisson_delaunay':  lambda size: generate_poisson_delaunay(size),
@@ -1001,7 +947,7 @@ TOPOLOGY_GENERATORS = {
 
     # Category 5: Physically motivated non-trivial topologies
     'penrose':           lambda size: generate_penrose(size),
-    'reentrant':         lambda size: generate_reentrant_honeycomb(size),
+    'lieb':              lambda size: generate_lieb_lattice(size),
     'bond_diluted':      lambda size: generate_bond_diluted(size),
 }
 
@@ -1010,8 +956,6 @@ TOPO_CLASSES = {
     'aniso_crystal':     'crystal',
     'foam_eta02':        'foam_02',
     'foam_eta045':       'foam_045',
-    'foam_retri_eta02':  'foam_02',
-    'foam_retri_eta045': 'foam_045',
     'poisson_delaunay':  'poisson',
     'blue_noise':        'blue_noise',
     'clustered':         'clustered',
@@ -1020,7 +964,7 @@ TOPO_CLASSES = {
     'kagome':            'kagome',
     'square_lattice':    'square',
     'penrose':           'quasicrystal',
-    'reentrant':         'reentrant',
+    'lieb':              'lieb',
     'bond_diluted':      'bond_diluted',
 }
 
@@ -1072,7 +1016,7 @@ def generate_all_topologies(size, seeds_per_random=3):
     deterministic = [
         'iso_crystal', 'aniso_crystal',
         'honeycomb', 'kagome', 'square_lattice',
-        'penrose', 'reentrant',
+        'penrose', 'lieb',
     ]
     for name in deterministic:
         results.append(generate_topology(name, size, seed=0))
@@ -1080,7 +1024,6 @@ def generate_all_topologies(size, seeds_per_random=3):
     # Stochastic topologies
     stochastic = [
         'foam_eta02', 'foam_eta045',
-        'foam_retri_eta02', 'foam_retri_eta045',
         'poisson_delaunay', 'blue_noise',
         'clustered', 'gradient_density',
         'bond_diluted',
