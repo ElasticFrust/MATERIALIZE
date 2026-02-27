@@ -105,10 +105,10 @@ def main():
     size = (10, 10)
     names = list(TOPOLOGY_GENERATORS.keys())
     n = len(names)
-    ncols = 4
+    ncols = 6
     nrows = (n + ncols - 1) // ncols
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(24, 6 * nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(30, 10 * nrows))
     axes = axes.ravel()
 
     print(f"{'Topology':<22} {'pts':>5} {'tri':>5} {'hard':>5} {'soft':>5}"

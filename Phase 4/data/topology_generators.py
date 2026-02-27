@@ -536,7 +536,7 @@ def _add_face_centers(points, faces, hard_edges):
 
 # ── Honeycomb lattice ─────────────────────────────────────────────────────────
 
-def generate_honeycomb(size, k_soft_ratio=1e-3):
+def generate_honeycomb(size, spacing=1.0, k_soft_ratio=1e-3):
     """True honeycomb lattice (z=3) with center-point regularization.
 
     The honeycomb has 2 atoms per hexagonal unit cell. Each vertex has exactly
@@ -546,15 +546,16 @@ def generate_honeycomb(size, k_soft_ratio=1e-3):
 
     Args:
         size: (sx, sy) half-extents of the interior region.
+        spacing: scale factor for lattice constant. Default 1.0.
         k_soft_ratio: rigidity of soft springs relative to hard (default 1e-3).
     """
     # Honeycomb lattice vectors
-    a1 = np.array([1.0, 0.0])
-    a2 = np.array([0.5, np.sqrt(3) / 2])
+    a1 = np.array([1.0, 0.0]) * spacing
+    a2 = np.array([0.5, np.sqrt(3) / 2]) * spacing
 
     # Two-atom basis
     # A-site at origin, B-site displaced by (0, 1/sqrt(3))
-    d = 1.0 / np.sqrt(3)
+    d = spacing / np.sqrt(3)
     basis = np.array([
         [0.0, 0.0],
         [0.0, d],
@@ -563,7 +564,7 @@ def generate_honeycomb(size, k_soft_ratio=1e-3):
     points, interior = _generate_lattice_points(size, a1, a2, basis)
     n_lattice = len(points)
 
-    # Bond distance: nearest-neighbor in honeycomb = d = 1/sqrt(3)
+    # Bond distance: nearest-neighbor in honeycomb = d
     bond_dist = d * 1.05  # small tolerance
     hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
 
@@ -670,7 +671,7 @@ def _find_honeycomb_faces(points, hard_edges, size):
 
 # ── Kagome lattice ────────────────────────────────────────────────────────────
 
-def generate_kagome(size, k_soft_ratio=1e-3):
+def generate_kagome(size, spacing=1.0, k_soft_ratio=1e-3):
     """Kagome lattice (z=4, 3 atoms per hexagonal unit cell).
 
     Corner-sharing triangles with hexagonal voids. The triangular faces
@@ -679,24 +680,25 @@ def generate_kagome(size, k_soft_ratio=1e-3):
 
     Args:
         size: (sx, sy) half-extents.
+        spacing: scale factor for lattice constant. Default 1.0.
         k_soft_ratio: rigidity ratio for soft edges.
     """
     # Kagome on hexagonal Bravais lattice
-    a1 = np.array([2.0, 0.0])
-    a2 = np.array([1.0, np.sqrt(3)])
+    a1 = np.array([2.0, 0.0]) * spacing
+    a2 = np.array([1.0, np.sqrt(3)]) * spacing
 
     # 3-atom basis: midpoints of the Bravais cell edges
     basis = np.array([
         [0.0, 0.0],
         [1.0, 0.0],
         [0.5, np.sqrt(3) / 2],
-    ])
+    ]) * spacing
 
     points, interior = _generate_lattice_points(size, a1, a2, basis)
 
     # Kagome bonds: each site connects to 4 nearest neighbors
-    # Bond length = 1.0 (distance between basis points)
-    bond_dist = 1.0 * 1.05
+    # Bond length = spacing (distance between basis points)
+    bond_dist = spacing * 1.05
     hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
 
     # Delaunay triangulate: this automatically fills hexagonal voids
@@ -1039,29 +1041,30 @@ def generate_bond_diluted(size, p_remove=0.2):
 # Registry of all topology generators
 TOPOLOGY_GENERATORS = {
     # Category 1: Bravais lattice family (all 5 types + aniso hexagonal)
-    'iso_crystal':       lambda size: generate_iso_crystal(size),
-    'aniso_crystal':     lambda size: generate_aniso_crystal(size),
-    'rectangular':       lambda size: generate_rectangular_lattice(size),
-    'oblique':           lambda size: generate_oblique_lattice(size),
-    'foam_eta02':        lambda size: generate_foam(size, eta=0.2),
-    'foam_eta045':       lambda size: generate_foam(size, eta=0.45),
+    #   Target: ~950 triangles at size=(10,10)
+    'iso_crystal':       lambda size: generate_iso_crystal(size),           # 944
+    'aniso_crystal':     lambda size: generate_aniso_crystal(size),         # 1154
+    'rectangular':       lambda size: generate_rectangular_lattice(size, aspect=1.4),  # ~950
+    'oblique':           lambda size: generate_oblique_lattice(size, a_len=0.9, b_len=1.05, angle_deg=70),  # ~950
+    'foam_eta02':        lambda size: generate_foam(size, eta=0.2),         # 944
+    'foam_eta045':       lambda size: generate_foam(size, eta=0.45),        # 944
 
     # Category 2: Fully random
-    'poisson_delaunay':  lambda size: generate_poisson_delaunay(size),
-    'blue_noise':        lambda size: generate_blue_noise(size),
-    'clustered':         lambda size: generate_clustered(size),
-    'gradient_density':  lambda size: generate_gradient_density(size),
+    'poisson_delaunay':  lambda size: generate_poisson_delaunay(size),      # 912
+    'blue_noise':        lambda size: generate_blue_noise(size, min_dist=0.73),  # ~950
+    'clustered':         lambda size: generate_clustered(size, cluster_spacing=2.5, cluster_std=0.5, pts_per_cluster=7),
+    'gradient_density':  lambda size: generate_gradient_density(size),      # 897
 
     # Category 3 & 4: Lattices with basis / non-triangulated + regularization
-    'honeycomb':         lambda size: generate_honeycomb(size),
-    'kagome':            lambda size: generate_kagome(size),
-    'square_lattice':    lambda size: generate_square_lattice(size),
+    'honeycomb':         lambda size: generate_honeycomb(size, spacing=1.70),   # ~950
+    'kagome':            lambda size: generate_kagome(size, spacing=0.85),      # ~950
+    'square_lattice':    lambda size: generate_square_lattice(size, spacing=0.92),  # ~950
 
     # Category 5: Physically motivated non-trivial topologies
-    'penrose':           lambda size: generate_penrose(size),
-    'lieb':              lambda size: generate_lieb_lattice(size),
-    'diamond':           lambda size: generate_diamond_lattice(size),
-    'bond_diluted':      lambda size: generate_bond_diluted(size),
+    'penrose':           lambda size: generate_penrose(size),               # 987
+    'lieb':              lambda size: generate_lieb_lattice(size, spacing=1.59),   # ~950
+    'diamond':           lambda size: generate_diamond_lattice(size, spacing=1.31),  # ~950
+    'bond_diluted':      lambda size: generate_bond_diluted(size),          # 944
 }
 
 TOPO_CLASSES = {
