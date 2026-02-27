@@ -1,4 +1,4 @@
-"""Generate and plot all 16 topologies for visual review."""
+"""Generate and plot all 16 topologies with Poisson's ratio in both directions."""
 
 import sys
 from pathlib import Path
@@ -19,12 +19,36 @@ from forward_solver_torch import from_triangulation
 import torch
 
 
+def poisson_both_directions(C):
+    """Extract nu_xy and nu_yx from 6-component elastic tensor.
+
+    C = [C₁₁₁₁, C₁₁₁₂, C₁₁₂₂, C₁₂₁₂, C₂₂₁₂, C₂₂₂₂]
+
+    Voigt stiffness matrix (2D):
+        [[C[0], C[2], C[1]],
+         [C[2], C[5], C[4]],
+         [C[1], C[4], C[3]]]
+
+    Compliance S = inv(Voigt).
+    nu_xy = -S[0,1]/S[0,0]   (lateral contraction in y under x-load)
+    nu_yx = -S[0,1]/S[1,1]   (lateral contraction in x under y-load)
+    """
+    voigt = np.array([
+        [C[0], C[2], C[1]],
+        [C[2], C[5], C[4]],
+        [C[1], C[4], C[3]],
+    ])
+    S = np.linalg.inv(voigt)
+    nu_xy = -S[0, 1] / S[0, 0]
+    nu_yx = -S[0, 1] / S[1, 1]
+    return nu_xy, nu_yx
+
+
 def plot_topology(ax, tri_result, title=''):
     """Plot a triangulation with hard edges thick/dark, soft edges thin/light."""
     points = tri_result.points
     simplices = tri_result.simplices
 
-    # Collect edges with hard/soft distinction
     hard_segments = []
     soft_segments = []
 
@@ -42,91 +66,94 @@ def plot_topology(ax, tri_result, title=''):
             else:
                 soft_segments.append(seg)
 
-    # Plot soft edges first (behind)
     if soft_segments:
         lc_soft = LineCollection(soft_segments, colors='#cccccc',
-                                 linewidths=0.3, alpha=0.5)
+                                 linewidths=0.2, alpha=0.4)
         ax.add_collection(lc_soft)
 
-    # Plot hard edges
     if hard_segments:
         lc_hard = LineCollection(hard_segments, colors='#2c3e50',
-                                 linewidths=0.8)
+                                 linewidths=0.5)
         ax.add_collection(lc_hard)
 
-    # Plot nodes
-    # Color hard-edge nodes darker
     if tri_result.hard_edge_set is not None:
         hard_nodes = set()
         for edge in tri_result.hard_edge_set:
             hard_nodes.update(edge)
-        # Only plot nodes that appear in simplices
         active_nodes = set(simplices.ravel())
         hard_active = np.array(sorted(hard_nodes & active_nodes))
         soft_active = np.array(sorted(active_nodes - hard_nodes))
 
         if len(hard_active) > 0:
             ax.scatter(points[hard_active, 0], points[hard_active, 1],
-                       s=4, c='#2c3e50', zorder=5)
+                       s=1.5, c='#2c3e50', zorder=5)
         if len(soft_active) > 0:
             ax.scatter(points[soft_active, 0], points[soft_active, 1],
-                       s=2, c='#aaaaaa', zorder=4)
+                       s=0.8, c='#aaaaaa', zorder=4)
     else:
         active_nodes = np.unique(simplices.ravel())
         ax.scatter(points[active_nodes, 0], points[active_nodes, 1],
-                   s=4, c='#2c3e50', zorder=5)
+                   s=1.5, c='#2c3e50', zorder=5)
 
     ax.set_aspect('equal')
-    ax.set_title(title, fontsize=8, fontweight='bold')
-    ax.tick_params(labelsize=5)
+    ax.set_title(title, fontsize=7, fontweight='bold')
+    ax.tick_params(labelsize=4)
     ax.autoscale_view()
 
 
 def main():
-    size = (4, 4)
+    size = (10, 10)
     names = list(TOPOLOGY_GENERATORS.keys())
     n = len(names)
     ncols = 4
     nrows = (n + ncols - 1) // ncols
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(20, 5 * nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(24, 6 * nrows))
     axes = axes.ravel()
 
+    print(f"{'Topology':<22} {'pts':>5} {'tri':>5} {'hard':>5} {'soft':>5}"
+          f"  {'nu_xy':>8} {'nu_yx':>8}")
+    print("-" * 75)
+
     for i, name in enumerate(names):
-        print(f"Generating {name}...")
+        print(f"Generating {name}...", end=" ", flush=True)
         tri = generate_topology(name, size, seed=42)
 
-        # Get Poisson ratio
+        nu_xy = nu_yx = float('nan')
         try:
             compat = tri.to_delaunay_compat()
             solver, _, _ = from_triangulation(compat)
             rigs = torch.tensor(tri.get_default_rigidities(), dtype=torch.float64)
             with torch.no_grad():
                 result = solver(rigs)
-            nu = result['poisson'].item()
+            C = result['elastic_tensor'].detach().cpu().numpy()
+            nu_xy, nu_yx = poisson_both_directions(C)
         except Exception as e:
-            nu = float('nan')
+            print(f"ERROR: {e}")
 
         mask = tri.get_hard_edge_mask_per_triangle()
         n_hard = int(mask.sum())
         n_soft = int((~mask).sum())
 
+        print(f"{name:<22} {tri.n_points:>5} {tri.n_tri:>5} {n_hard:>5} {n_soft:>5}"
+              f"  {nu_xy:>+8.4f} {nu_yx:>+8.4f}")
+
         title = (f"{name}\n"
                  f"{tri.n_points} pts, {tri.n_tri} tri, "
-                 f"nu={nu:+.3f}\n"
-                 f"hard={n_hard}, soft={n_soft}")
+                 f"hard={n_hard}, soft={n_soft}\n"
+                 f"nu_xy={nu_xy:+.4f}  nu_yx={nu_yx:+.4f}")
 
         plot_topology(axes[i], tri, title)
 
-    # Hide unused axes
     for j in range(n, len(axes)):
         axes[j].set_visible(False)
 
-    fig.suptitle('Phase 4 Topology Catalog (size=(4,4), seed=42)',
+    fig.suptitle('Phase 4 Topology Catalog (size=(10,10), seed=42)\n'
+                 'nu_xy = Poisson under x-load, nu_yx = Poisson under y-load',
                  fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
 
-    out_path = Path(__file__).parent / 'outputs' / 'topology_catalog.png'
+    out_path = Path(__file__).parent / 'outputs' / 'topology_catalog_10x10.png'
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches='tight')
     print(f"\nSaved to {out_path}")

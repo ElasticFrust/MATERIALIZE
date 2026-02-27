@@ -720,100 +720,202 @@ def generate_square_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
     )
 
 
-# ── Snub square lattice ──────────────────────────────────────────────────────
+# ── Penrose quasicrystal ─────────────────────────────────────────────────────
 
-def generate_snub_square(size, k_soft_ratio=1e-3):
-    """Snub square tiling (z=5, vertex config 3.3.4.3.4).
+def generate_penrose(size):
+    """Penrose quasicrystal point set -> Delaunay triangulation.
 
-    Mix of triangular and square faces. 4 atoms per unit cell.
-    Square faces get soft diagonals; triangular faces are already triangulated.
+    Uses the cut-and-project method: project from a 5D hypercubic lattice
+    onto a 2D plane with 5-fold symmetry. Only lattice points whose
+    perpendicular-space projection falls within a decagonal acceptance
+    window are kept.
+
+    This produces a quasiperiodic point set with local 5-fold symmetry
+    but no translational periodicity — the hallmark of quasicrystals.
+    All edges are hard (fully triangulated Delaunay).
 
     Args:
-        size: (sx, sy) half-extents.
-        k_soft_ratio: rigidity of soft diagonals in square faces.
+        size: (sx, sy) half-extents of the interior region.
     """
-    # Snub square unit cell:
-    # Two squares + four triangles per unit cell
-    # Side length s = 1, unit cell vectors:
-    s = 1.0
-    a1 = np.array([1 + np.sqrt(3), 0]) * s
-    a2 = np.array([0, 1 + np.sqrt(3)]) * s
+    # Projection matrices for Penrose (5-fold) quasicrystal
+    # Parallel-space: project onto plane with 5-fold symmetry
+    k = np.arange(5)
+    angles_par = 2 * np.pi * k / 5
+    angles_perp = 4 * np.pi * k / 5  # perpendicular space uses 2nd harmonic
 
-    # 4-atom basis for the snub square
-    d = np.sqrt(3) / 2 * s
-    basis = np.array([
-        [0.0, 0.0],
-        [s, 0.0],
-        [s + d * np.cos(np.pi / 6), d * np.sin(np.pi / 6)],
-        [d * np.cos(np.pi / 3), s + d * np.sin(np.pi / 3) - s],
-    ])
-    # Adjust to proper snub square coordinates
-    # The snub square tiling has vertices at positions related by
-    # rotation and translation. Use a simplified placement:
-    h = (1 + np.sqrt(3)) / 2
-    basis = np.array([
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [0.5 + np.sqrt(3)/2, 0.5],
-        [0.5, 0.5 + np.sqrt(3)/2],
-    ]) * s
+    P_par = np.array([np.cos(angles_par), np.sin(angles_par)])      # (2, 5)
+    P_perp = np.array([np.cos(angles_perp), np.sin(angles_perp)])    # (2, 5)
 
-    points, interior = _generate_lattice_points(size, a1, a2, basis)
+    # Normalization
+    P_par *= np.sqrt(2.0 / 5)
+    P_perp *= np.sqrt(2.0 / 5)
 
-    # Bond distance: nearest-neighbor = s
-    bond_dist = s * 1.05
-    hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
+    # Acceptance window radius in perpendicular space (decagonal window)
+    # For a Penrose tiling, the acceptance domain is a regular decagon.
+    # We approximate with a circle of appropriate radius.
+    window_radius = np.sqrt(2.0 / 5) * (1 + 2 * np.cos(np.pi / 5))
 
-    # Delaunay triangulate: fills square faces with diagonals
+    # Scan lattice points in Z^5 that could project into our domain
+    max_extent = max(size[0], size[1]) + 3
+    # Estimate needed range in Z^5
+    n_max = int(np.ceil(max_extent * np.sqrt(5) / np.sqrt(2))) + 2
+
+    # Vectorized approach: loop over first 2 indices, vectorize last 3
+    coords = np.arange(-n_max, n_max + 1)
+    n_c = len(coords)
+
+    # Pre-build the 3D grid for indices 2,3,4
+    g2, g3, g4 = np.meshgrid(coords, coords, coords, indexing='ij')
+    inner_grid = np.stack([g2.ravel(), g3.ravel(), g4.ravel()], axis=1)  # (n_c^3, 3)
+
+    # Partial projections for inner indices
+    P_par_inner = P_par[:, 2:5]      # (2, 3)
+    P_perp_inner = P_perp[:, 2:5]    # (2, 3)
+    inner_par = inner_grid @ P_par_inner.T      # (n_c^3, 2)
+    inner_perp = inner_grid @ P_perp_inner.T    # (n_c^3, 2)
+
+    points = []
+    for n0 in coords:
+        for n1 in coords:
+            # Partial projection from outer two indices
+            outer_par = P_par[:, 0] * n0 + P_par[:, 1] * n1      # (2,)
+            outer_perp = P_perp[:, 0] * n0 + P_perp[:, 1] * n1   # (2,)
+
+            # Full projections
+            full_par = inner_par + outer_par       # (n_c^3, 2)
+            full_perp = inner_perp + outer_perp    # (n_c^3, 2)
+
+            # Filter: perpendicular space within window
+            perp_r2 = full_perp[:, 0]**2 + full_perp[:, 1]**2
+            mask = perp_r2 <= window_radius**2
+
+            # Filter: parallel space within domain
+            mask &= (np.abs(full_par[:, 0]) <= size[0] + 2)
+            mask &= (np.abs(full_par[:, 1]) <= size[1] + 2)
+
+            if mask.any():
+                points.append(full_par[mask])
+
+    if len(points) == 0:
+        raise RuntimeError("Penrose generator produced 0 points.")
+
+    points = np.vstack(points)
+
+    if len(points) < 10:
+        raise RuntimeError(
+            f"Penrose generator produced only {len(points)} points. "
+            f"Increase n_max or check window_radius."
+        )
+
+    # Remove near-duplicate points (projection can place points very close)
+    from scipy.spatial import cKDTree
+    tree = cKDTree(points)
+    pairs = tree.query_pairs(r=1e-8)
+    remove = set()
+    for i, j in pairs:
+        remove.add(max(i, j))
+    if remove:
+        keep = sorted(set(range(len(points))) - remove)
+        points = points[keep]
+
     DM = scipy.spatial.Delaunay(points)
     simplices = _filter_interior(DM.points, DM.simplices, size)
 
     return TriangulationResult(
-        points=DM.points,
-        simplices=simplices,
-        hard_edge_set=hard_edges,
-        k_soft_ratio=k_soft_ratio,
-        topo_name='snub_square',
-        topo_class='snub_square',
+        points=DM.points, simplices=simplices,
+        topo_name='penrose', topo_class='quasicrystal',
     )
 
 
-# ── Truncated hexagonal (trihexagonal) ───────────────────────────────────────
+# ── Re-entrant (auxetic) honeycomb ──────────────────────────────────────────
 
-def generate_truncated_hex(size, k_soft_ratio=1e-3):
-    """Trihexagonal (Kagome) tiling variant: alternating triangles + hexagons.
+def generate_reentrant_honeycomb(size, theta=np.radians(30), k_soft_ratio=1e-3):
+    """Re-entrant honeycomb — the classic auxetic metamaterial structure.
 
-    Vertex configuration (3.6.3.6). Coordination z=3.
-    Hexagonal faces are triangulated with center-point + soft edges.
+    In a regular honeycomb, all vertices bow outward. In the re-entrant
+    version, alternating rows of vertices bow inward, creating a bowtie
+    pattern. Under tension, the re-entrant cells unfold and expand
+    laterally, giving a negative Poisson's ratio.
 
-    This is closely related to Kagome but with z=3 instead of z=4.
+    The structure is z=3 (3 bonds per vertex). We Delaunay triangulate
+    and mark re-entrant bonds as hard, fill-in diagonals as soft.
 
     Args:
         size: (sx, sy) half-extents.
-        k_soft_ratio: rigidity of soft edges in hexagonal faces.
+        theta: re-entrant angle (0 = flat, pi/6 = moderate, pi/3 = extreme).
+        k_soft_ratio: rigidity of soft (fill-in) springs.
     """
-    # Trihexagonal lattice vectors (same as Kagome, different connectivity)
-    a1 = np.array([2.0, 0.0])
-    a2 = np.array([1.0, np.sqrt(3)])
+    h = np.cos(theta)   # vertical projection of angled struts
+    l = np.sin(theta)   # horizontal projection of angled struts
+    H = 1.0             # vertical strut length
 
-    # 6 atoms per unit cell
-    s3 = np.sqrt(3)
-    basis = np.array([
-        [0.0, 0.0],
-        [0.5, s3 / 6],
-        [1.0, 0.0],
-        [1.5, s3 / 6],
-        [0.5, s3 / 2 - s3 / 6],
-        [1.0, s3 / 2],
-    ])
+    # Unit cell: 4 vertices per cell
+    # Row spacing in y: H + h
+    # Column spacing in x: 2 * l
+    dy = H + h
+    dx = 2 * l
 
-    points, interior = _generate_lattice_points(size, a1, a2, basis)
+    buf = 3
+    nx = int(np.ceil((size[0] + buf) / dx)) + 1
+    ny = int(np.ceil((size[1] + buf) / dy)) + 1
 
-    # Bond distance for trihexagonal: shortest bonds
-    bond_dist = 0.6  # adjusted for this basis
-    hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
+    points = []
+    for iy in range(-ny, ny + 1):
+        for ix in range(-nx, nx + 1):
+            # Base position of unit cell
+            x0 = ix * dx
+            y0 = iy * dy
 
-    DM = scipy.spatial.Delaunay(points)
+            # 4 vertices of the re-entrant unit cell:
+            #   top-left, top-right (outward)
+            #   bottom-left, bottom-right (inward / re-entrant)
+            points.append([x0 - l, y0 + H + h])  # top-left
+            points.append([x0 + l, y0 + H + h])  # top-right
+            points.append([x0,     y0 + H])       # top-center (joint)
+            points.append([x0,     y0])            # bottom-center (joint)
+
+    points = np.array(points)
+
+    # Remove duplicate points
+    from scipy.spatial import cKDTree
+    tree = cKDTree(points)
+    pairs = tree.query_pairs(r=1e-6)
+    # Merge duplicates: keep lower index
+    parent = list(range(len(points)))
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for i, j in pairs:
+        pi, pj = find(i), find(j)
+        if pi != pj:
+            parent[max(pi, pj)] = min(pi, pj)
+
+    # Build mapping from old indices to new
+    roots = sorted(set(find(i) for i in range(len(points))))
+    root_to_new = {r: k for k, r in enumerate(roots)}
+    old_to_new = {i: root_to_new[find(i)] for i in range(len(points))}
+    new_points = points[roots]
+
+    # Build hard edges: connect each unit cell's bonds
+    hard_edges = set()
+    for iy in range(-ny, ny + 1):
+        for ix in range(-nx, nx + 1):
+            base = (iy + ny) * (2 * nx + 1) * 4 + (ix + nx) * 4
+            tl = old_to_new[base + 0]  # top-left
+            tr = old_to_new[base + 1]  # top-right
+            tc = old_to_new[base + 2]  # top-center
+            bc = old_to_new[base + 3]  # bottom-center
+
+            # Angled struts: tc -> tl, tc -> tr (these bow outward or inward)
+            hard_edges.add(frozenset((tc, tl)))
+            hard_edges.add(frozenset((tc, tr)))
+            # Vertical strut: tc -> bc
+            hard_edges.add(frozenset((tc, bc)))
+
+    # Delaunay triangulate and mark hard/soft
+    DM = scipy.spatial.Delaunay(new_points)
     simplices = _filter_interior(DM.points, DM.simplices, size)
 
     return TriangulationResult(
@@ -821,56 +923,54 @@ def generate_truncated_hex(size, k_soft_ratio=1e-3):
         simplices=simplices,
         hard_edge_set=hard_edges,
         k_soft_ratio=k_soft_ratio,
-        topo_name='truncated_hex',
-        topo_class='truncated_hex',
+        topo_name='reentrant',
+        topo_class='reentrant',
     )
 
 
-# ── Cairo pentagonal ─────────────────────────────────────────────────────────
+# ── Bond-diluted triangular lattice ─────────────────────────────────────────
 
-def generate_cairo(size, k_soft_ratio=1e-3):
-    """Cairo pentagonal tiling (z=3 and z=4 mixed).
+def generate_bond_diluted(size, p_remove=0.2):
+    """Triangular lattice with randomly removed bonds (bond percolation).
 
-    Dual of the snub square tiling. Pentagonal faces are triangulated
-    with center-point + soft edges. Each pentagon gets 5 soft edges
-    and produces 5 triangles.
+    Start from a perfect z=6 triangular lattice and randomly remove a
+    fraction of bonds. This models structural damage, porosity, or
+    the effect of fabrication defects. The remaining bonds are hard;
+    removed bonds become soft (fill-in) springs.
+
+    Near the percolation threshold (p ~ 0.35 for triangular), the
+    structure develops interesting mechanical properties: soft modes,
+    floppy regions, and potentially auxetic behavior.
 
     Args:
         size: (sx, sy) half-extents.
-        k_soft_ratio: rigidity of soft edges.
+        p_remove: fraction of bonds to remove (0-1). Default 0.2.
     """
-    # Cairo tiling: 4 atoms per square unit cell
-    # Unit cell side = 1 + sqrt(3)
-    L = 1.0 + np.sqrt(3)
-    a1 = np.array([L, 0.0])
-    a2 = np.array([0.0, L])
+    # Generate a perfect triangular lattice
+    tri = D2C.generate_cryratl_points(size=size, shape=(1, 1), orientation=0)
 
-    # Approximate basis positions for Cairo tiling vertices
-    s = 1.0
-    d = np.sqrt(3) / 2
-    basis = np.array([
-        [0.0, 0.0],
-        [s / 2, d],
-        [s / 2 + d, d + s / 2],
-        [d, s / 2 + d + s / 2],
-    ])
+    # Collect all unique edges
+    all_edges = set()
+    for simplex in tri.simplices:
+        for a, b in [(simplex[0], simplex[1]),
+                     (simplex[0], simplex[2]),
+                     (simplex[1], simplex[2])]:
+            all_edges.add(frozenset((a, b)))
 
-    points, interior = _generate_lattice_points(size, a1, a2, basis)
-
-    # Bond distance
-    bond_dist = s * 1.2
-    hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
-
-    DM = scipy.spatial.Delaunay(points)
-    simplices = _filter_interior(DM.points, DM.simplices, size)
+    # Randomly remove p_remove fraction of edges
+    all_edges_list = list(all_edges)
+    n_remove = int(round(p_remove * len(all_edges_list)))
+    remove_idx = np.random.choice(len(all_edges_list), size=n_remove, replace=False)
+    removed = {all_edges_list[i] for i in remove_idx}
+    hard_edges = all_edges - removed
 
     return TriangulationResult(
-        points=DM.points,
-        simplices=simplices,
+        points=tri.points,
+        simplices=tri.simplices,
         hard_edge_set=hard_edges,
-        k_soft_ratio=k_soft_ratio,
-        topo_name='cairo',
-        topo_class='cairo',
+        k_soft_ratio=1e-3,
+        topo_name='bond_diluted',
+        topo_class='bond_diluted',
     )
 
 
@@ -898,9 +998,11 @@ TOPOLOGY_GENERATORS = {
     'honeycomb':         lambda size: generate_honeycomb(size),
     'kagome':            lambda size: generate_kagome(size),
     'square_lattice':    lambda size: generate_square_lattice(size),
-    'snub_square':       lambda size: generate_snub_square(size),
-    'truncated_hex':     lambda size: generate_truncated_hex(size),
-    'cairo':             lambda size: generate_cairo(size),
+
+    # Category 5: Physically motivated non-trivial topologies
+    'penrose':           lambda size: generate_penrose(size),
+    'reentrant':         lambda size: generate_reentrant_honeycomb(size),
+    'bond_diluted':      lambda size: generate_bond_diluted(size),
 }
 
 TOPO_CLASSES = {
@@ -917,9 +1019,9 @@ TOPO_CLASSES = {
     'honeycomb':         'honeycomb',
     'kagome':            'kagome',
     'square_lattice':    'square',
-    'snub_square':       'snub_square',
-    'truncated_hex':     'truncated_hex',
-    'cairo':             'cairo',
+    'penrose':           'quasicrystal',
+    'reentrant':         'reentrant',
+    'bond_diluted':      'bond_diluted',
 }
 
 
@@ -970,7 +1072,7 @@ def generate_all_topologies(size, seeds_per_random=3):
     deterministic = [
         'iso_crystal', 'aniso_crystal',
         'honeycomb', 'kagome', 'square_lattice',
-        'snub_square', 'truncated_hex', 'cairo',
+        'penrose', 'reentrant',
     ]
     for name in deterministic:
         results.append(generate_topology(name, size, seed=0))
@@ -981,6 +1083,7 @@ def generate_all_topologies(size, seeds_per_random=3):
         'foam_retri_eta02', 'foam_retri_eta045',
         'poisson_delaunay', 'blue_noise',
         'clustered', 'gradient_density',
+        'bond_diluted',
     ]
     for name in stochastic:
         for s in range(seeds_per_random):
