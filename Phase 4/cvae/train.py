@@ -1,0 +1,208 @@
+"""Training script for the CVAE inverse design model.
+
+Usage:
+    python -m cvae.train --data_dir ./data/processed --gnn_checkpoint ./checkpoints/best_model.pt
+"""
+
+import argparse
+import torch
+import numpy as np
+import time
+from pathlib import Path
+
+try:
+    from torch_geometric.loader import DataLoader
+except ImportError:
+    raise ImportError("torch_geometric required: pip install torch-geometric")
+
+from cvae.model import CVAE, CVAELoss
+from gnn.model import ForwardGNN
+
+
+def train_epoch(cvae, gnn_surrogate, loader, optimizer, loss_fn, device,
+                use_physics_loss=True, grad_clip=5.0):
+    """Train CVAE for one epoch."""
+    cvae.train()
+    if gnn_surrogate is not None:
+        gnn_surrogate.eval()
+
+    total_loss = 0
+    total_losses = {}
+    n_graphs = 0
+
+    for batch in loader:
+        batch = batch.to(device)
+        nu_target = batch.y_nu
+        optimizer.zero_grad()
+
+        # Forward pass
+        k_pred, l0_pred, mu, logvar = cvae(batch, nu_target)
+
+        # Physics loss via GNN surrogate (optional)
+        nu_predicted = None
+        if use_physics_loss and gnn_surrogate is not None:
+            # Build a modified batch with predicted edge features
+            # For simplicity, update edge_attr in-place (detached copy)
+            batch_copy = batch.clone()
+            n_unique = batch.n_unique_edges if hasattr(batch, 'n_unique_edges') else \
+                batch.edge_attr.shape[0] // 2
+            # Update edge features with predicted k, l0
+            new_attr = batch.edge_attr.clone()
+            new_attr[:n_unique, 0] = k_pred[:n_unique]
+            new_attr[:n_unique, 1] = l0_pred[:n_unique]
+            new_attr[n_unique:, 0] = k_pred[:n_unique]
+            new_attr[n_unique:, 1] = l0_pred[:n_unique]
+            # Recompute log factor
+            log_factor = torch.log((k_pred[:n_unique] / (l0_pred[:n_unique] ** 2)).clamp(min=1e-20))
+            new_attr[:n_unique, 3] = log_factor
+            new_attr[n_unique:, 3] = log_factor
+            batch_copy.edge_attr = new_attr
+
+            # Recompute node features with new edge attrs
+            from data.graph_utils import init_node_features
+            batch_copy.x = init_node_features(
+                batch_copy.pos, batch_copy.edge_index, new_attr, batch_copy.x.shape[0]
+            )
+
+            gnn_pred = gnn_surrogate(batch_copy)
+            nu_predicted = gnn_pred['nu']
+
+        loss, losses = loss_fn(k_pred, l0_pred, mu, logvar, batch,
+                               nu_predicted, nu_target)
+
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(cvae.parameters(), grad_clip)
+        optimizer.step()
+
+        total_loss += loss.item() * batch.num_graphs
+        n_graphs += batch.num_graphs
+        for k, v in losses.items():
+            total_losses[k] = total_losses.get(k, 0) + v * batch.num_graphs
+
+    avg_losses = {k: v / n_graphs for k, v in total_losses.items()}
+    return total_loss / n_graphs, avg_losses
+
+
+@torch.no_grad()
+def evaluate_cvae(cvae, gnn_surrogate, loader, loss_fn, device):
+    """Evaluate CVAE on validation set."""
+    cvae.eval()
+    total_loss = 0
+    n_graphs = 0
+
+    for batch in loader:
+        batch = batch.to(device)
+        nu_target = batch.y_nu
+        k_pred, l0_pred, mu, logvar = cvae(batch, nu_target)
+        loss, _ = loss_fn(k_pred, l0_pred, mu, logvar, batch)
+        total_loss += loss.item() * batch.num_graphs
+        n_graphs += batch.num_graphs
+
+    return total_loss / n_graphs
+
+
+def train(data_dir, gnn_checkpoint=None, output_dir='./checkpoints',
+          epochs=300, batch_size=32, lr=5e-4, weight_decay=1e-5,
+          patience=40, hidden=64, latent_dim=32, n_layers=4,
+          beta_max=1.0, gamma=10.0, warmup_epochs=50, device=None):
+    """Full CVAE training loop."""
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = torch.device(device)
+
+    data_dir = Path(data_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load data
+    print("Loading data...")
+    train_data = torch.load(data_dir / 'train.pt', weights_only=False)
+    val_data = torch.load(data_dir / 'val.pt', weights_only=False)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=batch_size)
+
+    # CVAE model
+    cvae = CVAE(hidden=hidden, latent_dim=latent_dim, n_layers=n_layers).to(device)
+    n_params = sum(p.numel() for p in cvae.parameters())
+    print(f"CVAE parameters: {n_params:,}")
+
+    # GNN surrogate for physics loss
+    gnn_surrogate = None
+    if gnn_checkpoint and Path(gnn_checkpoint).exists():
+        print(f"Loading GNN surrogate from {gnn_checkpoint}")
+        gnn_surrogate = ForwardGNN(hidden=hidden, n_layers=n_layers).to(device)
+        ckpt = torch.load(gnn_checkpoint, weights_only=False)
+        gnn_surrogate.load_state_dict(ckpt['model_state_dict'])
+        gnn_surrogate.eval()
+        for p in gnn_surrogate.parameters():
+            p.requires_grad = False
+
+    # Optimizer, scheduler, loss
+    optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr,
+                                   weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    loss_fn = CVAELoss(beta_max=beta_max, gamma=gamma, warmup_epochs=warmup_epochs)
+
+    # Training loop
+    best_val_loss = float('inf')
+    patience_counter = 0
+
+    for epoch in range(1, epochs + 1):
+        t0 = time.time()
+        loss_fn.set_epoch(epoch)
+
+        use_physics = gnn_surrogate is not None
+        train_loss, train_losses = train_epoch(
+            cvae, gnn_surrogate, train_loader, optimizer, loss_fn, device,
+            use_physics_loss=use_physics,
+        )
+        val_loss = evaluate_cvae(cvae, gnn_surrogate, val_loader, loss_fn, device)
+        scheduler.step()
+
+        dt = time.time() - t0
+        recon = train_losses.get('recon', 0)
+        kl = train_losses.get('kl', 0)
+        phys = train_losses.get('physics', 0)
+        beta = train_losses.get('beta', 0)
+
+        print(f"Epoch {epoch:3d}/{epochs} | "
+              f"loss={train_loss:.4f} | "
+              f"recon={recon:.4f} | "
+              f"kl={kl:.4f} | "
+              f"phys={phys:.4f} | "
+              f"beta={beta:.3f} | "
+              f"val={val_loss:.4f} | "
+              f"{dt:.1f}s")
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': cvae.state_dict(),
+                'val_loss': best_val_loss,
+            }, output_dir / 'best_cvae.pt')
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch}")
+                break
+
+    return cvae
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_dir', type=str, default='./data/processed')
+    parser.add_argument('--gnn_checkpoint', type=str, default=None)
+    parser.add_argument('--output_dir', type=str, default='./checkpoints')
+    parser.add_argument('--epochs', type=int, default=300)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--lr', type=float, default=5e-4)
+    parser.add_argument('--hidden', type=int, default=64)
+    parser.add_argument('--latent_dim', type=int, default=32)
+    parser.add_argument('--n_layers', type=int, default=4)
+    parser.add_argument('--device', type=str, default=None)
+    args = parser.parse_args()
+
+    train(**vars(args))
