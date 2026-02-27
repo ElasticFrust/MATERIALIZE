@@ -137,6 +137,71 @@ def generate_aniso_crystal(size, shape=(1.5, 0.8), orientation=np.pi / 6):
     )
 
 
+def generate_rectangular_lattice(size, aspect=1.6):
+    """Rectangular Bravais lattice (z=6 after Delaunay triangulation).
+
+    Lattice vectors a1 = (a, 0), a2 = (0, b) with a != b.
+    One atom per unit cell. Delaunay triangulation produces anisotropic
+    triangles — longer in the stretched direction.
+
+    This is a distinct 2D Bravais lattice from the square (a=b) and
+    hexagonal families.
+
+    Args:
+        size: (sx, sy) half-extents.
+        aspect: ratio a/b of lattice constants. Default 1.6.
+    """
+    # Use geometric mean = 1 so total density is comparable to iso_crystal
+    b = 1.0 / np.sqrt(aspect)
+    a = aspect * b
+
+    buf = 3
+    nx = int(np.ceil((size[0] + buf) / a)) + 1
+    ny = int(np.ceil((size[1] + buf) / b)) + 1
+
+    xs = np.arange(-nx, nx + 1) * a
+    ys = np.arange(-ny, ny + 1) * b
+    xx, yy = np.meshgrid(xs, ys)
+    points = np.column_stack([xx.ravel(), yy.ravel()])
+
+    DM = scipy.spatial.Delaunay(points)
+    simplices = _filter_interior(DM.points, DM.simplices, size)
+
+    return TriangulationResult(
+        points=DM.points, simplices=simplices,
+        topo_name='rectangular', topo_class='rectangular',
+    )
+
+
+def generate_oblique_lattice(size, a_len=1.0, b_len=1.2, angle_deg=70):
+    """Oblique Bravais lattice (z=6 after Delaunay triangulation).
+
+    The most general 2D Bravais lattice: a1 and a2 have different lengths
+    and a non-special angle (neither 60°, 90°, nor 120°). One atom per
+    unit cell.
+
+    Args:
+        size: (sx, sy) half-extents.
+        a_len: length of first lattice vector.
+        b_len: length of second lattice vector.
+        angle_deg: angle between lattice vectors in degrees.
+    """
+    angle = np.radians(angle_deg)
+    a1 = np.array([a_len, 0.0])
+    a2 = np.array([b_len * np.cos(angle), b_len * np.sin(angle)])
+
+    basis = np.array([[0.0, 0.0]])
+    points, _ = _generate_lattice_points(size, a1, a2, basis)
+
+    DM = scipy.spatial.Delaunay(points)
+    simplices = _filter_interior(DM.points, DM.simplices, size)
+
+    return TriangulationResult(
+        points=DM.points, simplices=simplices,
+        topo_name='oblique', topo_class='oblique',
+    )
+
+
 def generate_foam(size, eta=0.2):
     """Perturbed hexagonal lattice (z~6). Topology from crystal, positions perturbed."""
     tri = D2C.generate_foam_points(size=size, eta=eta)
@@ -973,9 +1038,11 @@ def generate_bond_diluted(size, p_remove=0.2):
 
 # Registry of all topology generators
 TOPOLOGY_GENERATORS = {
-    # Category 1: Hexagonal family
+    # Category 1: Bravais lattice family (all 5 types + aniso hexagonal)
     'iso_crystal':       lambda size: generate_iso_crystal(size),
     'aniso_crystal':     lambda size: generate_aniso_crystal(size),
+    'rectangular':       lambda size: generate_rectangular_lattice(size),
+    'oblique':           lambda size: generate_oblique_lattice(size),
     'foam_eta02':        lambda size: generate_foam(size, eta=0.2),
     'foam_eta045':       lambda size: generate_foam(size, eta=0.45),
 
@@ -1000,6 +1067,8 @@ TOPOLOGY_GENERATORS = {
 TOPO_CLASSES = {
     'iso_crystal':       'crystal',
     'aniso_crystal':     'crystal',
+    'rectangular':       'rectangular',
+    'oblique':           'oblique',
     'foam_eta02':        'foam_02',
     'foam_eta045':       'foam_045',
     'poisson_delaunay':  'poisson',
@@ -1061,7 +1130,7 @@ def generate_all_topologies(size, seeds_per_random=3):
 
     # Deterministic topologies
     deterministic = [
-        'iso_crystal', 'aniso_crystal',
+        'iso_crystal', 'aniso_crystal', 'rectangular', 'oblique',
         'honeycomb', 'kagome', 'square_lattice',
         'penrose', 'lieb', 'diamond',
     ]
