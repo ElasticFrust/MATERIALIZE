@@ -115,9 +115,13 @@ def main():
           f"  {'nu_xy':>8} {'nu_yx':>8}")
     print("-" * 75)
 
+    # Use different seeds for foam variants so they don't share random state
+    seed_overrides = {'foam_eta045': 137}
+
     for i, name in enumerate(names):
         print(f"Generating {name}...", end=" ", flush=True)
-        tri = generate_topology(name, size, seed=42)
+        seed = seed_overrides.get(name, 42)
+        tri = generate_topology(name, size, seed=seed)
 
         nu_xy = nu_yx = float('nan')
         try:
