@@ -876,6 +876,51 @@ def generate_lieb_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
     )
 
 
+# ── Diamond lattice (centered square, 2-atom basis) ─────────────────────────
+
+def generate_diamond_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
+    """2D diamond lattice — square lattice with a 2-atom basis.
+
+    Atom A sits at the corner of a square unit cell and atom B at the
+    cell center, each A bonded to its 4 nearest B neighbors along the
+    diagonals. Every site has z=4. This is the 2D analog of the diamond
+    cubic structure.
+
+    The A-B diagonal bonds are hard; Delaunay fill-in edges are soft.
+
+    Args:
+        size: (sx, sy) half-extents.
+        spacing: lattice constant (side of the square unit cell).
+        k_soft_ratio: rigidity of soft (fill-in) springs.
+    """
+    a1 = np.array([spacing, 0.0])
+    a2 = np.array([0.0, spacing])
+
+    # 2-atom basis: corner + body-center
+    basis = np.array([
+        [0.0, 0.0],                       # A site (corner)
+        [spacing / 2, spacing / 2],       # B site (center)
+    ])
+
+    points, interior = _generate_lattice_points(size, a1, a2, basis)
+
+    # Diamond bonds: A-B along diagonals, distance = spacing * sqrt(2) / 2
+    bond_dist = spacing * np.sqrt(2) / 2 * 1.05
+    hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
+
+    DM = scipy.spatial.Delaunay(points)
+    simplices = _filter_interior(DM.points, DM.simplices, size)
+
+    return TriangulationResult(
+        points=DM.points,
+        simplices=simplices,
+        hard_edge_set=hard_edges,
+        k_soft_ratio=k_soft_ratio,
+        topo_name='diamond',
+        topo_class='diamond',
+    )
+
+
 # ── Bond-diluted triangular lattice ─────────────────────────────────────────
 
 def generate_bond_diluted(size, p_remove=0.2):
@@ -948,6 +993,7 @@ TOPOLOGY_GENERATORS = {
     # Category 5: Physically motivated non-trivial topologies
     'penrose':           lambda size: generate_penrose(size),
     'lieb':              lambda size: generate_lieb_lattice(size),
+    'diamond':           lambda size: generate_diamond_lattice(size),
     'bond_diluted':      lambda size: generate_bond_diluted(size),
 }
 
@@ -965,6 +1011,7 @@ TOPO_CLASSES = {
     'square_lattice':    'square',
     'penrose':           'quasicrystal',
     'lieb':              'lieb',
+    'diamond':           'diamond',
     'bond_diluted':      'bond_diluted',
 }
 
@@ -1016,7 +1063,7 @@ def generate_all_topologies(size, seeds_per_random=3):
     deterministic = [
         'iso_crystal', 'aniso_crystal',
         'honeycomb', 'kagome', 'square_lattice',
-        'penrose', 'lieb',
+        'penrose', 'lieb', 'diamond',
     ]
     for name in deterministic:
         results.append(generate_topology(name, size, seed=0))
