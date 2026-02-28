@@ -1362,9 +1362,7 @@ TOPOLOGY_GENERATORS = {
     'diamond':           lambda size: generate_diamond_lattice(size, spacing=1.31),  # ~950
     'bond_diluted':      lambda size: generate_bond_diluted(size),          # 944
 
-    # Category 6: Auxetic, exotic tilings, and additional quasicrystals
-    'reentrant':         lambda size: generate_reentrant_honeycomb(size, theta=np.radians(30), H=1.1, L=0.9),  # ~957
-    'cairo_pentagonal':  lambda size: generate_cairo_pentagonal(size, spacing=1.3),  # ~962
+    # Category 6: Additional quasicrystals
     'ammann_beenker':    lambda size: generate_ammann_beenker(size, spacing=13.0),   # ~928
 }
 
@@ -1386,8 +1384,6 @@ TOPO_CLASSES = {
     'lieb':              'lieb',
     'diamond':           'diamond',
     'bond_diluted':      'bond_diluted',
-    'reentrant':         'reentrant',
-    'cairo_pentagonal':  'cairo',
     'ammann_beenker':    'quasicrystal',
 }
 
@@ -1440,7 +1436,7 @@ def generate_all_topologies(size, seeds_per_random=3):
         'iso_crystal', 'aniso_crystal', 'rectangular', 'oblique',
         'honeycomb', 'kagome', 'square_lattice',
         'penrose', 'lieb', 'diamond',
-        'reentrant', 'cairo_pentagonal', 'ammann_beenker',
+        'ammann_beenker',
     ]
     for name in deterministic:
         results.append(generate_topology(name, size, seed=0))
