@@ -1034,6 +1034,333 @@ def generate_bond_diluted(size, p_remove=0.2):
     )
 
 
+# ── Re-entrant (auxetic) honeycomb ──────────────────────────────────────────
+
+def generate_reentrant_honeycomb(size, theta=np.radians(30), H=1.0, L=1.0,
+                                  k_soft_ratio=1e-3):
+    """Re-entrant honeycomb — the classic auxetic metamaterial structure.
+
+    Geometry (Gibson & Ashby convention):
+        - Vertical ribs of length H.
+        - Angled struts of length L at angle theta from vertical.
+        - In the regular honeycomb all V-joints point the same way;
+          in the re-entrant version alternating rows point inward,
+          creating hourglass/bowtie cells.
+        - Under x-tension the cells unfold laterally → negative Poisson's ratio.
+        - z=3 at every interior vertex.
+
+    Construction:
+        4 rows repeat vertically with period 2*(H + h):
+
+          row 3: y = 2H + h    "wide" row at x = 0, 2l, 4l, ...
+          row 2: y = H + h     "narrow" row at x = l, 3l, 5l, ...   (re-entrant)
+          row 1: y = H         "wide" row at x = 0, 2l, 4l, ...
+          row 0: y = 0         "narrow" row at x = l, 3l, 5l, ...   (re-entrant)
+
+        Each narrow-row vertex connects UP to two wide-row vertices
+        (one left, one right). This creates the inward-pointing V shapes.
+        Vertical ribs connect wide-row pairs (row 1↔row 2, row 3↔next row 0).
+
+    Args:
+        size: (sx, sy) half-extents.
+        theta: re-entrant angle from vertical (radians). Default pi/6.
+        H: vertical rib length. Default 1.0.
+        L: angled strut length. Default 1.0.
+        k_soft_ratio: rigidity of soft (fill-in) springs.
+    """
+    h = L * np.cos(theta)   # vertical projection of angled strut
+    l = L * np.sin(theta)   # horizontal projection of angled strut
+
+    cell_w = 2 * l                # horizontal period
+    half_cell_h = H + h           # half vertical period (narrow row to narrow row)
+
+    buf = 3
+    nx = int(np.ceil((size[0] + buf) / cell_w)) + 2
+    ny = int(np.ceil((size[1] + buf) / half_cell_h)) + 2
+
+    point_map = {}
+    points = []
+
+    def add_point(x, y):
+        key = (round(x, 8), round(y, 8))
+        if key not in point_map:
+            point_map[key] = len(points)
+            points.append([x, y])
+        return point_map[key]
+
+    edges = set()
+
+    for iy in range(-ny, ny + 1):
+        for ix in range(-nx, nx + 1):
+            # Alternating wide/narrow rows
+            if iy % 2 == 0:
+                # Wide row: vertices at x = ix * cell_w
+                x = ix * cell_w
+                y = iy * half_cell_h
+                p = add_point(x, y)
+
+                # Vertical rib to the wide-row vertex above (iy+1 is narrow,
+                # iy+2 is the next wide row): NOT directly, ribs connect
+                # consecutive wide rows that have no narrow row between them.
+                # Actually: wide(iy=0) connects via angled struts to narrow(iy=1),
+                # narrow(iy=1) connects via angled struts to wide(iy=2),
+                # wide(iy=2) connects via VERTICAL RIB to wide(iy=3)... no.
+
+                # Let me restructure. The 4-row repeating pattern per unit cell:
+                # Forget iy parity — lay out all 4 row types explicitly.
+                pass
+            else:
+                # Narrow row: vertices at x = ix * cell_w + l (shifted inward)
+                x = ix * cell_w + l
+                y = iy * half_cell_h
+                p = add_point(x, y)
+
+    # Clear and redo with explicit 4-row pattern
+    point_map.clear()
+    points.clear()
+    edges.clear()
+
+    # Period in y: cell_h = 2 * (H + h)
+    cell_h = 2 * half_cell_h
+
+    for iy in range(-ny, ny + 1):
+        for ix in range(-nx, nx + 1):
+            y_base = iy * cell_h
+            x_base = ix * cell_w
+
+            # Row A (y_base): narrow row — re-entrant vertex
+            pA = add_point(x_base + l, y_base)
+
+            # Row B (y_base + h): wide row — top of downward-V from A
+            pB_left = add_point(x_base, y_base + h)
+            pB_right = add_point(x_base + cell_w, y_base + h)
+
+            # Angled struts: A connects UP-LEFT and UP-RIGHT (V opens upward)
+            edges.add(frozenset((pA, pB_left)))
+            edges.add(frozenset((pA, pB_right)))
+
+            # Row C (y_base + h + H): wide row — connected to B by vertical rib
+            pC_left = add_point(x_base, y_base + h + H)
+            pC_right = add_point(x_base + cell_w, y_base + h + H)
+
+            # Vertical ribs: B to C (same x)
+            edges.add(frozenset((pB_left, pC_left)))
+            edges.add(frozenset((pB_right, pC_right)))
+
+            # Row D (y_base + 2h + H): narrow row — re-entrant vertex
+            pD = add_point(x_base + l, y_base + 2 * h + H)
+
+            # Angled struts: D connects DOWN-LEFT and DOWN-RIGHT (V opens downward)
+            edges.add(frozenset((pD, pC_left)))
+            edges.add(frozenset((pD, pC_right)))
+
+            # Vertical rib from D to next A above:
+            # Next A is at y_base + cell_h = y_base + 2*(H+h)
+            # D is at y_base + 2h + H
+            # distance = 2(H+h) - (2h+H) = H
+            pA_next = add_point(x_base + l, y_base + cell_h)
+            edges.add(frozenset((pD, pA_next)))
+
+    points = np.array(points)
+    if len(points) < 4:
+        raise RuntimeError("Re-entrant honeycomb produced too few points.")
+
+    # Filter edges to bounding box
+    in_bounds = ((np.abs(points[:, 0]) <= size[0] + buf) &
+                 (np.abs(points[:, 1]) <= size[1] + buf))
+    keep_set = set(np.where(in_bounds)[0].tolist())
+    hard_edges = {e for e in edges if all(v in keep_set for v in e)}
+
+    DM = scipy.spatial.Delaunay(points)
+    simplices = _filter_interior(DM.points, DM.simplices, size)
+
+    return TriangulationResult(
+        points=DM.points,
+        simplices=simplices,
+        hard_edge_set=hard_edges,
+        k_soft_ratio=k_soft_ratio,
+        topo_name='reentrant',
+        topo_class='reentrant',
+    )
+
+
+# ── Cairo pentagonal tiling ────────────────────────────────────────────────
+
+def generate_cairo_pentagonal(size, spacing=1.0, k_soft_ratio=1e-3):
+    """Cairo pentagonal tiling — dual of the snub square tiling.
+
+    The Cairo tiling covers the plane with congruent convex pentagons.
+    Each pentagon has four equal sides and one shorter side, arranged
+    so that exactly four pentagons meet at each vertex.
+
+    Construction: place vertices on a square grid with a 4-atom basis.
+    The tiling has p4g wallpaper symmetry. Each interior vertex has
+    z=3 or z=4 bonds.
+
+    The pentagonal faces are non-triangular, so we Delaunay-triangulate
+    the vertex set and mark the pentagon edges as hard structural bonds.
+
+    Args:
+        size: (sx, sy) half-extents.
+        spacing: overall scale factor. Default 1.0.
+        k_soft_ratio: rigidity of soft (fill-in) springs.
+    """
+    # The Cairo tiling can be constructed from a square lattice with
+    # lattice vectors a1 = (2, 0)*s, a2 = (0, 2)*s and a 4-atom basis.
+    #
+    # The key parameter is t = (sqrt(3) - 1) / 2 ≈ 0.366, which gives
+    # the offset of the interior vertices.
+    t = (np.sqrt(3) - 1) / 2
+    s = spacing
+
+    a1 = np.array([2.0, 0.0]) * s
+    a2 = np.array([0.0, 2.0]) * s
+
+    # 4-atom basis within the unit cell:
+    #   Two "cross" vertices that sit on the midpoints of cell edges
+    #   Two "interior" vertices offset by t
+    basis = np.array([
+        [0.5 + t, 0.5],        # vertex A
+        [0.5 - t, 0.5],        # vertex B
+        [0.0,     0.5 + t],    # vertex C (on cell edge)
+        [0.0,     0.5 - t],    # vertex D (on cell edge)
+        [1.0,     0.5 + t],    # vertex E
+        [1.0,     0.5 - t],    # vertex F
+        [0.5,     0.0],        # vertex G (on cell edge)
+        [0.5,     1.0],        # vertex H (on cell edge)
+    ]) * s
+
+    points, interior = _generate_lattice_points(size, a1, a2, basis)
+
+    # Cairo pentagonal bond distance: nearest neighbors are at distance
+    # s * sqrt((2t)^2 + 0^2) = 2*t*s for horizontal pairs, and
+    # s * sqrt(t^2 + (0.5-t)^2) for diagonal pairs.
+    # The shortest bonds connect adjacent basis atoms.
+    # Use a cutoff that captures all pentagon edges but not diagonals.
+    d_short = 2 * t * s                                    # ~0.732 * s
+    d_diag = s * np.sqrt((0.5 - t)**2 + (0.5)**2)         # ~0.541 * s
+    bond_dist = max(d_short, d_diag) * 1.08
+
+    hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
+
+    DM = scipy.spatial.Delaunay(points)
+    simplices = _filter_interior(DM.points, DM.simplices, size)
+
+    return TriangulationResult(
+        points=DM.points,
+        simplices=simplices,
+        hard_edge_set=hard_edges,
+        k_soft_ratio=k_soft_ratio,
+        topo_name='cairo_pentagonal',
+        topo_class='cairo',
+    )
+
+
+# ── Ammann-Beenker quasicrystal ──────────────────────────────────────────
+
+def generate_ammann_beenker(size, spacing=3.0):
+    """Ammann-Beenker (octagonal) quasicrystal -> Delaunay triangulation.
+
+    Uses the cut-and-project method from a 4D hypercubic lattice onto
+    a 2D plane with 8-fold symmetry. Only lattice points whose
+    perpendicular-space projection falls within an octagonal acceptance
+    window are kept.
+
+    This produces a quasiperiodic point set with local 8-fold symmetry
+    (tiles are squares and 45-degree rhombi) — the 2D analog of the
+    3D icosahedral quasicrystal. All edges are hard (fully triangulated).
+
+    Args:
+        size: (sx, sy) half-extents of the interior region.
+        spacing: scale factor for inter-point distance. Default 3.0 gives
+                 a comparable point count to other topologies at size=(10,10).
+    """
+    # Projection matrices for Ammann-Beenker (8-fold) quasicrystal
+    # We project from Z^4 using basis vectors at multiples of pi/4
+    k = np.arange(4)
+    angles_par = np.pi * k / 4       # 0, pi/4, pi/2, 3pi/4
+    angles_perp = np.pi * (k + 2) / 4  # pi/2, 3pi/4, pi, 5pi/4
+
+    P_par = np.array([np.cos(angles_par), np.sin(angles_par)])    # (2, 4)
+    P_perp = np.array([np.cos(angles_perp), np.sin(angles_perp)])  # (2, 4)
+
+    # Normalization
+    P_par *= spacing / np.sqrt(2)
+    P_perp *= 1.0 / np.sqrt(2)
+
+    # Acceptance window: regular octagon in perpendicular space
+    # For the Ammann-Beenker tiling the window is a regular octagon
+    # with circumradius R = 1 + sqrt(2) (in normalized units).
+    # We approximate with a circle.
+    window_radius = (1 + np.sqrt(2)) / np.sqrt(2)
+
+    # Determine range of Z^4 indices to scan
+    max_extent = max(size[0], size[1]) + 3
+    n_max = int(np.ceil(max_extent * 2 / spacing)) + 3
+
+    coords = np.arange(-n_max, n_max + 1)
+
+    # Vectorize: build full 4D grid in batches to manage memory
+    # Loop over first 2 indices, vectorize last 2
+    g2, g3 = np.meshgrid(coords, coords, indexing='ij')
+    inner_grid = np.stack([g2.ravel(), g3.ravel()], axis=1)  # (n_c^2, 2)
+
+    P_par_inner = P_par[:, 2:4]      # (2, 2)
+    P_perp_inner = P_perp[:, 2:4]    # (2, 2)
+    inner_par = inner_grid @ P_par_inner.T     # (n_c^2, 2)
+    inner_perp = inner_grid @ P_perp_inner.T   # (n_c^2, 2)
+
+    points = []
+    for n0 in coords:
+        for n1 in coords:
+            outer_par = P_par[:, 0] * n0 + P_par[:, 1] * n1
+            outer_perp = P_perp[:, 0] * n0 + P_perp[:, 1] * n1
+
+            full_par = inner_par + outer_par
+            full_perp = inner_perp + outer_perp
+
+            # Filter: perpendicular space within octagonal window (circle approx)
+            perp_r2 = full_perp[:, 0]**2 + full_perp[:, 1]**2
+            mask = perp_r2 <= window_radius**2
+
+            # Filter: parallel space within domain
+            mask &= (np.abs(full_par[:, 0]) <= size[0] + 2)
+            mask &= (np.abs(full_par[:, 1]) <= size[1] + 2)
+
+            if mask.any():
+                points.append(full_par[mask])
+
+    if len(points) == 0:
+        raise RuntimeError("Ammann-Beenker generator produced 0 points.")
+
+    points = np.vstack(points)
+
+    if len(points) < 10:
+        raise RuntimeError(
+            f"Ammann-Beenker generator produced only {len(points)} points. "
+            f"Try decreasing spacing."
+        )
+
+    # Remove near-duplicate points
+    from scipy.spatial import cKDTree
+    tree = cKDTree(points)
+    pairs = tree.query_pairs(r=1e-8)
+    remove = set()
+    for i, j in pairs:
+        remove.add(max(i, j))
+    if remove:
+        keep = sorted(set(range(len(points))) - remove)
+        points = points[keep]
+
+    DM = scipy.spatial.Delaunay(points)
+    simplices = _filter_interior(DM.points, DM.simplices, size)
+
+    return TriangulationResult(
+        points=DM.points, simplices=simplices,
+        topo_name='ammann_beenker', topo_class='quasicrystal',
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Master topology generator
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1065,6 +1392,11 @@ TOPOLOGY_GENERATORS = {
     'lieb':              lambda size: generate_lieb_lattice(size, spacing=1.59),   # ~950
     'diamond':           lambda size: generate_diamond_lattice(size, spacing=1.31),  # ~950
     'bond_diluted':      lambda size: generate_bond_diluted(size),          # 944
+
+    # Category 6: Auxetic, exotic tilings, and additional quasicrystals
+    'reentrant':         lambda size: generate_reentrant_honeycomb(size, theta=np.radians(30), H=1.1, L=0.9),  # ~957
+    'cairo_pentagonal':  lambda size: generate_cairo_pentagonal(size, spacing=1.3),  # ~962
+    'ammann_beenker':    lambda size: generate_ammann_beenker(size, spacing=13.0),   # ~928
 }
 
 TOPO_CLASSES = {
@@ -1085,6 +1417,9 @@ TOPO_CLASSES = {
     'lieb':              'lieb',
     'diamond':           'diamond',
     'bond_diluted':      'bond_diluted',
+    'reentrant':         'reentrant',
+    'cairo_pentagonal':  'cairo',
+    'ammann_beenker':    'quasicrystal',
 }
 
 
@@ -1136,6 +1471,7 @@ def generate_all_topologies(size, seeds_per_random=3):
         'iso_crystal', 'aniso_crystal', 'rectangular', 'oblique',
         'honeycomb', 'kagome', 'square_lattice',
         'penrose', 'lieb', 'diamond',
+        'reentrant', 'cairo_pentagonal', 'ammann_beenker',
     ]
     for name in deterministic:
         results.append(generate_topology(name, size, seed=0))
