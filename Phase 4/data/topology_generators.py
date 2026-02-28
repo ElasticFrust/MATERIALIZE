@@ -1043,23 +1043,25 @@ def generate_reentrant_honeycomb(size, theta=np.radians(30), H=1.0, L=1.0,
     Geometry (Gibson & Ashby convention):
         - Vertical ribs of length H.
         - Angled struts of length L at angle theta from vertical.
-        - In the regular honeycomb all V-joints point the same way;
-          in the re-entrant version alternating rows point inward,
-          creating hourglass/bowtie cells.
-        - Under x-tension the cells unfold laterally → negative Poisson's ratio.
+        - Alternating narrow (joint) and wide (rib-endpoint) rows create
+          hourglass/bowtie cells.
         - z=3 at every interior vertex.
 
     Construction:
         4 rows repeat vertically with period 2*(H + h):
 
-          row 3: y = 2H + h    "wide" row at x = 0, 2l, 4l, ...
-          row 2: y = H + h     "narrow" row at x = l, 3l, 5l, ...   (re-entrant)
-          row 1: y = H         "wide" row at x = 0, 2l, 4l, ...
-          row 0: y = 0         "narrow" row at x = l, 3l, 5l, ...   (re-entrant)
+          Row A: joint vertices (narrow row) at x = l, 3l, 5l, ...
+          Row B: rib endpoints (wide row) at x = 0, 2l, 4l, ...
+          Row C: rib endpoints (wide row) — ribs connect B to C
+          Row D: joint vertices (narrow row) — struts connect to C
 
-        Each narrow-row vertex connects UP to two wide-row vertices
-        (one left, one right). This creates the inward-pointing V shapes.
-        Vertical ribs connect wide-row pairs (row 1↔row 2, row 3↔next row 0).
+        Angled struts connect each joint to two rib endpoints in the
+        adjacent wide row. Vertical ribs connect pairs of wide rows.
+
+    Note: the true auxetic (negative Poisson's ratio) behaviour of
+    re-entrant honeycombs requires bending/angular spring stiffness.
+    With central-force springs only, nu remains positive, but the
+    topology is still structurally distinct and valuable for training.
 
     Args:
         size: (sx, sy) half-extents.
@@ -1072,11 +1074,11 @@ def generate_reentrant_honeycomb(size, theta=np.radians(30), H=1.0, L=1.0,
     l = L * np.sin(theta)   # horizontal projection of angled strut
 
     cell_w = 2 * l                # horizontal period
-    half_cell_h = H + h           # half vertical period (narrow row to narrow row)
+    cell_h = 2 * (H + h)          # vertical period
 
     buf = 3
     nx = int(np.ceil((size[0] + buf) / cell_w)) + 2
-    ny = int(np.ceil((size[1] + buf) / half_cell_h)) + 2
+    ny = int(np.ceil((size[1] + buf) / (cell_h / 2))) + 2
 
     point_map = {}
     points = []
@@ -1089,39 +1091,6 @@ def generate_reentrant_honeycomb(size, theta=np.radians(30), H=1.0, L=1.0,
         return point_map[key]
 
     edges = set()
-
-    for iy in range(-ny, ny + 1):
-        for ix in range(-nx, nx + 1):
-            # Alternating wide/narrow rows
-            if iy % 2 == 0:
-                # Wide row: vertices at x = ix * cell_w
-                x = ix * cell_w
-                y = iy * half_cell_h
-                p = add_point(x, y)
-
-                # Vertical rib to the wide-row vertex above (iy+1 is narrow,
-                # iy+2 is the next wide row): NOT directly, ribs connect
-                # consecutive wide rows that have no narrow row between them.
-                # Actually: wide(iy=0) connects via angled struts to narrow(iy=1),
-                # narrow(iy=1) connects via angled struts to wide(iy=2),
-                # wide(iy=2) connects via VERTICAL RIB to wide(iy=3)... no.
-
-                # Let me restructure. The 4-row repeating pattern per unit cell:
-                # Forget iy parity — lay out all 4 row types explicitly.
-                pass
-            else:
-                # Narrow row: vertices at x = ix * cell_w + l (shifted inward)
-                x = ix * cell_w + l
-                y = iy * half_cell_h
-                p = add_point(x, y)
-
-    # Clear and redo with explicit 4-row pattern
-    point_map.clear()
-    points.clear()
-    edges.clear()
-
-    # Period in y: cell_h = 2 * (H + h)
-    cell_h = 2 * half_cell_h
 
     for iy in range(-ny, ny + 1):
         for ix in range(-nx, nx + 1):
