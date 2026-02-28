@@ -1,7 +1,22 @@
 """Training script for the GNN forward surrogate.
 
+Trains the ForwardGNN model to predict Poisson's ratio from spring network graphs.
+The training loop includes:
+  - AdamW optimizer with cosine annealing warm restarts
+  - Gradient clipping (max norm 5.0) for stability
+  - Early stopping based on validation MSE
+  - Best model checkpointing
+
+Training target: MAE(nu) < 0.02 on the test set. This means the GNN predicts
+Poisson's ratio within ±0.02 of the true value on average — sufficient for the
+CVAE's physics loss (which uses the GNN as a differentiable surrogate).
+
 Usage:
-    python -m gnn.train --data_dir ./data/processed --epochs 300
+    # Quick test (small dataset):
+    python -m gnn.train --data_dir ./data/processed --epochs 50 --batch_size 32
+
+    # Full training:
+    python -m gnn.train --data_dir ./data/processed --epochs 300 --batch_size 64
 """
 
 import argparse

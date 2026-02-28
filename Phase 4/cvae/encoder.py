@@ -1,8 +1,24 @@
 """CVAE Encoder: compresses (graph + edge params + nu_target) -> latent (mu, logvar).
 
-The encoder sees the full solution during training and must extract a compact
-latent code that captures what's unique about this particular solution (vs the
-many other valid solutions for the same target).
+The encoder is used ONLY during training. It sees the full solution (graph with
+actual edge parameters k, l0) and the target Poisson ratio, and compresses this
+information into a compact latent code z ~ N(mu, diag(sigma^2)).
+
+Why do we need an encoder?
+──────────────────────────
+The inverse design problem is one-to-many: for a given target Poisson ratio,
+there are MANY valid edge parameter configurations. The encoder learns to
+capture the "style" or "mode" of a particular solution in the latent code z.
+During inference (without the encoder), we sample z from the prior N(0, I),
+and the decoder generates diverse solutions conditioned on z + nu_target.
+
+The latent space learns a meaningful manifold: nearby z values produce
+similar edge parameter patterns, and interpolating in z-space smoothly
+transitions between different design solutions.
+
+Architecture: same NNConv backbone as the forward GNN (shared design), but
+with the graph embedding concatenated with nu_target before projecting to
+(mu, logvar) rather than to a scalar prediction.
 """
 
 import torch

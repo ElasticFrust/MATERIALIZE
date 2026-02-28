@@ -1,6 +1,24 @@
 """Training script for the CVAE inverse design model.
 
+The CVAE training requires a pre-trained GNN forward surrogate (from gnn/train.py)
+for the physics loss. The training proceeds in stages:
+
+  Epochs 1-50:   Beta warmup — KL weight linearly increases from 0 to beta_max.
+                 This prevents "posterior collapse" where the encoder ignores z
+                 and the decoder learns a deterministic mapping.
+
+  Epochs 1-200:  Physics loss uses the GNN surrogate (fast, differentiable).
+                 gamma=10.0 ensures the decoded parameters actually produce
+                 the target nu, not just match the training data's parameters.
+
+  Epochs 201-300: Optionally switch to the actual solver for physics loss
+                  (slower but more accurate — not yet implemented in this script).
+
+The training monitors reconstruction loss (edge params), KL divergence (latent
+regularization), and physics loss (nu accuracy) separately for diagnosis.
+
 Usage:
+    # Requires a trained GNN model:
     python -m cvae.train --data_dir ./data/processed --gnn_checkpoint ./checkpoints/best_model.pt
 """
 

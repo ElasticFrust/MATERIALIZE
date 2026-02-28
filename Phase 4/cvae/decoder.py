@@ -1,9 +1,31 @@
 """CVAE Decoder: generates per-edge parameters from (graph topology + z + nu_target).
 
-The decoder uses geometric edge features only (not k, l0 -- those are outputs).
-The latent code z and condition nu_target are broadcast to all nodes via additive
-conditioning, then GNN message passing produces node embeddings, and an edge MLP
-reads out per-edge (k, l0) from endpoint pairs.
+The decoder is the creative half of the CVAE. Given:
+  - A graph topology (positions, edges, connectivity — but NOT k or l0)
+  - A latent code z (sampled from prior N(0,I) at inference time)
+  - A target Poisson ratio nu_target
+
+...it produces per-edge spring parameters (k, l0) that should yield the
+target nu when plugged into the forward solver.
+
+Key design decisions:
+  1. Geometric features only: the decoder sees [l_actual, dx, dy, angle] for
+     each edge, NOT k or l0 (those are outputs). This prevents trivial
+     "copy-the-input" solutions during training.
+  2. Additive conditioning: z and nu_target are projected to the hidden
+     dimension and added to each node's initial embedding. This broadcasts
+     global information (what nu to target, which "style" of solution) to
+     every node in the graph.
+  3. Edge readout: after message passing, per-edge parameters are predicted
+     from [h_i || h_j || edge_geom] — the concatenation of both endpoint
+     embeddings and the geometric edge features. This ensures the output
+     respects the edge's spatial context.
+  4. Softplus activation: k and l0 must be positive (physical constraint).
+     softplus(x, beta=5) ≈ max(0, x) for large x, but is smooth at 0.
+
+For non-triangulated meshes, the decoder outputs parameters for ALL edges,
+but soft (regularization) edges are overwritten with their fixed values
+after decoding. Only hard edges' gradients flow back to the decoder.
 """
 
 import torch

@@ -1,6 +1,15 @@
 """Evaluation and error analysis for the GNN forward surrogate.
 
-Provides per-topology breakdown, scatter plots, and error distribution analysis.
+After training, this module provides detailed evaluation including:
+  - Overall metrics: MAE, RMSE, max error, percentiles
+  - Per-topology breakdown: how well does the GNN perform on each of the 18
+    topology types? This reveals whether certain graph structures (e.g.,
+    quasicrystals, honeycomb) are harder to predict than others.
+  - Error distributions: useful for identifying systematic biases
+
+The per-topology breakdown is critical for understanding generalization:
+if the GNN works well on crystals but poorly on random triangulations,
+we know the model is overfitting to periodic structure.
 """
 
 import torch

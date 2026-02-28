@@ -1,10 +1,32 @@
-"""Full CVAE model tying encoder + decoder + loss.
+"""Full CVAE (Conditional Variational Autoencoder) for inverse elastic design.
 
-Loss = L_recon + beta * L_KL + gamma * L_physics
+The CVAE learns to generate edge parameter configurations (k, l0 per edge) that
+produce a desired Poisson's ratio when evaluated by the forward solver. It combines:
 
-- L_recon: edge parameter reconstruction (log-space for k, normalized for l0)
-- L_KL: KL divergence vs standard normal prior
-- L_physics: |nu_predicted - nu_target|^2 via forward surrogate or solver
+  Encoder (training only): sees the full solution (graph + true k, l0 + nu_target)
+           and compresses it to a latent code z ~ N(mu, sigma^2).
+
+  Decoder (training + inference): sees only the graph topology + z + nu_target
+           and generates per-edge (k, l0). At inference, z is sampled from N(0,I).
+
+Loss function:
+  L = L_recon + beta * L_KL + gamma * L_physics
+
+  - L_recon: How well do the decoded (k, l0) match the true (k, l0)?
+    Log-space MSE for rigidities (they span orders of magnitude).
+    Normalized MSE for rest lengths (relative to l_actual).
+    Only computed on hard (designable) edges, not soft regularization edges.
+
+  - L_KL: KL divergence D_KL(q(z|x) || N(0,I)). Regularizes the latent space
+    to be close to a standard normal, enabling sampling at inference time.
+    Uses beta-warmup: beta linearly increases from 0 to beta_max over the first
+    50 epochs. This prevents "posterior collapse" where the encoder ignores z.
+
+  - L_physics: |nu_predicted - nu_target|^2. The predicted (k, l0) are fed
+    through the GNN forward surrogate to check if they actually produce the
+    target nu. This ensures physical consistency. Weighted by gamma=10.0.
+    For epochs 1-200, uses the fast GNN surrogate. For epochs 201-300,
+    can optionally switch to the actual solver for higher accuracy.
 """
 
 import torch

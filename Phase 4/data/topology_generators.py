@@ -1,13 +1,37 @@
 """Topology generators for Phase 4 GNN training.
 
-Provides diverse mesh topologies across 4 categories:
+Provides diverse mesh topologies across 6 categories:
   1. Hexagonal lattice family (wraps existing D2C functions)
   2. Fully random triangulations (Poisson, blue noise, clustered, gradient)
-  3. Lattices with non-trivial basis (kagome, square, snub square, etc.)
-  4. Non-triangulated meshes with soft-edge regularization (honeycomb, etc.)
+  3. Lattices with non-trivial basis (kagome, square, honeycomb, etc.)
+  4. Non-triangulated meshes with soft-edge regularization
+  5. Physically motivated non-trivial topologies (Lieb, diamond, bond-diluted)
+  6. Quasicrystals (Penrose, Ammann-Beenker)
 
 All generators return a TriangulationResult dataclass that wraps scipy Delaunay
 objects and adds metadata needed for GNN training (edge masks, rigidity defaults).
+
+Why diverse topologies?
+──────────────────────
+The GNN forward surrogate must generalize across fundamentally different graph
+structures, not just perturbed hexagonal lattices. Training on diverse topologies
+ensures the network learns *general* structure-property relationships rather than
+memorizing hexagonal-specific patterns.
+
+Key concepts:
+  - "Hard" edges: original structural bonds of the lattice. These carry the
+    real mechanical load and are the design variables in inverse optimization.
+  - "Soft" edges: regularization fill-ins added to make non-triangulated meshes
+    compatible with the triangle-based forward solver. They have k_soft << k_hard
+    (typically k_soft/k_hard = 1e-3) and contribute negligibly to elastic response.
+  - Coordination number (z): number of bonds per vertex. Ranges from z=3
+    (honeycomb, floppy) to z=6 (triangular, rigid). The Maxwell criterion
+    z_c = 2d = 4 in 2D divides under-constrained from over-constrained networks.
+  - Delaunay triangulation: the default method for converting point sets into
+    triangle meshes. Maximizes the minimum angle, avoiding degenerate slivers.
+
+Target mesh size: ~950 triangles at size=(10,10) for all topologies. This
+ensures comparable graph sizes across the dataset, avoiding batch-size bias.
 """
 
 import numpy as np
@@ -17,7 +41,10 @@ from typing import Optional, Tuple
 from pathlib import Path
 import sys
 
-# Import existing mesh generators
+# Import existing mesh generators from Phase 2.
+# Disc_2_Cont_optimized (D2C) provides the original crystal and foam generators
+# that were developed for the continuum elasticity solver. We wrap these with
+# our TriangulationResult container to add GNN-specific metadata.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "Phase 2"))
@@ -32,16 +59,30 @@ import Disc_2_Cont_optimized as D2C
 
 @dataclass
 class TriangulationResult:
-    """Container for a triangulated mesh with metadata.
+    """Container for a triangulated mesh with metadata for the GNN pipeline.
+
+    Every topology generator returns one of these. It bridges between the
+    geometry (points + triangles) and the GNN data pipeline (graph_utils.py),
+    carrying the crucial distinction between hard and soft edges.
 
     Attributes:
-        points:       (M, 2) node coordinates.
-        simplices:    (N_tri, 3) triangle vertex indices.
-        hard_edge_set: set of frozenset pairs — the original structural bonds.
-                      None if all edges are structural (fully triangulated mesh).
-        k_soft_ratio: ratio of soft to hard spring constants for regularization.
-        topo_name:    human-readable topology name.
-        topo_class:   category string for grouping.
+        points:       (M, 2) node coordinates in physical space.
+        simplices:    (N_tri, 3) triangle vertex indices — the solver requires
+                      every face to be a triangle, so non-triangular meshes
+                      must be triangulated before reaching this stage.
+        hard_edge_set: set of frozenset pairs {(i,j)} — the original structural
+                      bonds of the lattice. If None, ALL edges are structural
+                      (this is the case for fully triangulated meshes like
+                      Delaunay of random points, or the crystal lattice family).
+                      For non-triangulated lattices (honeycomb, kagome, square),
+                      this set contains only the real lattice bonds; edges added
+                      during triangulation (diagonals, center-point radials) are
+                      NOT in this set and are treated as soft regularization edges.
+        k_soft_ratio: ratio of soft to hard spring constants (default 1e-3).
+                      This means soft springs are 1000x weaker than structural bonds.
+                      Verified to contribute <0.1% to the elastic tensor.
+        topo_name:    human-readable topology name (e.g., 'honeycomb', 'foam_eta02').
+        topo_class:   category string for grouping in metrics/plots (e.g., 'crystal').
     """
     points: np.ndarray
     simplices: np.ndarray
@@ -51,9 +92,12 @@ class TriangulationResult:
     topo_class: str = ""
 
     def to_delaunay_compat(self):
-        """Return an object compatible with from_triangulation().
+        """Return an object compatible with the Phase 2 forward solver.
 
-        The forward solver expects tri.points, tri.simplices.
+        The forward solver (forward_solver_torch.from_triangulation) expects
+        an object with .points and .simplices attributes matching the
+        scipy.spatial.Delaunay interface. This adapter provides that without
+        requiring a full Delaunay object (which would re-triangulate).
         """
         obj = _DelaunayCompat(self.points, self.simplices)
         return obj
@@ -73,10 +117,19 @@ class TriangulationResult:
         return frozenset((i, j)) in self.hard_edge_set
 
     def get_default_rigidities(self):
-        """Return (N_tri, 3) default rigidities: 1.0 for hard, k_soft for soft."""
+        """Return (N_tri, 3) default rigidities: 1.0 for hard, k_soft for soft.
+
+        The forward solver takes per-triangle, per-edge rigidities in shape
+        (N_tri, 3). Each triangle has 3 edges indexed as:
+          edge 0: (tri[0], tri[1])
+          edge 1: (tri[0], tri[2])
+          edge 2: (tri[1], tri[2])
+        Hard (structural) edges get k=1.0, soft (regularization) edges get
+        k=k_soft_ratio (typically 0.001).
+        """
         rigs = np.ones((self.n_tri, 3))
         if self.hard_edge_set is None:
-            return rigs
+            return rigs  # All edges hard — fully triangulated mesh
         for t, tri in enumerate(self.simplices):
             edges = [(tri[0], tri[1]), (tri[0], tri[2]), (tri[1], tri[2])]
             for e, (a, b) in enumerate(edges):
@@ -98,7 +151,12 @@ class TriangulationResult:
 
 
 class _DelaunayCompat:
-    """Minimal object mimicking scipy.spatial.Delaunay for from_triangulation()."""
+    """Minimal duck-type of scipy.spatial.Delaunay for the forward solver.
+
+    The Phase 2 solver calls from_triangulation(tri) and accesses tri.points
+    and tri.simplices. This lightweight adapter avoids the overhead (and
+    potential re-triangulation) of constructing a full Delaunay object.
+    """
     def __init__(self, points, simplices):
         self.points = points
         self.simplices = simplices
@@ -109,18 +167,56 @@ class _DelaunayCompat:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _filter_interior(points, simplices, size):
-    """Keep only triangles whose centroid is inside [-size, size]."""
+    """Keep only triangles whose centroid falls inside the [-size, size] box.
+
+    All generators create points in a buffer zone around the domain (typically
+    +-2 units beyond size) to avoid boundary artifacts in the Delaunay
+    triangulation. This filter discards triangles that extend outside the
+    intended simulation domain, giving a clean rectangular mesh boundary.
+
+    Args:
+        points: (M, 2) all node positions (including buffer zone).
+        simplices: (N_tri, 3) triangle vertex indices.
+        size: (sx, sy) half-extents of the domain. Triangles with centroids
+              outside [-sx, sx] x [-sy, sy] are discarded.
+
+    Returns:
+        Filtered simplices array (N_kept, 3).
+    """
     centroids = np.mean(points[simplices], axis=1)
     mask = (np.abs(centroids[:, 0]) <= size[0]) & (np.abs(centroids[:, 1]) <= size[1])
     return simplices[mask]
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# CATEGORY 1: Hexagonal lattice family (wraps existing functions)
+# CATEGORY 1: Hexagonal / Bravais lattice family
 # ═════════════════════════════════════════════════════════════════════════════
+#
+# These are the 5 distinct 2D Bravais lattice types:
+#   - Square (a=b, gamma=90°) → covered by generate_square_lattice in Cat 3
+#   - Rectangular (a≠b, gamma=90°) → generate_rectangular_lattice
+#   - Hexagonal (a=b, gamma=60°) → generate_iso_crystal
+#   - Oblique (a≠b, gamma≠90°,60°,120°) → generate_oblique_lattice
+#   - Centered rectangular → degenerate, covered by aniso_crystal
+#
+# All produce z=6 coordination after Delaunay triangulation because the
+# triangulation connects each point to its ~6 Voronoi neighbors. Hard edges
+# = all edges (no soft regularization needed — these are natively triangulated).
+#
+# The foam generators add positional noise to the hexagonal lattice:
+#   - generate_foam: perturbs positions but keeps the original triangulation
+#     topology (same neighbor connectivity as the crystal).
+#   - generate_foam_retriangulated: perturbs positions AND re-Delaunay-triangulates,
+#     so the topology itself changes (some neighbor swaps occur).
 
 def generate_iso_crystal(size):
-    """Regular isotropic triangular lattice (z=6)."""
+    """Regular isotropic triangular lattice (z=6).
+
+    The simplest 2D lattice: equilateral triangles tiling the plane.
+    All edges are identical length, all interior vertices have exactly 6
+    neighbors. This is the baseline "most rigid" topology — it has the
+    highest coordination number possible for a planar graph.
+    """
     tri = D2C.generate_cryratl_points(size=size, shape=(1, 1), orientation=0)
     return TriangulationResult(
         points=tri.points, simplices=tri.simplices,
@@ -129,7 +225,13 @@ def generate_iso_crystal(size):
 
 
 def generate_aniso_crystal(size, shape=(1.5, 0.8), orientation=np.pi / 6):
-    """Anisotropic (stretched + rotated) triangular lattice (z=6)."""
+    """Anisotropic (stretched + rotated) triangular lattice (z=6).
+
+    Same topology as iso_crystal but with an affine transformation applied
+    to the lattice: stretching by (shape[0], shape[1]) and rotating by
+    `orientation`. This tests whether the GNN can distinguish geometric
+    anisotropy from topological differences.
+    """
     tri = D2C.generate_cryratl_points(size=size, shape=shape, orientation=orientation)
     return TriangulationResult(
         points=tri.points, simplices=tri.simplices,
@@ -203,7 +305,16 @@ def generate_oblique_lattice(size, a_len=1.0, b_len=1.2, angle_deg=70):
 
 
 def generate_foam(size, eta=0.2):
-    """Perturbed hexagonal lattice (z~6). Topology from crystal, positions perturbed."""
+    """Perturbed hexagonal lattice (z~6). Topology frozen, positions perturbed.
+
+    Each vertex is displaced by a random vector of magnitude up to eta * a,
+    where a is the lattice constant. The triangulation topology (which vertex
+    connects to which) remains identical to the crystal — only positions change.
+    This models thermal vibrations or mild manufacturing imperfections.
+
+    At eta=0.2, coordination stays exactly 6. At eta=0.45, some edge flips
+    may occur but the D2C generator preserves the original topology.
+    """
     tri = D2C.generate_foam_points(size=size, eta=eta)
     return TriangulationResult(
         points=tri.points, simplices=tri.simplices,
@@ -214,7 +325,13 @@ def generate_foam(size, eta=0.2):
 
 def generate_foam_retriangulated(size, eta=0.2):
     """Perturbed hexagonal lattice with Delaunay re-triangulation.
-    Unlike generate_foam, topology can differ from the crystal."""
+
+    Unlike generate_foam (which preserves the crystal topology), this
+    generator re-runs Delaunay on the displaced points. Large displacements
+    cause edge flips: some crystal neighbors disconnect while new neighbors
+    appear. This gives topology variation at high eta — closer to a true
+    disordered solid than the topology-frozen foam.
+    """
     tri = D2C.generate_foam_points2(size=size, eta=eta)
     return TriangulationResult(
         points=tri.points, simplices=tri.simplices,
@@ -226,12 +343,29 @@ def generate_foam_retriangulated(size, eta=0.2):
 # ═════════════════════════════════════════════════════════════════════════════
 # CATEGORY 2: Fully random triangulations
 # ═════════════════════════════════════════════════════════════════════════════
+#
+# These topologies have NO underlying lattice structure. The point placement
+# is stochastic, and the Delaunay triangulation inherits this randomness.
+# Unlike the foam generators (which perturb a crystal), these create entirely
+# novel topologies every time a different random seed is used.
+#
+# Key property: coordination number varies per vertex (4-9+), creating
+# heterogeneous local structure. This is the hardest case for the GNN
+# because there's no translational symmetry to exploit.
+#
+# All edges are hard (no soft regularization) since Delaunay produces
+# only triangles.
 
 def generate_poisson_delaunay(size):
     """Uniform random points -> Delaunay triangulation.
 
-    Coordination varies widely (4-9+). No underlying lattice structure.
-    Uses the same density as the hexagonal lattice for comparable triangle count.
+    The simplest random triangulation: scatter points uniformly at random,
+    then Delaunay-triangulate. Coordination varies widely (4-9+). Dense
+    regions have higher coordination than sparse regions. Some triangles
+    are very thin (small angles) while others are nearly equilateral.
+
+    The point density is matched to the hexagonal lattice (2/sqrt(3) per
+    unit area) so the triangle count is comparable across topologies.
     """
     density = 2.0 / np.sqrt(3)
     x_lo, x_hi = -(size[0] + 2), size[0] + 2
@@ -253,13 +387,24 @@ def generate_poisson_delaunay(size):
 def generate_blue_noise(size, min_dist=0.6):
     """Poisson disk sampling -> Delaunay. More uniform than pure random.
 
+    "Blue noise" refers to point distributions where the power spectrum
+    has suppressed low-frequency components — meaning there are no dense
+    clumps or sparse voids. The minimum distance constraint prevents
+    points from getting too close, giving more uniform triangle sizes
+    than pure Poisson but without the rigid periodicity of a lattice.
+
     Uses Bridson's fast algorithm: O(n) point generation with guaranteed
-    minimum distance between points. Coordination numbers are narrower
-    than pure Poisson (typically 5-7).
+    minimum distance between points. For each active point, up to 30
+    candidate neighbors are tested in an annulus [min_dist, 2*min_dist].
+    Coordination numbers are narrower than pure Poisson (typically 5-7).
+
+    This represents materials with short-range order but no long-range
+    periodicity — like amorphous glasses.
 
     Args:
         size: (sx, sy) half-extents of the interior region.
-        min_dist: minimum distance between any two points.
+        min_dist: minimum distance between any two points. Larger values
+                  produce fewer, more widely spaced points.
     """
     x_lo, x_hi = -(size[0] + 2), size[0] + 2
     y_lo, y_hi = -(size[1] + 2), size[1] + 2
@@ -336,16 +481,24 @@ def generate_blue_noise(size, min_dist=0.6):
 def generate_clustered(size, cluster_spacing=2.0, cluster_std=0.4, pts_per_cluster=15):
     """Gaussian mixture model point process -> Delaunay.
 
-    Dense cluster cores have high coordination (8-12+),
-    sparse bridge regions have low coordination (3-4).
-    Cluster centers are placed on a jittered grid so the overall
-    structure remains spatially uniform.
+    Models materials with heterogeneous microstructure: dense grain cores
+    connected by sparse grain boundaries. This creates extreme variation
+    in local topology: cluster cores have z=8-12+ (highly over-constrained),
+    while bridge regions have z=3-4 (under-constrained, nearly floppy).
+
+    The GNN must learn that elastic properties depend on the *weakest*
+    (most under-constrained) regions, not just the average coordination.
+
+    Cluster centers are placed on a jittered grid (not purely random) to
+    avoid pathological configurations where all clusters overlap.
 
     Args:
         size: (sx, sy) half-extents.
-        cluster_spacing: approx distance between cluster centers.
-        cluster_std: standard deviation of each cluster.
-        pts_per_cluster: number of points per cluster.
+        cluster_spacing: approx distance between cluster centers. Larger
+                         values create fewer, more isolated clusters.
+        cluster_std: standard deviation of each Gaussian cluster. Smaller
+                     values make tighter clusters with stronger core/bridge contrast.
+        pts_per_cluster: number of points sampled per cluster center.
     """
     x_lo, x_hi = -(size[0] + 2), size[0] + 2
     y_lo, y_hi = -(size[1] + 2), size[1] + 2
@@ -378,13 +531,23 @@ def generate_clustered(size, cluster_spacing=2.0, cluster_std=0.4, pts_per_clust
 def generate_gradient_density(size, density_ratio=4.0):
     """Non-uniform density: dense on left, sparse on right -> Delaunay.
 
-    Coordination varies smoothly across the mesh.
+    Creates a mesh where point density (and hence coordination and triangle
+    size) varies smoothly across the domain. The left side has density_ratio
+    times more points than the right. This tests the GNN's ability to handle
+    spatially varying local structure within a single graph.
+
+    Uses rejection sampling: candidate points are drawn uniformly, then
+    accepted with probability proportional to the local density function
+    density(x) = base * (1 + (ratio-1) * (x - x_lo) / width). The average
+    density matches the hexagonal lattice baseline.
 
     Args:
         size: (sx, sy) half-extents.
-        density_ratio: max/min density ratio from left to right.
+        density_ratio: max/min density ratio from left to right. Higher
+                       values create stronger density gradients. Default 4.0
+                       means the left edge is 4x denser than the right.
     """
-    base_density = 2.0 / np.sqrt(3)
+    base_density = 2.0 / np.sqrt(3)  # matches hex lattice point density
     x_lo, x_hi = -(size[0] + 2), size[0] + 2
     y_lo, y_hi = -(size[1] + 2), size[1] + 2
     width = x_hi - x_lo
@@ -424,20 +587,50 @@ def generate_gradient_density(size, density_ratio=4.0):
 # ═════════════════════════════════════════════════════════════════════════════
 # CATEGORY 3 & 4: Lattices with basis + non-triangulated with regularization
 # ═════════════════════════════════════════════════════════════════════════════
+#
+# These lattices have more than 1 atom per unit cell and/or non-triangular
+# faces. They represent fundamentally different graph topologies from the
+# triangular family:
+#
+#   Honeycomb (z=3): hexagonal faces, strongly sub-isostatic, graphene-like.
+#   Kagome (z=4): corner-sharing triangles + hexagonal voids, at isostaticity.
+#   Square (z=4): simplest non-triangular lattice, at isostaticity threshold.
+#   Lieb (z=2,4): flat phonon band, decorated square.
+#   Diamond (z=4): 2-atom basis in square cell, centered rectangular.
+#
+# The key challenge: the forward solver requires TRIANGLES. Non-triangular
+# faces (hexagons in honeycomb, squares in square lattice) must be
+# triangulated. We add "soft" fill-in edges with k_soft << k_hard so the
+# solver works but the physics is dominated by the real structural bonds.
+#
+# This hard/soft distinction propagates all the way through the pipeline:
+#   - TriangulationResult.hard_edge_set tracks which edges are real
+#   - graph_utils.py sets edge_attr[:, 4] = is_real flag (1.0 or 0.0)
+#   - GNN sees is_real and learns to weight soft edges differently
+#   - CVAE decoder only generates parameters for hard (designable) edges
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _generate_lattice_points(size, a1, a2, basis):
     """Generate points for a 2D Bravais lattice with given basis.
 
+    This is the workhorse for all periodic lattice generators. Given lattice
+    vectors a1, a2 and a basis (atoms per unit cell), it generates all points
+    R = n*a1 + m*a2 + b for integer n,m and basis vector b.
+
+    The range of (n, m) is determined by inverting the lattice matrix to find
+    which integer coordinates are needed to cover the [-size-buf, size+buf] box.
+    A buffer zone of 2 units is added to avoid Delaunay boundary artifacts.
+
     Args:
         size: (sx, sy) half-extents for the interior.
-        a1, a2: (2,) lattice vectors.
-        basis: (n_basis, 2) positions within the unit cell.
+        a1, a2: (2,) lattice vectors defining the unit cell geometry.
+        basis: (n_basis, 2) positions within the unit cell (fractional coords
+               already converted to Cartesian — NOT fractional).
 
     Returns:
         points: (M, 2) all generated lattice points (includes buffer zone).
-        interior_mask: (M,) bool mask for points inside [-size, size].
+        interior_mask: (M,) bool mask for points inside [-size, size]+0.5.
     """
     buf = 2.0
     max_extent = max(size[0], size[1]) + buf
@@ -471,9 +664,13 @@ def _generate_lattice_points(size, a1, a2, basis):
 
 
 def _build_edges_from_neighbor_distance(points, max_dist):
-    """Find all pairs of points within max_dist (structural bonds).
+    """Find all pairs of points within max_dist — these become hard (structural) bonds.
 
-    Returns set of frozenset pairs (i, j).
+    Uses a KD-tree for O(n log n) neighbor search. The max_dist cutoff is
+    typically set to 1.05 * theoretical_bond_length to account for floating-point
+    rounding in lattice point generation.
+
+    Returns set of frozenset pairs {(i, j)} suitable for TriangulationResult.hard_edge_set.
     """
     from scipy.spatial import cKDTree
     tree = cKDTree(points)
@@ -482,11 +679,17 @@ def _build_edges_from_neighbor_distance(points, max_dist):
 
 
 def _triangulate_with_soft_edges(points, hard_edges, size, k_soft_ratio=1e-3):
-    """Triangulate a point set and mark hard vs soft edges.
+    """Delaunay triangulate a point set and mark hard vs soft edges.
 
-    1. Delaunay triangulate all points.
-    2. Filter to interior triangles.
-    3. Mark edges: hard if in hard_edges set, soft otherwise.
+    This is the standard pipeline for non-triangulated lattices:
+      1. Delaunay triangulate all lattice points (ignoring original connectivity).
+      2. Filter to interior triangles (discard buffer-zone triangles).
+      3. Mark edges: hard if they appear in the hard_edges set (original
+         lattice bonds), soft otherwise (fill-in edges added by Delaunay).
+
+    The Delaunay triangulation will naturally add edges across non-triangular
+    faces (e.g., diagonals across squares, chords across hexagons). These
+    fill-in edges become the soft regularization springs.
 
     Returns:
         TriangulationResult with hard_edge_set populated.
@@ -502,17 +705,30 @@ def _triangulate_with_soft_edges(points, hard_edges, size, k_soft_ratio=1e-3):
 
 
 def _add_face_centers(points, faces, hard_edges):
-    """Add center vertex to each polygonal face and connect to corners.
+    """Add center vertex to each polygonal face and connect to corners (center-point triangulation).
+
+    For each n-gon face, adds a vertex at its centroid and connects it to all n
+    corner vertices. This creates n triangles per face. All new edges (centroid to
+    corners) are soft — they are NOT added to hard_edges.
+
+    Center-point triangulation is preferred over fan triangulation for hexagonal
+    faces because it produces more uniform triangles (all subtend ~60° at the
+    center of a regular hexagon) and better numerical conditioning in the solver.
+
+    Example for a hexagonal face:
+        Before: 6-gon with 6 hard perimeter edges
+        After:  6 triangles, each with 2 soft radial edges + 1 hard perimeter edge
 
     Args:
-        points: (M, 2) existing points.
+        points: (M, 2) existing lattice points.
         faces: list of lists of vertex indices, each defining a polygon face.
         hard_edges: set of frozenset pairs (existing structural bonds).
+                    NOT modified — new center-to-corner edges are implicitly soft.
 
     Returns:
-        new_points: (M + len(faces), 2) points with centers appended.
-        new_hard_edges: updated hard_edges (unchanged -- new edges are soft).
-        face_simplices: list of (n_verts, 3) triangle arrays for each face.
+        new_points: (M + len(faces), 2) points with centroids appended.
+        new_hard_edges: unchanged hard_edges set (soft edges are implicit).
+        face_simplices: (N_new_tri, 3) triangle vertex indices for all faces.
     """
     new_points = list(points)
     all_new_simplices = []
@@ -601,10 +817,16 @@ def generate_honeycomb(size, spacing=1.0, k_soft_ratio=1e-3):
 
 
 def _find_honeycomb_faces(points, hard_edges, size):
-    """Find hexagonal faces of the honeycomb lattice.
+    """Find hexagonal faces of the honeycomb lattice by half-edge traversal.
 
-    Uses the dual graph: each hexagonal face corresponds to a cycle of length 6
-    in the bond graph. We find these by walking around each vertex.
+    Algorithm: for each directed half-edge (u -> v), find the "next" half-edge
+    by looking at v's neighbors sorted by angle and picking the one just before
+    u in clockwise order. Walking this chain traces out one face of the planar
+    graph. We keep only faces with exactly 6 vertices (hexagons) and discard
+    boundary faces and the outer (infinite) face.
+
+    This is a standard computational geometry technique for finding faces of
+    a planar straight-line graph (PSLG) embedded in the plane.
     """
     from collections import defaultdict
 
@@ -674,9 +896,20 @@ def _find_honeycomb_faces(points, hard_edges, size):
 def generate_kagome(size, spacing=1.0, k_soft_ratio=1e-3):
     """Kagome lattice (z=4, 3 atoms per hexagonal unit cell).
 
-    Corner-sharing triangles with hexagonal voids. The triangular faces
-    are already triangulated (hard edges). The hexagonal voids are
-    triangulated with center-point + soft radial edges.
+    The kagome lattice consists of corner-sharing triangles arranged on a
+    hexagonal Bravais lattice. It's named after a traditional Japanese
+    basket-weaving pattern. Each vertex sits at the midpoint of a Bravais
+    cell edge, giving 3 atoms per unit cell with z=4 coordination.
+
+    Mechanically significant: kagome sits exactly at the Maxwell isostaticity
+    threshold (z=2d=4 in 2D), meaning it can host "zero-energy" floppy modes.
+    This makes it a critical test case for the GNN — small changes in
+    rigidity can dramatically alter the elastic response.
+
+    The triangular faces are already triangulated (all their edges are hard).
+    The hexagonal voids between triangles are filled by Delaunay, creating
+    soft fill-in edges. The GNN learns to distinguish the rigid triangular
+    units from the floppy hexagonal gaps.
 
     Args:
         size: (sx, sy) half-extents.
@@ -684,10 +917,13 @@ def generate_kagome(size, spacing=1.0, k_soft_ratio=1e-3):
         k_soft_ratio: rigidity ratio for soft edges.
     """
     # Kagome on hexagonal Bravais lattice
+    # The Bravais cell is 2x larger than the triangular lattice cell
+    # because we need 3 atoms per cell instead of 1
     a1 = np.array([2.0, 0.0]) * spacing
     a2 = np.array([1.0, np.sqrt(3)]) * spacing
 
     # 3-atom basis: midpoints of the Bravais cell edges
+    # These form the corner-sharing triangles characteristic of kagome
     basis = np.array([
         [0.0, 0.0],
         [1.0, 0.0],
@@ -696,13 +932,14 @@ def generate_kagome(size, spacing=1.0, k_soft_ratio=1e-3):
 
     points, interior = _generate_lattice_points(size, a1, a2, basis)
 
-    # Kagome bonds: each site connects to 4 nearest neighbors
-    # Bond length = spacing (distance between basis points)
+    # Kagome bonds: each site connects to 4 nearest neighbors at distance = spacing.
+    # The 1.05 factor is a tolerance for floating-point lattice point generation.
     bond_dist = spacing * 1.05
     hard_edges = _build_edges_from_neighbor_distance(points, bond_dist)
 
-    # Delaunay triangulate: this automatically fills hexagonal voids
-    # The Delaunay edges inside hexagons become soft
+    # Delaunay triangulate: automatically fills hexagonal voids with extra edges.
+    # Hard edges (kagome bonds) are the real structural connections.
+    # Soft edges (Delaunay fill-in across hexagons) are regularization only.
     DM = scipy.spatial.Delaunay(points)
     simplices = _filter_interior(DM.points, DM.simplices, size)
 
@@ -721,13 +958,23 @@ def generate_kagome(size, spacing=1.0, k_soft_ratio=1e-3):
 def generate_square_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
     """Square lattice (z=4) with soft diagonal regularization.
 
-    Each square face gets one diagonal (alternating NE-SW and NW-SE)
-    as a soft spring. This creates 2 triangles per square face.
+    The square lattice is the simplest non-triangular periodic lattice.
+    Like kagome, it sits at the Maxwell isostaticity threshold z=4.
+
+    Each square face needs a diagonal to become two triangles. We alternate
+    the diagonal direction (NE-SW for even cells, NW-SE for odd cells) to
+    avoid systematic directional bias that would create artificial anisotropy.
+    The diagonal edges are soft (k = k_soft_ratio) while the horizontal and
+    vertical bonds are hard (k = 1.0).
+
+    Note: unlike the Delaunay-based approach used for honeycomb/kagome, here
+    we construct the triangulation explicitly because the alternating diagonal
+    pattern requires careful control. Delaunay would pick diagonals arbitrarily.
 
     Args:
         size: (sx, sy) half-extents.
-        spacing: distance between adjacent vertices.
-        k_soft_ratio: rigidity of diagonal springs.
+        spacing: distance between adjacent vertices. Default 1.0.
+        k_soft_ratio: rigidity of diagonal (soft) springs relative to structural bonds.
     """
     buf = 2
     nx = int(np.ceil((size[0] + buf) / spacing)) * 2
@@ -739,14 +986,16 @@ def generate_square_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
     xx, yy = np.meshgrid(xs, ys)
     points = np.column_stack([xx.ravel(), yy.ravel()])
 
-    # Build grid index: (ix, iy) -> point index
+    # Build grid index: (ix, iy) -> linear point index.
+    # The grid is stored row-major: point at grid position (ix, iy) has
+    # linear index iy * n_cols + ix.
     n_cols = len(xs)
     n_rows = len(ys)
 
     def _idx(ix, iy):
         return iy * n_cols + ix
 
-    # Hard edges: horizontal and vertical bonds
+    # Hard edges: horizontal and vertical bonds (the real square lattice connections)
     hard_edges = set()
     for iy in range(n_rows):
         for ix in range(n_cols):
@@ -755,7 +1004,8 @@ def generate_square_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
             if iy + 1 < n_rows:
                 hard_edges.add(frozenset((_idx(ix, iy), _idx(ix, iy + 1))))
 
-    # Triangulate: add one diagonal per square, alternating direction
+    # Triangulate: add one soft diagonal per square cell, alternating direction
+    # to avoid introducing directional bias in the elastic response
     simplices = []
     for iy in range(n_rows - 1):
         for ix in range(n_cols - 1):
@@ -791,22 +1041,36 @@ def generate_square_lattice(size, spacing=1.0, k_soft_ratio=1e-3):
 def generate_penrose(size, spacing=4.0):
     """Penrose quasicrystal point set -> Delaunay triangulation.
 
-    Uses the cut-and-project method: project from a 5D hypercubic lattice
-    onto a 2D plane with 5-fold symmetry. Only lattice points whose
-    perpendicular-space projection falls within a decagonal acceptance
-    window are kept.
+    Quasicrystals have long-range order without translational periodicity.
+    The Penrose tiling has 5-fold rotational symmetry (forbidden in periodic
+    crystals by the crystallographic restriction theorem). It's constructed
+    via the cut-and-project method:
 
-    This produces a quasiperiodic point set with local 5-fold symmetry
-    but no translational periodicity — the hallmark of quasicrystals.
-    All edges are hard (fully triangulated Delaunay).
+    1. Start with the integer lattice Z^5 in 5D space.
+    2. Define two orthogonal projections:
+       - Parallel space (2D): the physical plane we care about.
+       - Perpendicular space (3D): used only for filtering.
+    3. Keep only lattice points whose perp-space projection falls inside
+       an acceptance window (approximated by a sphere of radius ~ golden ratio).
+    4. Project the surviving points into parallel space -> 2D point set.
+
+    The projection directions are chosen with angles at multiples of 2pi/5,
+    which gives the 5-fold symmetry. The resulting point set tiles the plane
+    with "fat" and "thin" rhombi (Penrose P3 tiling).
+
+    All edges are hard (Delaunay triangulation, no soft regularization).
+    The quasiperiodic structure creates diverse local environments that
+    test the GNN's generalization beyond periodic lattices.
 
     Args:
         size: (sx, sy) half-extents of the interior region.
         spacing: scale factor for inter-point distance. Default 4.0 gives
                  ~700 points at size=(10,10), comparable to the triangular lattice.
     """
-    # Projection matrices for Penrose (5-fold) quasicrystal
-    # Parallel-space: project onto plane with 5-fold symmetry
+    # Projection matrices for Penrose (5-fold) quasicrystal.
+    # Each of the 5 basis vectors in Z^5 projects to a unit vector at angle 2*pi*k/5
+    # in parallel space. Perpendicular space uses the 2nd harmonic (4*pi*k/5)
+    # which creates a different, complementary projection.
     k = np.arange(5)
     angles_par = 2 * np.pi * k / 5
     angles_perp = 4 * np.pi * k / 5  # perpendicular space uses 2nd harmonic
@@ -814,13 +1078,14 @@ def generate_penrose(size, spacing=4.0):
     P_par = np.array([np.cos(angles_par), np.sin(angles_par)])      # (2, 5)
     P_perp = np.array([np.cos(angles_perp), np.sin(angles_perp)])    # (2, 5)
 
-    # Normalization — spacing scales the physical-space lattice constant
+    # Normalization: sqrt(2/5) ensures unit vectors, spacing scales physical distances
     P_par *= np.sqrt(2.0 / 5) * spacing
     P_perp *= np.sqrt(2.0 / 5)
 
-    # Acceptance window radius in perpendicular space (decagonal window)
-    # For a Penrose tiling, the acceptance domain is a regular decagon.
-    # We approximate with a circle of appropriate radius.
+    # Acceptance window radius in perpendicular space (decagonal window).
+    # For a true Penrose tiling, the acceptance domain is a regular decagon.
+    # We approximate with a circle; this gives a Penrose-like quasicrystal
+    # with the correct local structure but slightly different vertex statistics.
     window_radius = np.sqrt(2.0 / 5) * (1 + 2 * np.cos(np.pi / 5))
 
     # Scan lattice points in Z^5 that could project into our domain
@@ -994,13 +1259,20 @@ def generate_bond_diluted(size, p_remove=0.2):
     """Triangular lattice with randomly removed bonds (bond percolation).
 
     Start from a perfect z=6 triangular lattice and randomly remove a
-    fraction of bonds. This models structural damage, porosity, or
-    the effect of fabrication defects. The remaining bonds are hard;
-    removed bonds become soft (fill-in) springs.
+    fraction p_remove of bonds. This models structural damage, porosity, or
+    the effect of fabrication defects. The remaining bonds are hard (k=1);
+    removed bonds become soft (k=k_soft_ratio) fill-in springs that keep
+    the triangulation valid but contribute negligible stiffness.
 
-    Near the percolation threshold (p ~ 0.35 for triangular), the
-    structure develops interesting mechanical properties: soft modes,
-    floppy regions, and potentially auxetic behavior.
+    Bond percolation physics:
+      - p_remove < 0.20: mesh is globally rigid, small stiffness reduction.
+      - p_remove ~ 0.25: floppy regions begin to appear, interesting for GNN.
+      - p_remove ~ 0.35: near the rigidity percolation threshold. The mesh
+        fragments into rigid clusters connected by floppy hinges.
+      - p_remove > 0.40: globally floppy, elastic moduli → 0.
+
+    The default p_remove=0.2 gives a stiff but heterogeneous mesh — the most
+    interesting regime for the GNN because local rigidity varies spatially.
 
     Args:
         size: (sx, sy) half-extents.
@@ -1230,14 +1502,19 @@ def generate_cairo_pentagonal(size, spacing=1.0, k_soft_ratio=1e-3):
 def generate_ammann_beenker(size, spacing=3.0):
     """Ammann-Beenker (octagonal) quasicrystal -> Delaunay triangulation.
 
-    Uses the cut-and-project method from a 4D hypercubic lattice onto
-    a 2D plane with 8-fold symmetry. Only lattice points whose
-    perpendicular-space projection falls within an octagonal acceptance
-    window are kept.
+    The second quasicrystal in our catalog. While Penrose has 5-fold symmetry,
+    Ammann-Beenker has 8-fold symmetry — it tiles the plane with squares and
+    45° rhombi. Together they cover the two most common 2D quasicrystal types.
 
-    This produces a quasiperiodic point set with local 8-fold symmetry
-    (tiles are squares and 45-degree rhombi) — the 2D analog of the
-    3D icosahedral quasicrystal. All edges are hard (fully triangulated).
+    Uses the cut-and-project method from Z^4 (4D hypercubic lattice) onto a
+    2D plane. The projection angles are multiples of pi/4 (45°), giving 8-fold
+    symmetry. The acceptance window in perpendicular space is a regular octagon
+    (approximated by a circle of radius (1+sqrt(2))/sqrt(2)).
+
+    All edges are hard (Delaunay produces only triangles). The local vertex
+    environments are diverse: some vertices are surrounded by squares, others
+    by rhombi, creating heterogeneous coordination similar to but distinct
+    from Penrose.
 
     Args:
         size: (sx, sy) half-extents of the interior region.
@@ -1331,8 +1608,19 @@ def generate_ammann_beenker(size, spacing=3.0):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Master topology generator
+# Master topology generator — registry and dispatch
 # ═════════════════════════════════════════════════════════════════════════════
+#
+# The TOPOLOGY_GENERATORS dict maps string names to factory lambdas. This is
+# the single source of truth for the topology catalog. The generate_dataset.py
+# pipeline iterates over this dict to create training data.
+#
+# Each lambda takes a single `size` argument and returns a TriangulationResult.
+# Specific spacing/parameter values are baked in to hit ~950 triangles at
+# size=(10,10), ensuring comparable graph sizes across the dataset.
+#
+# TOPO_CLASSES groups topologies into categories for per-category evaluation
+# metrics (e.g., "how well does the GNN predict nu for quasicrystals vs crystals?").
 
 # Registry of all topology generators
 TOPOLOGY_GENERATORS = {
@@ -1391,10 +1679,18 @@ TOPO_CLASSES = {
 def generate_topology(name, size, seed=None):
     """Generate a named topology with optional random seed.
 
+    This is the main entry point used by generate_dataset.py. It looks up
+    the topology name in TOPOLOGY_GENERATORS, optionally sets the numpy
+    random seed (for reproducible stochastic topologies), and returns a
+    fully populated TriangulationResult.
+
     Args:
         name: topology name (key into TOPOLOGY_GENERATORS).
         size: (sx, sy) half-extents for the mesh.
-        seed: optional random seed (set before generation).
+        seed: optional random seed (set via np.random.seed before generation).
+              Deterministic topologies (crystal, honeycomb) are unaffected.
+              Stochastic topologies (foam, poisson) produce different meshes
+              for different seeds.
 
     Returns:
         TriangulationResult with topo_name and topo_class set.
@@ -1416,18 +1712,23 @@ def generate_topology(name, size, seed=None):
 
 
 def generate_all_topologies(size, seeds_per_random=3):
-    """Generate all topologies in the catalog.
+    """Generate all topologies in the catalog — used for visualization and testing.
 
-    Deterministic topologies (crystal, honeycomb, kagome, square) are
-    generated once. Random topologies (foam, poisson, etc.) are generated
-    with multiple seeds.
+    Deterministic topologies (crystal, honeycomb, kagome, square, quasicrystals)
+    are generated once with seed=0. Stochastic topologies (foam, poisson, etc.)
+    are generated with multiple seeds to capture structural variety.
+
+    The seeds are spaced by 137 (a prime) to avoid correlations between
+    different topology × seed combinations.
 
     Args:
         size: (sx, sy) half-extents.
         seeds_per_random: how many random seeds per stochastic topology.
+                          Default 3 gives 3 variants of each random topology.
 
     Returns:
-        list of TriangulationResult.
+        list of TriangulationResult, one per (topology, seed) combination.
+        Total count: len(deterministic) + len(stochastic) * seeds_per_random.
     """
     results = []
 
