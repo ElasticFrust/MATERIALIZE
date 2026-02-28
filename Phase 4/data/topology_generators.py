@@ -30,8 +30,11 @@ Key concepts:
   - Delaunay triangulation: the default method for converting point sets into
     triangle meshes. Maximizes the minimum angle, avoiding degenerate slivers.
 
-Target mesh size: ~950 triangles at size=(10,10) for all topologies. This
-ensures comparable graph sizes across the dataset, avoiding batch-size bias.
+Target mesh size: ~900 triangles at size=(10,10) for all topologies, scaling
+as size[0]*size[1] (so ~225 at (5,5), ~900 at (10,10)). This ensures
+comparable graph sizes across the dataset, avoiding batch-size bias.
+Generators with non-hexagonal unit cells include density normalization
+to compensate for different unit cell areas.
 """
 
 import numpy as np
@@ -231,8 +234,17 @@ def generate_aniso_crystal(size, shape=(1.5, 0.8), orientation=np.pi / 6):
     to the lattice: stretching by (shape[0], shape[1]) and rotating by
     `orientation`. This tests whether the GNN can distinguish geometric
     anisotropy from topological differences.
+
+    Density normalization: the D2C crystal generator's unit cell area scales
+    as sqrt(3)/2 * shape[1]. When shape[1] < 1 the cell is smaller and more
+    triangles fit in the domain. We compensate by shrinking the effective
+    domain size so the triangle count matches iso_crystal (~900 at (10,10)).
     """
-    tri = D2C.generate_cryratl_points(size=size, shape=shape, orientation=orientation)
+    # Unit cell area ratio vs iso_crystal: shape[1].
+    # Scale domain linearly by sqrt(shape[1]) to preserve triangle count.
+    density_scale = np.sqrt(shape[1])
+    effective_size = (size[0] * density_scale, size[1] * density_scale)
+    tri = D2C.generate_cryratl_points(size=effective_size, shape=shape, orientation=orientation)
     return TriangulationResult(
         points=tri.points, simplices=tri.simplices,
         topo_name='aniso_crystal', topo_class='crystal',
@@ -249,12 +261,19 @@ def generate_rectangular_lattice(size, aspect=1.6):
     This is a distinct 2D Bravais lattice from the square (a=b) and
     hexagonal families.
 
+    Density normalization: the rectangular unit cell area is a*b. For
+    iso_crystal, the effective cell area is sqrt(3)/2 ≈ 0.866. We set
+    the geometric mean spacing so that a*b matches the hex cell area,
+    ensuring ~900 triangles at size=(10,10).
+
     Args:
         size: (sx, sy) half-extents.
         aspect: ratio a/b of lattice constants. Default 1.6.
     """
-    # Use geometric mean = 1 so total density is comparable to iso_crystal
-    b = 1.0 / np.sqrt(aspect)
+    # Set geometric mean so cell area matches hexagonal (sqrt(3)/2 ≈ 0.866).
+    # For rectangular: cell_area = a * b = gm^2. Need gm^2 = sqrt(3)/2.
+    gm = (np.sqrt(3) / 2) ** 0.5  # ≈ 0.9306
+    b = gm / np.sqrt(aspect)
     a = aspect * b
 
     buf = 3
@@ -1625,11 +1644,11 @@ def generate_ammann_beenker(size, spacing=3.0):
 # Registry of all topology generators
 TOPOLOGY_GENERATORS = {
     # Category 1: Bravais lattice family (all 5 types + aniso hexagonal)
-    #   Target: ~950 triangles at size=(10,10)
+    #   Target: ~900 triangles at size=(10,10), ~225 at (5,5)
     'iso_crystal':       lambda size: generate_iso_crystal(size),           # 944
-    'aniso_crystal':     lambda size: generate_aniso_crystal(size),         # 1154
-    'rectangular':       lambda size: generate_rectangular_lattice(size, aspect=1.4),  # ~950
-    'oblique':           lambda size: generate_oblique_lattice(size, a_len=0.9, b_len=1.05, angle_deg=70),  # ~950
+    'aniso_crystal':     lambda size: generate_aniso_crystal(size),         # 926 (density-normalized)
+    'rectangular':       lambda size: generate_rectangular_lattice(size, aspect=1.4),  # 936 (density-normalized)
+    'oblique':           lambda size: generate_oblique_lattice(size, a_len=0.9, b_len=1.05, angle_deg=70),  # 888
     'foam_eta02':        lambda size: generate_foam(size, eta=0.2),         # 944
     'foam_eta045':       lambda size: generate_foam(size, eta=0.45),        # 944
 

@@ -261,9 +261,13 @@ def test_different_seeds_differ():
         r1 = generate_topology(name, size, seed=42)
         r2 = generate_topology(name, size, seed=99)
 
-        # Points should differ (at least some)
-        assert not np.allclose(r1.points, r2.points), \
-            f"{name}: different seeds should produce different points"
+        # Either different number of points or different coordinates
+        differs = (r1.n_points != r2.n_points or
+                   r1.n_tri != r2.n_tri or
+                   (r1.n_points == r2.n_points and
+                    not np.allclose(r1.points, r2.points)))
+        assert differs, \
+            f"{name}: different seeds should produce different meshes"
 
         print(f"  {name:25s}: different seeds differ (OK)")
 
