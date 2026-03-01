@@ -46,7 +46,7 @@ class CVAEEncoder(nn.Module):
         pool_steps: Set2Set processing steps.
     """
 
-    def __init__(self, node_in=8, edge_in=5, hidden=64, latent_dim=32,
+    def __init__(self, node_in=8, edge_in=5, hidden=32, latent_dim=32,
                  n_layers=4, pool_steps=6):
         super().__init__()
 

@@ -51,7 +51,7 @@ class CVAE(nn.Module):
     """
 
     def __init__(self, node_in=8, edge_in=5, geom_node_in=4, geom_edge_in=4,
-                 hidden=64, latent_dim=32, n_layers=4):
+                 hidden=32, latent_dim=32, n_layers=4):
         super().__init__()
         self.latent_dim = latent_dim
 

@@ -121,7 +121,7 @@ def evaluate_cvae(cvae, gnn_surrogate, loader, loss_fn, device):
 
 def train(data_dir, gnn_checkpoint=None, output_dir='./checkpoints',
           epochs=300, batch_size=32, lr=5e-4, weight_decay=1e-5,
-          patience=40, hidden=64, latent_dim=32, n_layers=4,
+          patience=40, hidden=32, latent_dim=32, n_layers=4,
           beta_max=1.0, gamma=10.0, warmup_epochs=50, device=None):
     """Full CVAE training loop."""
     if device is None:
@@ -217,7 +217,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=5e-4)
-    parser.add_argument('--hidden', type=int, default=64)
+    parser.add_argument('--hidden', type=int, default=32)
     parser.add_argument('--latent_dim', type=int, default=32)
     parser.add_argument('--n_layers', type=int, default=4)
     parser.add_argument('--device', type=str, default=None)

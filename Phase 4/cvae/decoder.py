@@ -51,7 +51,7 @@ class CVAEDecoder(nn.Module):
     """
 
     def __init__(self, latent_dim=32, geom_node_in=4, geom_edge_in=4,
-                 hidden=64, n_layers=4, edge_out=2):
+                 hidden=32, n_layers=4, edge_out=2):
         super().__init__()
 
         # Conditioning projections

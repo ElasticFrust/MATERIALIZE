@@ -102,14 +102,14 @@ print(f"    No cross-graph edges — message passing is graph-local!")
 print(f"\n  KEY INSIGHT: No padding, no truncation.")
 print(f"  PyG concatenates nodes/edges and uses the 'batch' vector to track")
 print(f"  which nodes belong to which graph. Set2Set pooling respects this")
-print(f"  vector to produce one 128-dim embedding PER GRAPH.")
+print(f"  vector to produce one 64-dim embedding PER GRAPH.")
 
 # ── Step 3: Create untrained GNN and run forward pass ──
 print("\n" + "=" * 70)
 print("STEP 3: Untrained GNN forward pass")
 print("=" * 70)
 
-model = ForwardGNN(node_in=8, edge_in=5, hidden=64, n_layers=4,
+model = ForwardGNN(node_in=8, edge_in=5, hidden=32, n_layers=4,
                    pool_steps=6, dropout=0.1, multitask=True)
 model.eval()
 
@@ -117,14 +117,14 @@ n_params = sum(p.numel() for p in model.parameters())
 print(f"\n  Model: ForwardGNN")
 print(f"  Parameters: {n_params:,}")
 print(f"  Architecture:")
-print(f"    Input projection:  Linear(8 → 64)")
-print(f"    Message passing:   4× NNConv(64→64) + BN + ReLU + residual")
-print(f"      Edge network:    MLP(5 → 128 → 4096)  [generates 64×64 weight matrix]")
+print(f"    Input projection:  Linear(8 → 32)")
+print(f"    Message passing:   4× NNConv(32→32) + BN + ReLU + residual")
+print(f"      Edge network:    MLP(5 → 128 → 1024)  [generates 32×32 weight matrix]")
 print(f"      Aggregation:     mean (handles variable degree)")
-print(f"    Global pooling:    Set2Set(64 → 128, 6 steps)")
-print(f"    Readout (nu):      MLP(128 → 64 → 32 → 1)")
-print(f"    Readout (young):   MLP(128 → 64 → 1)")
-print(f"    Readout (tensor):  MLP(128 → 64 → 6)")
+print(f"    Global pooling:    Set2Set(32 → 64, 6 steps)")
+print(f"    Readout (nu):      MLP(64 → 64 → 32 → 1)")
+print(f"    Readout (young):   MLP(64 → 64 → 1)")
+print(f"    Readout (tensor):  MLP(64 → 64 → 6)")
 
 # Run forward pass on individual samples
 print("\n  --- Forward pass on individual samples ---")
@@ -189,7 +189,7 @@ with torch.no_grad():
     print(f"    batch:      {batch_vec.shape}    (graph membership)")
 
     h = model.node_embed(x)
-    print(f"\n  After node_embed (Linear 8→64):")
+    print(f"\n  After node_embed (Linear 8→32):")
     print(f"    h: {h.shape}")
 
     for i, (conv, bn) in enumerate(zip(model.convs, model.bns)):
@@ -204,12 +204,12 @@ with torch.no_grad():
 
     h_graph = model.pool(h, batch_vec)
     print(f"\n  After Set2Set pooling (per-graph attention):")
-    print(f"    h_graph: {h_graph.shape}  ← one 128-dim vector PER GRAPH")
+    print(f"    h_graph: {h_graph.shape}  ← one 64-dim vector PER GRAPH")
     print(f"    Row 0: honeycomb graph embedding (pooled from {na} nodes)")
     print(f"    Row 1: penrose graph embedding (pooled from {nb} nodes)")
 
     nu = model.readout_nu(h_graph).squeeze(-1)
-    print(f"\n  After readout MLP (128→64→32→1):")
+    print(f"\n  After readout MLP (64→64→32→1):")
     print(f"    nu: {nu.shape}  ← one scalar PER GRAPH")
     print(f"    nu[0] = {nu[0].item():.6f} (honeycomb)")
     print(f"    nu[1] = {nu[1].item():.6f} (penrose)")
@@ -261,7 +261,7 @@ summary['description'] = 'Untrained GNN forward pass on two different-topology n
 summary['model'] = {
     'class': 'ForwardGNN',
     'n_params': n_params,
-    'hidden_dim': 64,
+    'hidden_dim': 32,
     'n_layers': 4,
     'pool_steps': 6,
     'dropout': 0.1,

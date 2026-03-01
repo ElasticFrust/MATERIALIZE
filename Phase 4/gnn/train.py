@@ -80,7 +80,7 @@ def evaluate(model, loader, device):
 
 
 def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
-          lr=1e-3, weight_decay=1e-5, patience=30, hidden=64, n_layers=4,
+          lr=1e-3, weight_decay=1e-5, patience=30, hidden=32, n_layers=4,
           multitask=False, device=None):
     """Full training loop with early stopping.
 
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--hidden', type=int, default=64)
+    parser.add_argument('--hidden', type=int, default=32)
     parser.add_argument('--n_layers', type=int, default=4)
     parser.add_argument('--patience', type=int, default=30)
     parser.add_argument('--multitask', action='store_true')
