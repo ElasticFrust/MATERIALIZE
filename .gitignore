@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# Generated dataset files (too large for git)
+Phase 4/processed/*_chunks/
+Phase 4/processed/*.pt
