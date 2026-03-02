@@ -165,10 +165,27 @@ def evaluate(model, loader, device):
     }
 
 
+def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val_mse,
+                    patience_counter, hidden, n_layers, val_mae=None):
+    """Save a full training checkpoint for resumption."""
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+        'best_val_mse': best_val_mse,
+        'patience_counter': patience_counter,
+        'val_mse': best_val_mse,
+        'val_mae': val_mae,
+        'hidden': hidden,
+        'n_layers': n_layers,
+    }, path)
+
+
 def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
           lr=1e-3, weight_decay=1e-5, patience=30, hidden=32, n_layers=4,
-          multitask=False, device=None):
-    """Full training loop with early stopping.
+          multitask=False, device=None, resume=False, save_every=1):
+    """Full training loop with early stopping and checkpoint resumption.
 
     Args:
         data_dir: directory containing {split}.pt or {split}_chunks/ subdirs.
@@ -182,6 +199,8 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
         n_layers: number of message-passing layers.
         multitask: enable auxiliary Young's modulus and tensor heads.
         device: 'cuda' or 'cpu'.
+        resume: if True, resume from latest checkpoint in output_dir.
+        save_every: save a resumable checkpoint every N epochs.
     """
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -226,11 +245,26 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
     )
     loss_fn = ForwardGNNLoss(multitask=multitask)
 
-    # Training loop with early stopping
+    # Resume from checkpoint if requested
+    start_epoch = 1
     best_val_mse = float('inf')
     patience_counter = 0
 
-    for epoch in range(1, epochs + 1):
+    latest_ckpt = output_dir / 'latest_checkpoint.pt'
+    if resume and latest_ckpt.exists():
+        print(f"Resuming from {latest_ckpt}...")
+        ckpt = torch.load(latest_ckpt, weights_only=False)
+        model.load_state_dict(ckpt['model_state_dict'])
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+        start_epoch = ckpt['epoch'] + 1
+        best_val_mse = ckpt['best_val_mse']
+        patience_counter = ckpt['patience_counter']
+        print(f"  Resumed at epoch {start_epoch}, best_val_mse={best_val_mse:.6f}, "
+              f"patience={patience_counter}/{patience}")
+
+    # Training loop with early stopping
+    for epoch in range(start_epoch, epochs + 1):
         t0 = time.time()
 
         if use_chunked:
@@ -253,30 +287,33 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
               f"lr={lr_now:.2e} | "
               f"{dt:.1f}s")
 
-        # Early stopping
+        # Save best model
         if val_metrics['mse'] < best_val_mse:
             best_val_mse = val_metrics['mse']
             patience_counter = 0
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'val_mse': best_val_mse,
-                'val_mae': val_metrics['mae'],
-                'hidden': hidden,
-                'n_layers': n_layers,
-            }, output_dir / 'best_model.pt')
+            save_checkpoint(output_dir / 'best_model.pt', model, optimizer,
+                            scheduler, epoch, best_val_mse, patience_counter,
+                            hidden, n_layers, val_metrics['mae'])
+            print(f"  -> New best model saved (val_mse={best_val_mse:.6f})")
         else:
             patience_counter += 1
             if patience_counter >= patience:
                 print(f"Early stopping at epoch {epoch}")
                 break
 
+        # Save resumable checkpoint periodically
+        if epoch % save_every == 0:
+            save_checkpoint(latest_ckpt, model, optimizer, scheduler, epoch,
+                            best_val_mse, patience_counter, hidden, n_layers,
+                            val_metrics['mae'])
+
     # Load best model and evaluate on test set if available
     try:
         test_data = load_split(data_dir, 'test')
-        checkpoint = torch.load(output_dir / 'best_model.pt', weights_only=False)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        best_ckpt = output_dir / 'best_model.pt'
+        if best_ckpt.exists():
+            checkpoint = torch.load(best_ckpt, weights_only=False)
+            model.load_state_dict(checkpoint['model_state_dict'])
 
         test_loader = DataLoader(test_data, batch_size=batch_size)
         test_metrics = evaluate(model, test_loader, device)
@@ -303,6 +340,10 @@ if __name__ == '__main__':
     parser.add_argument('--patience', type=int, default=30)
     parser.add_argument('--multitask', action='store_true')
     parser.add_argument('--device', type=str, default=None)
+    parser.add_argument('--resume', action='store_true',
+                        help='Resume from latest_checkpoint.pt')
+    parser.add_argument('--save_every', type=int, default=1,
+                        help='Save resumable checkpoint every N epochs')
     args = parser.parse_args()
 
     train(**vars(args))
