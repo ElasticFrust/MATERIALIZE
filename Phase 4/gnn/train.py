@@ -24,6 +24,7 @@ Usage:
 """
 
 import argparse
+import gc
 import random
 import torch
 import torch.nn.functional as F
@@ -136,6 +137,7 @@ def train_epoch_chunked(model, chunk_files, batch_size, optimizer, loss_fn,
             n_graphs += batch.num_graphs
 
         del chunk_data, chunk_loader
+        gc.collect()
 
     return total_loss / n_graphs
 
