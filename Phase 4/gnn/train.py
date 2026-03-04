@@ -112,22 +112,34 @@ def train_epoch(model, loader, optimizer, loss_fn, device, grad_clip=5.0):
 
 
 def train_epoch_chunked(model, chunk_files, batch_size, optimizer, loss_fn,
-                        device, grad_clip=5.0, epoch=None, checkpoint_fn=None):
+                        device, grad_clip=5.0, epoch=None, checkpoint_fn=None,
+                        resume_chunk_idx=None, resume_chunk_order=None):
     """Train for one epoch, streaming chunks to bound memory usage.
 
     Shuffles chunk order each epoch and shuffles within each chunk.
     Peak memory: one chunk (~2000 samples) rather than the full dataset.
     Saves a mid-epoch checkpoint after each chunk for resilience.
+
+    If resume_chunk_idx is set, skips chunks up to and including that index,
+    using resume_chunk_order to maintain the same shuffle order.
     """
     model.train()
     total_loss = 0
     n_graphs = 0
 
-    # Shuffle chunk order each epoch for better generalization
-    file_order = list(chunk_files)
-    random.shuffle(file_order)
+    # Use saved chunk order if resuming mid-epoch, otherwise shuffle
+    if resume_chunk_order is not None:
+        file_order = resume_chunk_order
+    else:
+        file_order = list(chunk_files)
+        random.shuffle(file_order)
 
-    for ci, cf in enumerate(file_order):
+    start_ci = (resume_chunk_idx + 1) if resume_chunk_idx is not None else 0
+    if start_ci > 0:
+        print(f"  Resuming from chunk {start_ci + 1}/{len(file_order)}", flush=True)
+
+    for ci in range(start_ci, len(file_order)):
+        cf = file_order[ci]
         chunk_data = torch.load(cf, weights_only=False)
         chunk_loader = DataLoader(chunk_data, batch_size=batch_size, shuffle=True)
 
@@ -153,12 +165,12 @@ def train_epoch_chunked(model, chunk_files, batch_size, optimizer, loss_fn,
 
         # Mid-epoch checkpoint for resilience
         if checkpoint_fn is not None:
-            checkpoint_fn(chunk_idx=ci)
+            checkpoint_fn(chunk_idx=ci, chunk_order=file_order)
 
         del chunk_data, chunk_loader
         gc.collect()
 
-    return total_loss / n_graphs
+    return total_loss / n_graphs if n_graphs > 0 else 0
 
 
 @torch.no_grad()
@@ -217,14 +229,14 @@ def evaluate_chunked(model, chunk_files, batch_size, device):
 
 def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val_mse,
                     patience_counter, hidden, n_layers, val_mae=None,
-                    mid_epoch=False):
+                    chunk_idx=None, chunk_order=None):
     """Save a full training checkpoint for resumption.
 
-    If mid_epoch=True, saves with epoch-1 so resume re-runs the current epoch.
+    If chunk_idx is set, this is a mid-epoch save that can resume from
+    the next chunk rather than restarting the whole epoch.
     """
-    save_epoch = epoch - 1 if mid_epoch else epoch
     torch.save({
-        'epoch': save_epoch,
+        'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
@@ -234,6 +246,8 @@ def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val_mse,
         'val_mae': val_mae,
         'hidden': hidden,
         'n_layers': n_layers,
+        'chunk_idx': chunk_idx,
+        'chunk_order': chunk_order,
     }, path)
 
 
@@ -316,6 +330,8 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
     start_epoch = 1
     best_val_mse = float('inf')
     patience_counter = 0
+    resume_chunk_idx = None
+    resume_chunk_order = None
 
     latest_ckpt = output_dir / 'latest_checkpoint.pt'
     if resume and latest_ckpt.exists():
@@ -324,11 +340,21 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         scheduler.load_state_dict(ckpt['scheduler_state_dict'])
-        start_epoch = ckpt['epoch'] + 1
+        start_epoch = ckpt['epoch']
         best_val_mse = ckpt['best_val_mse']
         patience_counter = ckpt['patience_counter']
-        print(f"  Resumed at epoch {start_epoch}, best_val_mse={best_val_mse:.6f}, "
-              f"patience={patience_counter}/{patience}", flush=True)
+        resume_chunk_idx = ckpt.get('chunk_idx')
+        resume_chunk_order_paths = ckpt.get('chunk_order')
+        if resume_chunk_idx is not None and resume_chunk_order_paths is not None:
+            # Mid-epoch resume: continue from next chunk in same epoch
+            resume_chunk_order = resume_chunk_order_paths
+            print(f"  Resumed mid-epoch {start_epoch}, chunk {resume_chunk_idx+1}, "
+                  f"best_val_mse={best_val_mse:.6f}", flush=True)
+        else:
+            # Full epoch completed, start next
+            start_epoch = ckpt['epoch'] + 1
+            print(f"  Resumed at epoch {start_epoch}, best_val_mse={best_val_mse:.6f}, "
+                  f"patience={patience_counter}/{patience}", flush=True)
 
     # Training loop with early stopping
     for epoch in range(start_epoch, epochs + 1):
@@ -336,17 +362,24 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
         print(f"--- Epoch {epoch}/{epochs} starting ---", flush=True)
 
         if use_chunked:
-            # Mid-epoch checkpoint callback: saves every 10 chunks
-            def _mid_ckpt(chunk_idx):
-                if (chunk_idx + 1) % 10 == 0:
+            # Mid-epoch checkpoint callback: saves every 5 chunks
+            def _mid_ckpt(chunk_idx, chunk_order):
+                if (chunk_idx + 1) % 5 == 0:
                     save_checkpoint(latest_ckpt, model, optimizer, scheduler,
                                     epoch, best_val_mse, patience_counter,
-                                    hidden, n_layers, mid_epoch=True)
-                    print(f"  [mid-epoch checkpoint saved]", flush=True)
+                                    hidden, n_layers,
+                                    chunk_idx=chunk_idx,
+                                    chunk_order=chunk_order)
+                    print(f"  [mid-epoch checkpoint saved at chunk {chunk_idx+1}]", flush=True)
 
             train_loss = train_epoch_chunked(
                 model, train_chunk_files, batch_size, optimizer, loss_fn,
-                device, epoch=epoch, checkpoint_fn=_mid_ckpt)
+                device, epoch=epoch, checkpoint_fn=_mid_ckpt,
+                resume_chunk_idx=resume_chunk_idx,
+                resume_chunk_order=resume_chunk_order)
+            # Clear resume state after first epoch
+            resume_chunk_idx = None
+            resume_chunk_order = None
         else:
             train_loss = train_epoch(model, train_loader, optimizer, loss_fn,
                                      device)
