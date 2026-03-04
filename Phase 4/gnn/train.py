@@ -79,11 +79,16 @@ def get_chunk_files(data_dir, split='train'):
 
 
 def count_chunk_samples(chunk_files):
-    """Count total samples across chunk files without loading all into memory."""
-    total = 0
-    for cf in chunk_files:
-        total += len(torch.load(cf, weights_only=False))
-    return total
+    """Count total samples across chunk files by loading only the first chunk
+    and estimating the rest, to avoid loading 12GB of data just for a count."""
+    if not chunk_files:
+        return 0
+    first = torch.load(chunk_files[0], weights_only=False)
+    n_first = len(first)
+    del first
+    gc.collect()
+    # Estimate: first chunk size * number of chunks
+    return n_first * len(chunk_files)
 
 
 def train_epoch(model, loader, optimizer, loss_fn, device, grad_clip=5.0):
@@ -107,11 +112,12 @@ def train_epoch(model, loader, optimizer, loss_fn, device, grad_clip=5.0):
 
 
 def train_epoch_chunked(model, chunk_files, batch_size, optimizer, loss_fn,
-                        device, grad_clip=5.0):
+                        device, grad_clip=5.0, epoch=None, checkpoint_fn=None):
     """Train for one epoch, streaming chunks to bound memory usage.
 
     Shuffles chunk order each epoch and shuffles within each chunk.
     Peak memory: one chunk (~2000 samples) rather than the full dataset.
+    Saves a mid-epoch checkpoint after each chunk for resilience.
     """
     model.train()
     total_loss = 0
@@ -121,10 +127,12 @@ def train_epoch_chunked(model, chunk_files, batch_size, optimizer, loss_fn,
     file_order = list(chunk_files)
     random.shuffle(file_order)
 
-    for cf in file_order:
+    for ci, cf in enumerate(file_order):
         chunk_data = torch.load(cf, weights_only=False)
         chunk_loader = DataLoader(chunk_data, batch_size=batch_size, shuffle=True)
 
+        chunk_loss = 0
+        chunk_graphs = 0
         for batch in chunk_loader:
             batch = batch.to(device)
             optimizer.zero_grad()
@@ -133,8 +141,19 @@ def train_epoch_chunked(model, chunk_files, batch_size, optimizer, loss_fn,
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
-            total_loss += loss.item() * batch.num_graphs
-            n_graphs += batch.num_graphs
+            chunk_loss += loss.item() * batch.num_graphs
+            chunk_graphs += batch.num_graphs
+
+        total_loss += chunk_loss
+        n_graphs += chunk_graphs
+        avg_loss = chunk_loss / chunk_graphs if chunk_graphs > 0 else 0
+
+        print(f"  [chunk {ci+1}/{len(file_order)}] loss={avg_loss:.6f} "
+              f"({chunk_graphs} samples)", flush=True)
+
+        # Mid-epoch checkpoint for resilience
+        if checkpoint_fn is not None:
+            checkpoint_fn(chunk_idx=ci)
 
         del chunk_data, chunk_loader
         gc.collect()
@@ -167,11 +186,45 @@ def evaluate(model, loader, device):
     }
 
 
+@torch.no_grad()
+def evaluate_chunked(model, chunk_files, batch_size, device):
+    """Evaluate model by streaming chunks, avoiding loading all val data at once."""
+    model.eval()
+    total_mse = 0
+    total_mae = 0
+    n_graphs = 0
+
+    for cf in chunk_files:
+        chunk_data = torch.load(cf, weights_only=False)
+        loader = DataLoader(chunk_data, batch_size=batch_size)
+        for batch in loader:
+            batch = batch.to(device)
+            pred = model(batch)
+            nu_pred = pred['nu']
+            nu_true = batch.y_nu
+            total_mse += F.mse_loss(nu_pred, nu_true, reduction='sum').item()
+            total_mae += (nu_pred - nu_true).abs().sum().item()
+            n_graphs += batch.num_graphs
+        del chunk_data, loader
+        gc.collect()
+
+    return {
+        'mse': total_mse / n_graphs,
+        'mae': total_mae / n_graphs,
+        'rmse': np.sqrt(total_mse / n_graphs),
+    }
+
+
 def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val_mse,
-                    patience_counter, hidden, n_layers, val_mae=None):
-    """Save a full training checkpoint for resumption."""
+                    patience_counter, hidden, n_layers, val_mae=None,
+                    mid_epoch=False):
+    """Save a full training checkpoint for resumption.
+
+    If mid_epoch=True, saves with epoch-1 so resume re-runs the current epoch.
+    """
+    save_epoch = epoch - 1 if mid_epoch else epoch
     torch.save({
-        'epoch': epoch,
+        'epoch': save_epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
@@ -212,23 +265,35 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load data — use chunked streaming for train, load val fully
-    print("Loading data...")
+    import sys
+
+    # Load data — use chunked streaming for both train and val
+    print("Loading data...", flush=True)
     train_chunk_files = get_chunk_files(data_dir, 'train')
     use_chunked = train_chunk_files is not None
 
     if use_chunked:
         n_train = count_chunk_samples(train_chunk_files)
-        print(f"  Train: {n_train} samples across {len(train_chunk_files)} chunks (streamed)")
+        print(f"  Train: {n_train} samples across {len(train_chunk_files)} chunks (streamed)", flush=True)
         train_loader = None  # not used; train_epoch_chunked iterates chunks directly
     else:
         train_data = torch.load(data_dir / 'train.pt', weights_only=False)
         n_train = len(train_data)
         train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-        print(f"  Train: {n_train} samples")
+        print(f"  Train: {n_train} samples", flush=True)
 
-    val_data = load_split(data_dir, 'val')
-    val_loader = DataLoader(val_data, batch_size=batch_size)
+    val_chunk_files = get_chunk_files(data_dir, 'val')
+    use_chunked_val = val_chunk_files is not None
+
+    if use_chunked_val:
+        # Stream val chunks during evaluation to save memory
+        n_val = count_chunk_samples(val_chunk_files)
+        print(f"  Val: ~{n_val} samples across {len(val_chunk_files)} chunks (streamed)", flush=True)
+        val_loader = None
+    else:
+        val_data = load_split(data_dir, 'val')
+        val_loader = DataLoader(val_data, batch_size=batch_size)
+        print(f"  Val: {len(val_data)} samples (in memory)", flush=True)
 
     # Model
     model = ForwardGNN(
@@ -254,7 +319,7 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
 
     latest_ckpt = output_dir / 'latest_checkpoint.pt'
     if resume and latest_ckpt.exists():
-        print(f"Resuming from {latest_ckpt}...")
+        print(f"Resuming from {latest_ckpt}...", flush=True)
         ckpt = torch.load(latest_ckpt, weights_only=False)
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
@@ -263,20 +328,32 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
         best_val_mse = ckpt['best_val_mse']
         patience_counter = ckpt['patience_counter']
         print(f"  Resumed at epoch {start_epoch}, best_val_mse={best_val_mse:.6f}, "
-              f"patience={patience_counter}/{patience}")
+              f"patience={patience_counter}/{patience}", flush=True)
 
     # Training loop with early stopping
     for epoch in range(start_epoch, epochs + 1):
         t0 = time.time()
+        print(f"--- Epoch {epoch}/{epochs} starting ---", flush=True)
 
         if use_chunked:
+            # Mid-epoch checkpoint callback: saves every 10 chunks
+            def _mid_ckpt(chunk_idx):
+                if (chunk_idx + 1) % 10 == 0:
+                    save_checkpoint(latest_ckpt, model, optimizer, scheduler,
+                                    epoch, best_val_mse, patience_counter,
+                                    hidden, n_layers, mid_epoch=True)
+                    print(f"  [mid-epoch checkpoint saved]", flush=True)
+
             train_loss = train_epoch_chunked(
                 model, train_chunk_files, batch_size, optimizer, loss_fn,
-                device)
+                device, epoch=epoch, checkpoint_fn=_mid_ckpt)
         else:
             train_loss = train_epoch(model, train_loader, optimizer, loss_fn,
                                      device)
-        val_metrics = evaluate(model, val_loader, device)
+        if use_chunked_val:
+            val_metrics = evaluate_chunked(model, val_chunk_files, batch_size, device)
+        else:
+            val_metrics = evaluate(model, val_loader, device)
         scheduler.step()
 
         dt = time.time() - t0
@@ -287,7 +364,7 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
               f"val_mse={val_metrics['mse']:.6f} | "
               f"val_mae={val_metrics['mae']:.4f} | "
               f"lr={lr_now:.2e} | "
-              f"{dt:.1f}s")
+              f"{dt:.1f}s", flush=True)
 
         # Save best model
         if val_metrics['mse'] < best_val_mse:
@@ -296,11 +373,11 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
             save_checkpoint(output_dir / 'best_model.pt', model, optimizer,
                             scheduler, epoch, best_val_mse, patience_counter,
                             hidden, n_layers, val_metrics['mae'])
-            print(f"  -> New best model saved (val_mse={best_val_mse:.6f})")
+            print(f"  -> New best model saved (val_mse={best_val_mse:.6f})", flush=True)
         else:
             patience_counter += 1
             if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch}")
+                print(f"Early stopping at epoch {epoch}", flush=True)
                 break
 
         # Save resumable checkpoint periodically
