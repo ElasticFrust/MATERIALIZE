@@ -55,17 +55,17 @@ class ForwardGNN(nn.Module):
 
         Input:    node_feat (M, 8)  +  edge_attr (E, 5)
                            │
-                  Linear(8 → 64)            ← input projection
+                  Linear(8 → 32)            ← input projection
                            │
-          ┌─── 4× NNConv(64→64) + BN + ReLU + residual ───┐
-          │    edge_nn: MLP(5→128→64×64)                    │
+          ┌─── 4× NNConv(32→32) + BN + ReLU + residual ───┐
+          │    edge_nn: MLP(5→128→32×32)                    │
           │    Each layer generates per-edge weight matrices  │
           │    from the 5-dim edge features                   │
           └──────────────────────────────────────────────────┘
                            │
-                  Set2Set pooling (6 steps) → (batch, 128)
+                  Set2Set pooling (6 steps) → (batch, 64)
                            │
-                  MLP: 128 → 64 → 32 → 1    ← readout head
+                  MLP: 64 → 64 → 32 → 1     ← readout head
                            │
                   Output: ν_pred (scalar per graph)
 
@@ -76,7 +76,7 @@ class ForwardGNN(nn.Module):
     Args:
         node_in: input node feature dimension (default 8, from graph_utils.init_node_features).
         edge_in: input edge feature dimension (default 5: [k, l0, l_actual, log_factor, is_real]).
-        hidden: hidden dimension for all message passing layers. Default 64.
+        hidden: hidden dimension for all message passing layers. Default 32.
         n_layers: number of NNConv message-passing layers. Default 4 (receptive field
                   covers ~4-hop neighborhoods, sufficient for most mesh sizes).
         pool_steps: Set2Set processing steps. More steps = richer global representation.
@@ -86,7 +86,7 @@ class ForwardGNN(nn.Module):
                    learns features useful for all three tasks.
     """
 
-    def __init__(self, node_in=8, edge_in=5, hidden=64, n_layers=4,
+    def __init__(self, node_in=8, edge_in=5, hidden=32, n_layers=4,
                  pool_steps=6, dropout=0.1, multitask=False):
         super().__init__()
         self.multitask = multitask

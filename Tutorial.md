@@ -471,7 +471,7 @@ endpoint embeddings to predict that edge's parameters:
 
 ```python
 class GraphDecoder(nn.Module):
-    def __init__(self, latent_dim=32, hidden=64):
+    def __init__(self, latent_dim=32, hidden=32):
         self.z_project = nn.Linear(latent_dim, hidden)
         self.nu_embed = nn.Linear(1, hidden)
         self.geom_embed = nn.Linear(4, hidden)  # [x, y, degree, mean_length]
@@ -581,7 +581,7 @@ from torch_geometric.data import Data, DataLoader
 class ForwardGNN(nn.Module):
     """Predicts Poisson's ratio from a spring network graph."""
 
-    def __init__(self, node_in=8, edge_in=5, hidden=64, n_layers=4,
+    def __init__(self, node_in=8, edge_in=5, hidden=32, n_layers=4,
                  pool_steps=6, dropout=0.1):
         super().__init__()
 

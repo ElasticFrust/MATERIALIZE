@@ -2,7 +2,7 @@
 
 This script creates the training/validation/test datasets by:
   1. Picking a topology from the catalog (18 topologies across 6 categories)
-  2. Sampling random edge parameters (rigidities and/or rest lengths)
+  2. Sampling spatially structured edge parameters via rigidity patterns
   3. Running the Phase 2 forward solver to compute ground-truth labels
      (Poisson's ratio, Young's modulus, full elastic tensor)
   4. Converting (mesh + params + labels) to PyG Data objects via graph_utils
@@ -12,7 +12,18 @@ multiple dimensions simultaneously:
   - Topology type (crystal, foam, random, honeycomb, kagome, etc.)
   - Mesh size (6x6, 8x8, 10x10) — for scale generalization
   - Edge parameter type (rigidities only, rest lengths only, or both)
+  - Rigidity pattern (8 spatial patterns with varying correlation structures)
   - Parameter magnitude (sigma in {0.3, 0.5, 1.0, 2.0}) — for range coverage
+
+The 8 rigidity patterns provide diverse spatial structure:
+  - iid: independent per-edge (baseline)
+  - grf: Gaussian random field (spatially correlated)
+  - gradient: linear gradient across the mesh
+  - radial: stiff core / soft boundary or vice versa
+  - percolation: binary stiff/soft assignment at random probability
+  - stripes: alternating bands of different stiffness
+  - virtual_distortion: stiffness from virtual mesh deformation (Phase 3 method)
+  - voronoi_clusters: piecewise-constant Voronoi patches
 
 This creates a rich, high-dimensional training distribution that forces the
 GNN to learn general structure-property relationships rather than memorizing
@@ -43,6 +54,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "Phase 3"))
 
 from data.topology_generators import generate_topology, TOPOLOGY_GENERATORS
 from data.graph_utils import triangulation_to_pyg_data
+from data.rigidity_patterns import (
+    sample_rigidity_pattern, random_pattern_name, random_pattern_params,
+    RIGIDITY_PATTERNS,
+)
 # from_triangulation: given a Delaunay-like object, returns (solver_fn, default_rigs, default_rl)
 from forward_solver_torch import from_triangulation
 
@@ -51,44 +66,13 @@ from forward_solver_torch import from_triangulation
 # Edge parameter sampling
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# These functions generate random edge parameters (spring constants and/or
-# rest lengths) that serve as the "input" to the forward solver. By varying
-# these parameters randomly across many samples, we create a diverse training
-# set that covers a wide range of elastic behaviors.
+# Rigidity sampling is handled by the rigidity_patterns module, which provides
+# 8 spatially structured patterns (IID, GRF, gradient, radial, percolation,
+# stripes, virtual distortion, Voronoi clusters). See rigidity_patterns.py.
 #
-# Why lognormal for rigidities?
-#   Physical spring constants are positive and can span orders of magnitude
-#   (e.g., 0.01 to 100). A lognormal distribution k = exp(N(0, sigma^2))
-#   naturally satisfies k > 0 and has a controllable spread.
-#   At sigma=0.3, most k values are in [0.5, 2.0] — near uniform.
-#   At sigma=2.0, k values span [0.01, 100] — extreme heterogeneity.
-#
-# Why multiplicative perturbation for rest lengths?
-#   Rest lengths should stay close to the actual edge length (otherwise the
-#   mesh would be in extreme pre-stress). l0 = l_actual * exp(N(0, sigma^2))
-#   gives relative perturbations: at sigma=0.1, l0 varies by ~10%.
-
-def sample_rigidities(n_tri, mode='lognormal', sigma=1.0):
-    """Sample per-triangle rigidities (spring constants).
-
-    Args:
-        n_tri: number of triangles.
-        mode: 'lognormal' (default), 'uniform', or 'constant' (k=1 everywhere).
-        sigma: std of the normal distribution in log-space for lognormal mode.
-               Higher sigma = wider spread of rigidity values.
-
-    Returns:
-        (n_tri, 3) rigidities array. Each row corresponds to one triangle's
-        3 edges in the solver convention: (v0-v1, v0-v2, v1-v2).
-    """
-    if mode == 'lognormal':
-        # k = exp(N(0, sigma^2)): median = 1.0, geometric spread controlled by sigma
-        return np.exp(np.random.randn(n_tri, 3) * sigma)
-    elif mode == 'uniform':
-        return np.random.uniform(0.01, 10.0, (n_tri, 3))
-    else:
-        return np.ones((n_tri, 3))  # constant rigidity (baseline)
-
+# Rest length sampling remains here: multiplicative perturbation of actual
+# edge lengths. l0 = l_actual * exp(N(0, sigma^2)) gives relative
+# perturbations: at sigma=0.1, l0 varies by ~10%.
 
 def sample_rest_lengths(actual_lengths, sigma=0.1):
     """Sample per-triangle rest lengths as multiplicative perturbations of actual lengths.
@@ -126,13 +110,13 @@ def sample_rest_lengths(actual_lengths, sigma=0.1):
 
 def generate_single_sample(sample_idx, topo_name, size, seed,
                            design_variable='rigidities',
-                           rig_mode='lognormal', rig_sigma=1.0,
-                           rl_sigma=0.1):
+                           rig_pattern='iid', rig_pattern_params=None,
+                           rig_sigma=1.0, rl_sigma=0.1):
     """Generate one complete (graph, edge_params, labels) training sample.
 
     This is the core function called once per sample. It:
       1. Generates the mesh topology
-      2. Samples random edge parameters
+      2. Samples spatially structured edge parameters via rigidity patterns
       3. Runs the forward solver for ground-truth labels
       4. Packages everything as a PyG Data object
 
@@ -150,7 +134,8 @@ def generate_single_sample(sample_idx, topo_name, size, seed,
             'rigidities': vary k, keep l0 = l_actual
             'rest_lengths': keep k = 1, vary l0
             'both': vary both k and l0
-        rig_mode: rigidity sampling mode ('lognormal' or 'uniform').
+        rig_pattern: rigidity pattern name from RIGIDITY_PATTERNS.
+        rig_pattern_params: dict of pattern-specific kwargs (correlation_length, etc.)
         rig_sigma: sigma for rigidity sampling (controls heterogeneity).
         rl_sigma: sigma for rest length perturbation.
 
@@ -160,6 +145,9 @@ def generate_single_sample(sample_idx, topo_name, size, seed,
     # Seed for edge parameter sampling — deterministic per (sample_idx, seed) pair.
     # Uses a large prime multiplier (31337) to decorrelate adjacent samples.
     np.random.seed(sample_idx * 31337 + seed)
+
+    if rig_pattern_params is None:
+        rig_pattern_params = {}
 
     try:
         # Step 1: Generate the mesh topology
@@ -174,27 +162,25 @@ def generate_single_sample(sample_idx, topo_name, size, seed,
         solver, default_rigs, default_rl = from_triangulation(compat)
 
         n_tri = tri_result.n_tri
-        default_rigs_np = default_rigs.numpy()
         actual_rl_np = default_rl.numpy()
 
         # Get hard/soft edge mask — True where edges are structural (designable)
         hard_mask = tri_result.get_hard_edge_mask_per_triangle()
 
-        # Step 3: Sample random edge parameters based on design_variable mode
-        if design_variable == 'rigidities':
-            # Vary spring constants, keep rest lengths at geometric values
-            rigs = sample_rigidities(n_tri, mode=rig_mode, sigma=rig_sigma)
-            rest_lengths = actual_rl_np.copy()
-        elif design_variable == 'rest_lengths':
-            # Keep spring constants uniform, vary rest lengths (pre-stress)
+        # Step 3: Sample spatially structured edge parameters
+        if design_variable in ('rigidities', 'both'):
+            rigs = sample_rigidity_pattern(
+                tri_result.points, tri_result.simplices,
+                pattern=rig_pattern, sigma=rig_sigma,
+                **rig_pattern_params,
+            )
+        else:
             rigs = np.ones((n_tri, 3))
-            rest_lengths = sample_rest_lengths(actual_rl_np, sigma=rl_sigma)
-        elif design_variable == 'both':
-            # Vary both independently — the hardest case for the GNN
-            rigs = sample_rigidities(n_tri, mode=rig_mode, sigma=rig_sigma)
+
+        if design_variable in ('rest_lengths', 'both'):
             rest_lengths = sample_rest_lengths(actual_rl_np, sigma=rl_sigma)
         else:
-            raise ValueError(f"Unknown design_variable: {design_variable}")
+            rest_lengths = actual_rl_np.copy()
 
         # Step 4: Freeze soft (regularization) edges — they are NOT design variables.
         # Their k stays at k_soft_ratio (1e-3) and l0 stays at l_actual regardless
@@ -231,6 +217,8 @@ def generate_single_sample(sample_idx, topo_name, size, seed,
         data.sample_idx = sample_idx
         # Encode design_variable mode as an integer for potential downstream use
         data.design_variable = ['rigidities', 'rest_lengths', 'both'].index(design_variable)
+        # Store pattern name for analysis/debugging
+        data.rig_pattern = rig_pattern
 
         return data
 
@@ -259,13 +247,17 @@ def _generate_sample_config_list(n_samples, topologies=None, sizes=None,
     """Build a flat list of sample configurations for generation.
 
     Cycles through all combinations of (topology, size, design_variable, sigma)
-    in a round-robin fashion to ensure balanced coverage. Stochastic topologies
-    get different random seeds based on sample index; deterministic topologies
-    always use seed=0.
+    in a round-robin fashion to ensure balanced coverage. Each sample also gets
+    a randomly selected rigidity pattern (from PATTERN_WEIGHTS) with random
+    pattern-specific hyperparameters.
+
+    Stochastic topologies get different random seeds based on sample index;
+    deterministic topologies always use seed=0.
     """
     # Default variation axes — these create the Cartesian product space that
     # each sample is drawn from. Total combinations per epoch:
     #   18 topos × 3 sizes × 3 design_vars × 4 sigmas = 648 unique configs
+    #   Each config also gets a random rigidity pattern + params.
     if topologies is None:
         topologies = list(TOPOLOGY_GENERATORS.keys())
     if sizes is None:
@@ -282,7 +274,9 @@ def _generate_sample_config_list(n_samples, topologies=None, sizes=None,
     random_topos = ['foam_eta02', 'foam_eta045', 'foam_retri_eta02',
                     'foam_retri_eta045', 'poisson_delaunay', 'blue_noise',
                     'clustered', 'gradient_density']
-    deterministic_topos = [t for t in topologies if t not in random_topos]
+
+    # Use a deterministic RNG for config generation so dataset is reproducible.
+    config_rng = np.random.RandomState(12345)
 
     # Round-robin through all combinations until we have n_samples configs.
     # The modular seed (idx % 20) * 137 gives 20 distinct mesh realizations
@@ -296,13 +290,21 @@ def _generate_sample_config_list(n_samples, topologies=None, sizes=None,
                         if idx >= n_samples:
                             break
                         seed = 42 + (idx % 20) * 137 if topo in random_topos else 0
+
+                        # Randomly select a rigidity pattern + its hyperparams.
+                        # Use config_rng for reproducibility.
+                        np.random.seed(config_rng.randint(0, 2**31))
+                        pattern = random_pattern_name()
+                        pattern_params = random_pattern_params(pattern)
+
                         configs.append({
                             'sample_idx': idx,
                             'topo_name': topo,
                             'size': size,
                             'seed': seed,
                             'design_variable': dv,
-                            'rig_mode': 'lognormal',
+                            'rig_pattern': pattern,
+                            'rig_pattern_params': pattern_params,
                             'rig_sigma': sigma,
                             'rl_sigma': 0.1,
                         })
