@@ -4,6 +4,7 @@ __pycache__/
 # Generated dataset files (too large for git)
 Phase 4/processed/*_chunks/
 Phase 4/processed/*.pt
+Phase 4/data/processed/
 
 # Model checkpoints (binary, too large for git)
 Phase 4/checkpoints/
