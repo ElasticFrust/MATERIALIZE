@@ -163,6 +163,79 @@ def _tail(path, n=3):
         return "(unreadable)"
 
 
+def ensure_val_test_splits(n_workers):
+    """Generate val and test splits if they don't exist yet.
+
+    Training in renewable mode does not need a pre-generated train split, but
+    it does need stable val/test splits for evaluation. This function generates
+    them using the resumable generator (10 000 samples each) if the chunk
+    directories don't exist or are incomplete.
+    """
+    DATAGEN_LOG = Path(__file__).resolve().parent / "datagen_valtest.log"
+    processed = WORKDIR / "processed"
+    splits_needed = []
+    for split, n in [("val", 10000), ("test", 10000)]:
+        manifest = processed / f"{split}_chunks" / "manifest.json"
+        if not manifest.exists():
+            splits_needed.append((split, n))
+        else:
+            import json
+            with open(manifest) as f:
+                m = json.load(f)
+            if not m.get("complete", False):
+                splits_needed.append((split, n))
+
+    if not splits_needed:
+        log("Val/test splits already complete, skipping generation.")
+        return
+
+    log(f"Generating missing splits: {[s for s,_ in splits_needed]}")
+
+    # Build a tiny wrapper that only generates the needed splits
+    script = f"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('{WORKDIR}').resolve()))
+sys.path.insert(0, str(Path('{WORKDIR}').resolve().parent / 'Phase 2'))
+sys.path.insert(0, str(Path('{WORKDIR}').resolve().parent / 'Phase 3'))
+import torch
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+import sys as _sys
+_sys.argv = ['gen']  # suppress argparse
+
+from run_generate_dataset_resumable import generate_split
+"""
+    for split, n in splits_needed:
+        script += f"\ngenerate_split('{split}', {n})\n"
+
+    script_path = WORKDIR / "_gen_valtest_tmp.py"
+    script_path.write_text(script)
+
+    with open(DATAGEN_LOG, "a") as lf:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", str(script_path)],
+            cwd=str(WORKDIR),
+            stdout=lf, stderr=subprocess.STDOUT,
+        )
+    log(f"Data generation PID={proc.pid}, logging to {DATAGEN_LOG}")
+
+    while True:
+        try:
+            proc.wait(timeout=300)
+            break
+        except subprocess.TimeoutExpired:
+            tail = _tail(DATAGEN_LOG, 2)
+            log(f"[datagen] still running... {tail}")
+
+    script_path.unlink(missing_ok=True)
+    if proc.returncode != 0:
+        log(f"WARNING: data generation exited with code {proc.returncode}. "
+            "Check datagen_valtest.log. Training will attempt to continue.")
+    else:
+        log("Val/test generation complete.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Renewable training runner")
     parser.add_argument("--gnn_only", action="store_true")
@@ -186,6 +259,9 @@ def main():
     log(f"  renewable_chunk_size = {args.renewable_chunk_size}")
     log(f"  renewable_n_workers = {args.renewable_n_workers}")
     log("=" * 60)
+
+    # Generate val/test splits if missing (train is generated live)
+    ensure_val_test_splits(args.renewable_n_workers)
 
     kw = vars(args)
 
