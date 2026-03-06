@@ -12,6 +12,4 @@ _sys.argv = ['gen']  # suppress argparse
 
 from run_generate_dataset_resumable import generate_split
 
-generate_split('val', 10000)
-
 generate_split('test', 10000)
