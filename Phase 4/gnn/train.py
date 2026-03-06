@@ -38,6 +38,7 @@ except ImportError:
     raise ImportError("torch_geometric required: pip install torch-geometric")
 
 from gnn.model import ForwardGNN, ForwardGNNLoss
+from data.generate_dataset import generate_chunk_live
 
 
 def load_split(data_dir, split):
@@ -173,6 +174,78 @@ def train_epoch_chunked(model, chunk_files, batch_size, optimizer, loss_fn,
     return total_loss / n_graphs if n_graphs > 0 else 0
 
 
+def train_epoch_renewable(model, n_chunks, chunk_size, batch_size, optimizer,
+                          loss_fn, device, grad_clip=5.0, n_workers=4,
+                          epoch=None, checkpoint_fn=None):
+    """Train for one epoch, generating *fresh data* for every chunk.
+
+    The key difference from train_epoch_chunked: instead of loading the same
+    pre-saved .pt files on every epoch, this function calls generate_chunk_live()
+    before each mini-epoch chunk. Every chunk is a newly drawn random sample
+    from the full topology × pattern × sigma distribution — so the model sees
+    different data on every pass, not just every epoch.
+
+    Benefits:
+      - Effectively infinite training data: no sample is ever seen twice.
+      - No overfitting to specific parameter realizations.
+      - Curriculum emerges naturally: hard cases are sampled repeatedly at the
+        same rate as easy ones.
+      - No need to pre-generate or store a large training dataset on disk.
+
+    Args:
+        model: ForwardGNN to train.
+        n_chunks: how many fresh chunks to generate per epoch.
+        chunk_size: number of sample configs attempted per chunk (~90-95% yield).
+        batch_size: graphs per mini-batch.
+        optimizer: AdamW (or similar).
+        loss_fn: ForwardGNNLoss.
+        device: torch.device.
+        grad_clip: max gradient norm.
+        n_workers: parallel workers for generate_chunk_live().
+        epoch: current epoch number (for logging/checkpoint label).
+        checkpoint_fn: called after each chunk with (chunk_idx, chunk_order=None).
+    """
+    model.train()
+    total_loss = 0
+    n_graphs = 0
+
+    for ci in range(n_chunks):
+        chunk_data = generate_chunk_live(chunk_size, n_workers=n_workers)
+        if not chunk_data:
+            print(f"  [chunk {ci+1}/{n_chunks}] WARNING: empty chunk, skipping",
+                  flush=True)
+            continue
+        chunk_loader = DataLoader(chunk_data, batch_size=batch_size, shuffle=True)
+
+        chunk_loss = 0
+        chunk_graphs = 0
+        for batch in chunk_loader:
+            batch = batch.to(device)
+            optimizer.zero_grad()
+            pred = model(batch)
+            loss = loss_fn(pred, batch)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
+            chunk_loss += loss.item() * batch.num_graphs
+            chunk_graphs += batch.num_graphs
+
+        total_loss += chunk_loss
+        n_graphs += chunk_graphs
+        avg_loss = chunk_loss / chunk_graphs if chunk_graphs > 0 else 0
+
+        print(f"  [chunk {ci+1}/{n_chunks}] loss={avg_loss:.6f} "
+              f"({chunk_graphs} live samples)", flush=True)
+
+        if checkpoint_fn is not None:
+            checkpoint_fn(chunk_idx=ci, chunk_order=None)
+
+        del chunk_data, chunk_loader
+        gc.collect()
+
+    return total_loss / n_graphs if n_graphs > 0 else 0
+
+
 @torch.no_grad()
 def evaluate(model, loader, device):
     """Evaluate model, return dict of metrics."""
@@ -253,11 +326,14 @@ def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val_mse,
 
 def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
           lr=1e-3, weight_decay=1e-5, patience=30, hidden=32, n_layers=4,
-          multitask=False, device=None, resume=False, save_every=1):
+          multitask=False, device=None, resume=False, save_every=1,
+          renewable=False, renewable_n_chunks=40, renewable_chunk_size=2000,
+          renewable_n_workers=4):
     """Full training loop with early stopping and checkpoint resumption.
 
     Args:
         data_dir: directory containing {split}.pt or {split}_chunks/ subdirs.
+                  Also used to locate val/test splits when renewable=True.
         output_dir: where to save model checkpoints.
         epochs: max training epochs.
         batch_size: graphs per batch.
@@ -270,6 +346,12 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
         device: 'cuda' or 'cpu'.
         resume: if True, resume from latest checkpoint in output_dir.
         save_every: save a resumable checkpoint every N epochs.
+        renewable: if True, generate fresh training data each chunk rather than
+                   loading pre-saved chunk files. This provides effectively
+                   infinite training data and prevents memorisation.
+        renewable_n_chunks: number of freshly-generated chunks per epoch.
+        renewable_chunk_size: sample configs attempted per chunk (~90-95% yield).
+        renewable_n_workers: parallel workers for live data generation.
     """
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -283,18 +365,29 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
 
     # Load data — use chunked streaming for both train and val
     print("Loading data...", flush=True)
-    train_chunk_files = get_chunk_files(data_dir, 'train')
-    use_chunked = train_chunk_files is not None
 
-    if use_chunked:
-        n_train = count_chunk_samples(train_chunk_files)
-        print(f"  Train: {n_train} samples across {len(train_chunk_files)} chunks (streamed)", flush=True)
-        train_loader = None  # not used; train_epoch_chunked iterates chunks directly
+    if renewable:
+        # Renewable mode: generate fresh data each chunk; no train files needed.
+        n_train_per_epoch = int(renewable_n_chunks * renewable_chunk_size * 0.93)
+        print(f"  Train: RENEWABLE — {renewable_n_chunks} chunks × "
+              f"~{int(renewable_chunk_size * 0.93)} samples/chunk "
+              f"≈ {n_train_per_epoch} fresh samples/epoch", flush=True)
+        train_chunk_files = None
+        train_loader = None
+        use_chunked = False
     else:
-        train_data = torch.load(data_dir / 'train.pt', weights_only=False)
-        n_train = len(train_data)
-        train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-        print(f"  Train: {n_train} samples", flush=True)
+        train_chunk_files = get_chunk_files(data_dir, 'train')
+        use_chunked = train_chunk_files is not None
+
+        if use_chunked:
+            n_train = count_chunk_samples(train_chunk_files)
+            print(f"  Train: {n_train} samples across {len(train_chunk_files)} chunks (streamed)", flush=True)
+            train_loader = None  # not used; train_epoch_chunked iterates chunks directly
+        else:
+            train_data = torch.load(data_dir / 'train.pt', weights_only=False)
+            n_train = len(train_data)
+            train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+            print(f"  Train: {n_train} samples", flush=True)
 
     val_chunk_files = get_chunk_files(data_dir, 'val')
     use_chunked_val = val_chunk_files is not None
@@ -361,17 +454,24 @@ def train(data_dir, output_dir='./checkpoints', epochs=300, batch_size=64,
         t0 = time.time()
         print(f"--- Epoch {epoch}/{epochs} starting ---", flush=True)
 
-        if use_chunked:
-            # Mid-epoch checkpoint callback: saves every 5 chunks
-            def _mid_ckpt(chunk_idx, chunk_order):
-                if (chunk_idx + 1) % 5 == 0:
-                    save_checkpoint(latest_ckpt, model, optimizer, scheduler,
-                                    epoch, best_val_mse, patience_counter,
-                                    hidden, n_layers,
-                                    chunk_idx=chunk_idx,
-                                    chunk_order=chunk_order)
-                    print(f"  [mid-epoch checkpoint saved at chunk {chunk_idx+1}]", flush=True)
+        # Mid-epoch checkpoint callback: saves every 5 chunks
+        def _mid_ckpt(chunk_idx, chunk_order):
+            if (chunk_idx + 1) % 5 == 0:
+                save_checkpoint(latest_ckpt, model, optimizer, scheduler,
+                                epoch, best_val_mse, patience_counter,
+                                hidden, n_layers,
+                                chunk_idx=chunk_idx,
+                                chunk_order=chunk_order)
+                print(f"  [mid-epoch checkpoint saved at chunk {chunk_idx+1}]",
+                      flush=True)
 
+        if renewable:
+            train_loss = train_epoch_renewable(
+                model, renewable_n_chunks, renewable_chunk_size, batch_size,
+                optimizer, loss_fn, device,
+                n_workers=renewable_n_workers,
+                epoch=epoch, checkpoint_fn=_mid_ckpt)
+        elif use_chunked:
             train_loss = train_epoch_chunked(
                 model, train_chunk_files, batch_size, optimizer, loss_fn,
                 device, epoch=epoch, checkpoint_fn=_mid_ckpt,
@@ -456,6 +556,14 @@ if __name__ == '__main__':
                         help='Resume from latest_checkpoint.pt')
     parser.add_argument('--save_every', type=int, default=1,
                         help='Save resumable checkpoint every N epochs')
+    parser.add_argument('--renewable', action='store_true',
+                        help='Generate fresh data every chunk (no pre-saved dataset needed)')
+    parser.add_argument('--renewable_n_chunks', type=int, default=40,
+                        help='Fresh chunks generated per epoch in renewable mode')
+    parser.add_argument('--renewable_chunk_size', type=int, default=2000,
+                        help='Sample configs attempted per live chunk')
+    parser.add_argument('--renewable_n_workers', type=int, default=4,
+                        help='Parallel workers for live data generation')
     args = parser.parse_args()
 
     train(**vars(args))

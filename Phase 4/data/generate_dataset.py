@@ -318,6 +318,42 @@ def _worker(config):
     return generate_single_sample(**config)
 
 
+def generate_chunk_live(n_samples, n_workers=4):
+    """Generate a fresh chunk of training data on-the-fly (no disk I/O).
+
+    This is the core of the *renewable* training mode: instead of loading
+    the same pre-saved chunk files on every epoch, the training loop calls
+    this function each chunk to obtain brand-new random samples. Because
+    topology, rigidity pattern, sigma, and parameter type are all re-sampled,
+    the model is exposed to an effectively infinite stream of training examples
+    — preventing memorization and improving generalization.
+
+    Uses torch.multiprocessing with the 'file_system' sharing strategy so
+    that PyG Data objects can be passed back from worker processes safely.
+
+    Args:
+        n_samples: number of samples to attempt (actual count will be
+                   ~90-95% of this after filtering failed simulations).
+        n_workers: parallel worker processes. Set to 1 for debugging.
+
+    Returns:
+        list of valid PyG Data objects.
+    """
+    import torch.multiprocessing as tmp
+    tmp.set_sharing_strategy('file_system')
+
+    configs = _generate_sample_config_list(n_samples)
+    if n_workers <= 1:
+        results = [_worker(c) for c in configs]
+    else:
+        with tmp.Pool(n_workers) as pool:
+            results = pool.map(_worker, configs)
+
+    chunk = [d for d in results if d is not None]
+    del results
+    return chunk
+
+
 def generate_dataset(n_samples, n_workers=1, **kwargs):
     """Generate a complete dataset of (graph, edge_params, labels) samples.
 
