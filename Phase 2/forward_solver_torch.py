@@ -52,6 +52,24 @@ import torch
 import torch.nn as nn
 
 
+def _angle_gradient_vec(a, b):
+    """∂θ(a,b)/∂(g11,g12,g22) at reference Euclidean metric. Returns 3-vector."""
+    a2 = np.dot(a, a)
+    b2 = np.dot(b, b)
+    ab = np.dot(a, b)
+    la = np.sqrt(a2)
+    lb = np.sqrt(b2)
+    cos_th = np.clip(ab / (la * lb), -1.0 + 1e-10, 1.0 - 1e-10)
+    sin_th = np.sqrt(1.0 - cos_th ** 2)
+    if sin_th < 1e-10:
+        return np.zeros(3)
+    d_ab = np.array([a[0]*b[0], a[0]*b[1]+a[1]*b[0], a[1]*b[1]])
+    d_a2 = np.array([a[0]**2,   2*a[0]*a[1],          a[1]**2])
+    d_b2 = np.array([b[0]**2,   2*b[0]*b[1],          b[1]**2])
+    d_cos = d_ab / (la * lb) - cos_th * (d_a2 / (2*a2) + d_b2 / (2*b2))
+    return -d_cos / sin_th
+
+
 class ElasticSolver(nn.Module):
     """Differentiable forward solver for 2D elastic spring networks.
 
@@ -95,6 +113,9 @@ class ElasticSolver(nn.Module):
 
         # Build edge-compatibility constraint matrix J
         self._build_edge_compatibility(pos_np, sim_np)
+
+        # Build vertex-angle compatibility constraints
+        self._build_vertex_angle_constraints(pos_np, sim_np)
 
     def _build_edge_compatibility(self, positions, simplices):
         """Find interior edges; store (s1, s2, q) for sparse KKT correction."""
@@ -148,16 +169,77 @@ class ElasticSolver(nn.Module):
         else:
             self.J = None  # sparse path will be used in forward()
 
-    def forward(self, rigidities, rest_lengths=None, area_weighted=False, use_kkt=True):
+    def _build_vertex_angle_constraints(self, positions, simplices):
+        """For each interior vertex compute ∂θ/∂g for each incident triangle.
+
+        Stores self.angle_arrays = (v_int_idx, s_idx, a_vecs, n_int) or None.
+          v_int_idx : (n_pairs,) int64 — remapped interior vertex index
+          s_idx     : (n_pairs,) int64 — triangle index
+          a_vecs    : (n_pairs, 3) float64 — angle gradient vector
+          n_int     : int — number of interior vertices
+        """
+        n_pts = len(positions)
+
+        # Boundary vertices touch exactly one triangle on their boundary edge
+        edge_count = {}
+        for tri in simplices:
+            for i in range(3):
+                na, nb = int(tri[i]), int(tri[(i+1) % 3])
+                key = (min(na, nb), max(na, nb))
+                edge_count[key] = edge_count.get(key, 0) + 1
+        boundary_verts = set()
+        for (na, nb), cnt in edge_count.items():
+            if cnt == 1:
+                boundary_verts.update([na, nb])
+
+        v2tri = [[] for _ in range(n_pts)]
+        for s, tri in enumerate(simplices):
+            for v in tri:
+                v2tri[v].append(s)
+
+        v_int_list, s_list, a_list = [], [], []
+        int_count = 0
+        for v in range(n_pts):
+            if v in boundary_verts:
+                continue
+            for s in v2tri[v]:
+                tri = simplices[s]
+                vi = list(tri).index(v)
+                v1 = tri[(vi + 1) % 3]
+                v2 = tri[(vi + 2) % 3]
+                a = positions[v1] - positions[v]
+                b = positions[v2] - positions[v]
+                dth = _angle_gradient_vec(a, b)
+                v_int_list.append(int_count)
+                s_list.append(s)
+                a_list.append(dth)
+            int_count += 1
+
+        if int_count == 0 or len(v_int_list) == 0:
+            self.angle_arrays = None
+            return
+
+        self.angle_arrays = (
+            np.array(v_int_list, dtype=np.int64),
+            np.array(s_list,     dtype=np.int64),
+            np.array(a_list,     dtype=np.float64),  # (n_pairs, 3)
+            int_count,
+        )
+
+    def forward(self, rigidities, rest_lengths=None, area_weighted=False, use_kkt=True,
+                use_angle_kkt=False):
         """Run the forward pipeline.
 
         Args:
-            rigidities:    (N, 3) tensor
-            rest_lengths:  (N, 3) tensor or None
-            area_weighted: if True, use volume-weighted constraint Σ w_n δg(n)=0;
-                           if False use arithmetic constraint Σ δg(n)=0.
-            use_kkt:       if True, apply edge-compatibility (KKT) correction;
-                           if False, pure mean-field Woodbury only (no KKT).
+            rigidities:     (N, 3) tensor
+            rest_lengths:   (N, 3) tensor or None
+            area_weighted:  if True, use volume-weighted constraint Σ w_n δg(n)=0;
+                            if False use arithmetic constraint Σ δg(n)=0.
+            use_kkt:        if True, apply edge-compatibility (KKT) correction;
+                            if False, pure mean-field Woodbury only (no KKT).
+            use_angle_kkt:  if True, apply BOTH edge and vertex-angle compatibility
+                            constraints jointly (superset of use_kkt); if False,
+                            falls back to use_kkt behaviour (default False).
 
         Returns:
             dict: elastic_tensor (6,), poisson, young, per_triangle (N,6),
@@ -193,7 +275,15 @@ class ElasticSolver(nn.Module):
         B_blocks = _batch_to_9x9(delta)
         dA_vecs  = _batch_to_9vec(delta)
 
-        if area_weighted:
+        if use_angle_kkt and self.kkt_arrays is not None:
+            # Combined edge + vertex-angle constraints
+            _weights = self.area_weights.numpy() if area_weighted else None
+            W_np = _woodbury_kkt_sparse_combined(
+                A_blocks, B_blocks, dA_vecs,
+                self.kkt_arrays, self.angle_arrays,
+                weights=_weights)
+            W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
+        elif area_weighted:
             if use_kkt and self.J is not None:
                 W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
                                     J=self.J.to(dtype=bare.dtype, device=bare.device),
@@ -568,6 +658,148 @@ def _woodbury_kkt_sparse_aw(A_blocks, B_blocks, dA_vecs, kkt_arrays, weights):
     PinvJtLam = AinvJtLam + np.einsum('nij,j->ni', A_inv, z_c)   # no /N
 
     return W0 - PinvJtLam
+
+
+def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
+                                   kkt_arrays, angle_arrays, weights=None):
+    """KKT correction with edge-length AND vertex-angle compatibility constraints.
+
+    Builds a unified constraint set:
+      - kkt_arrays  (s1, s2, q):     E_int edge constraints
+      - angle_arrays (v_int, s, a, n_int): n_int angle constraints
+
+    Total M_c = E_int + n_int constraints per loading mode.
+    Applies the same Woodbury-on-sparse-Gram strategy as _woodbury_kkt_sparse.
+
+    weights: None → uniform 1/N averaging; (N,) array → area-weighted averaging.
+    """
+    import scipy.sparse as sp
+    import scipy.sparse.linalg as spla
+    from collections import defaultdict
+
+    s1_arr, s2_arr, q_arr = kkt_arrays
+    E_int = len(s1_arr)
+
+    if angle_arrays is not None:
+        v_arr, sv_arr, a_arr, n_int = angle_arrays
+    else:
+        v_arr, sv_arr, a_arr, n_int = np.array([]), np.array([]), np.zeros((0, 3)), 0
+
+    M_c = E_int + n_int        # constraints per loading mode
+    M_c3 = 3 * M_c            # total rows in the loading-indexed system
+    N = A_blocks.shape[0]
+
+    A_np  = A_blocks.detach().double().numpy()
+    B_np  = B_blocks.detach().double().numpy()
+    dA_np = dA_vecs.detach().double().numpy()
+
+    eps   = 1e-14 * np.abs(A_np).max()
+    I9    = np.eye(9)
+    A_inv = np.linalg.inv(A_np + eps * I9[None])  # (N, 9, 9)
+
+    # ── Woodbury base solve → W0 ─────────────────────────────────────────────
+    y = np.einsum('nij,nj->ni', A_inv, dA_np)
+    if weights is not None:
+        w = weights
+        Vy = np.einsum('n,nij,nj->i',   w, B_np, y)
+        S  = np.einsum('n,nij,njk->ik', w, B_np, A_inv)
+        IminusS = I9 - S
+        z  = np.linalg.solve(IminusS, Vy)
+        W0 = -(y + np.einsum('nij,j->ni', A_inv, z))         # no /N
+        BA_inv = np.einsum('n,nij,njk->nik', w, B_np, A_inv) # w-weighted
+    else:
+        Vy = np.einsum('nij,nj->i',  B_np, y)
+        S  = np.einsum('nij,njk->ik', B_np, A_inv) / N
+        IminusS = I9 - S
+        z  = np.linalg.solve(IminusS, Vy)
+        W0 = -(y + np.einsum('nij,j->ni', A_inv, z) / N)
+        BA_inv = np.einsum('nij,njk->nik', B_np, A_inv)      # plain
+
+    # ── Unified constraint dict: tri → [(c_idx, coeff_3vec), ...] ────────────
+    tri_con = defaultdict(list)
+    for e in range(E_int):
+        tri_con[s1_arr[e]].append((e,          +q_arr[e]))
+        tri_con[s2_arr[e]].append((e,          -q_arr[e]))
+    for j in range(len(v_arr)):
+        tri_con[sv_arr[j]].append((E_int + v_arr[j],  a_arr[j]))
+
+    LOC_ROWS = [np.array([k, 3+k, 6+k]) for k in range(3)]
+
+    # ── H and K  (M_c3 × 9) ─────────────────────────────────────────────────
+    H = np.zeros((M_c3, 9))
+    K = np.zeros((M_c3, 9))
+    for n, clist in tri_con.items():
+        An  = A_inv[n]   # (9, 9)
+        BAn = BA_inv[n]  # (9, 9)
+        for c, coeff in clist:
+            for k in range(3):
+                row = k * M_c + c
+                for loc in range(3):
+                    H[row] += coeff[loc] * An[3*loc+k, :]
+                    K[row] += coeff[loc] * BAn[:, 3*loc+k]
+
+    # ── Sparse G_local = C A_diag⁻¹ Cᵀ ─────────────────────────────────────
+    rows_g, cols_g, data_g = [], [], []
+    for n, clist in tri_con.items():
+        An = A_inv[n]
+        for c1, coeff1 in clist:
+            for c2, coeff2 in clist:
+                for k1 in range(3):
+                    row = k1 * M_c + c1
+                    for k2 in range(3):
+                        col = k2 * M_c + c2
+                        A_sub = An[np.ix_(LOC_ROWS[k1], LOC_ROWS[k2])]
+                        val   = float(coeff1 @ A_sub @ coeff2)
+                        rows_g.append(row)
+                        cols_g.append(col)
+                        data_g.append(val)
+
+    G_local = sp.coo_matrix((data_g, (rows_g, cols_g)),
+                             shape=(M_c3, M_c3)).tocsc()
+    reg_gl  = 1e-12 * max(abs(v) for v in data_g) if data_g else 1e-12
+    G_local = G_local + reg_gl * sp.eye(M_c3, format='csc')
+
+    # ── r = C W₀ ─────────────────────────────────────────────────────────────
+    r = np.zeros(M_c3)
+    for n, clist in tri_con.items():
+        for c, coeff in clist:
+            for k in range(3):
+                for loc in range(3):
+                    r[k * M_c + c] += coeff[loc] * W0[n, 3*loc+k]
+
+    # ── Woodbury solve on (G_local + correction) Λ = r ──────────────────────
+    G_lu  = spla.factorized(G_local)
+    Lam0  = G_lu(r)
+    Y     = np.column_stack([G_lu(H[:, j]) for j in range(9)])
+    if weights is not None:
+        M_mat = IminusS + K.T @ Y        # no N factor (AW)
+    else:
+        M_mat = N * IminusS + K.T @ Y   # uniform
+    c_vec  = np.linalg.solve(M_mat, K.T @ Lam0)
+    Lambda = Lam0 - Y @ c_vec
+
+    # ── W = W₀ − P⁻¹ (Cᵀ Λ) ─────────────────────────────────────────────────
+    CtLam = np.zeros(9 * N)
+    for n, clist in tri_con.items():
+        for c, coeff in clist:
+            for k in range(3):
+                Lk = Lambda[k * M_c + c]
+                for loc in range(3):
+                    CtLam[n*9 + 3*loc+k] += coeff[loc] * Lk
+
+    CtLam_b   = CtLam.reshape(N, 9)
+    AinvCtLam = np.einsum('nij,nj->ni', A_inv, CtLam_b)
+    if weights is not None:
+        gs = np.einsum('n,nij,nj->i', w, B_np, AinvCtLam)
+    else:
+        gs = np.einsum('nij,nj->i', B_np, AinvCtLam)
+    z_c       = np.linalg.solve(IminusS, gs)
+    if weights is not None:
+        PinvCtLam = AinvCtLam + np.einsum('nij,j->ni', A_inv, z_c)     # no /N
+    else:
+        PinvCtLam = AinvCtLam + np.einsum('nij,j->ni', A_inv, z_c) / N
+
+    return W0 - PinvCtLam
 
 
 def _compute_actual_elastic_tensor(bare_tensors, Ws):
