@@ -25,11 +25,11 @@ import forward_solver_torch as fst
 from forward_solver_torch import _compute_actual_elastic_tensor
 
 ETA_VALUES = np.linspace(0.0, 0.5, 11)
-N_TRIALS   = 20
-SIZE       = (20, 20)
+N_TRIALS   = 50
+SIZE       = (50, 50)
 TRIM_FRAC  = 0.85
-CACHE      = os.path.join(os.path.dirname(__file__), 'mf_4panel_data.npz')
-OUT        = os.path.join(os.path.dirname(__file__), 'new', 'mf_4panel_4cases_20trials.png')
+CACHE      = os.path.join(os.path.dirname(__file__), 'mf_4panel_50x50_data.npz')
+OUT        = os.path.join(os.path.dirname(__file__), 'new', 'mf_4panel_50x50_50trials.png')
 
 # 4 solver variants per mesh
 CASES = [
