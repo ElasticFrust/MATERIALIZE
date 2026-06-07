@@ -40,7 +40,6 @@ CASES = [
     (True,  True,  'AW MF + KKT',        'C3', 'D', '--'),
 ]
 n_cases = len(CASES)
-n_mesh  = 2   # 0=distort-first, 1=tri-first-then-trim
 n_eta   = len(ETA_VALUES)
 
 # ── Mesh builders ─────────────────────────────────────────────────────────────
@@ -64,6 +63,7 @@ def make_tri_first_trimmed(size, eta, trim_frac=TRIM_FRAC):
 
 MESH_BUILDERS = [make_distort_first]
 MESH_LABELS   = ['Distort → triangulate → trim']
+n_mesh        = len(MESH_BUILDERS)
 
 # ── Voigt compliance → directional constants ──────────────────────────────────
 
