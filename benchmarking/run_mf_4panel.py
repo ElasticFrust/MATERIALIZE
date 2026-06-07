@@ -25,18 +25,19 @@ import forward_solver_torch as fst
 from forward_solver_torch import _compute_actual_elastic_tensor
 
 ETA_VALUES = np.linspace(0.0, 0.5, 11)
-N_TRIALS   = 10
+N_TRIALS   = 20
 SIZE       = (20, 20)
 TRIM_FRAC  = 0.85
 CACHE      = os.path.join(os.path.dirname(__file__), 'mf_4panel_data.npz')
 OUT        = os.path.join(os.path.dirname(__file__), 'new', 'mf_4panel.png')
 
-# 3 solver variants per mesh
+# 4 solver variants per mesh
 CASES = [
     # (area_weighted, use_kkt, label, color, marker, ls)
-    (False, False, 'Standard MF',      'C0', 'o', '-'),
-    (True,  False, 'Area-weighted MF', 'C1', 's', '--'),
-    (True,  True,  'AW MF + KKT',     'C2', '^', ':'),
+    (False, False, 'Standard MF',        'C0', 'o', '-'),
+    (True,  False, 'Area-weighted MF',   'C1', 's', '--'),
+    (False, True,  'Standard MF + KKT',  'C2', '^', '-'),
+    (True,  True,  'AW MF + KKT',        'C3', 'D', '--'),
 ]
 n_cases = len(CASES)
 n_mesh  = 2   # 0=distort-first, 1=tri-first-then-trim
