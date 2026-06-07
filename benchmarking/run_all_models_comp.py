@@ -123,7 +123,10 @@ def run_all_cases(solver, rigidities, rest_lengths):
             else:
                 W = _woodbury_solve(A_b, B_b, dA, J=None)
 
-        C6 = _compute_actual_elastic_tensor(bare, W).mean(0).numpy()
+        actual = _compute_actual_elastic_tensor(bare, W)
+        # Area-weighted homogenization: larger triangles contribute more to C_eff.
+        # At eta=0.3 the area ratio max/min ~10x, so this differs from arithmetic mean.
+        C6 = ((actual * w).sum(0) if area_weighted else actual.mean(0)).numpy()
         results.append(_directional_constants(C6))
     return results   # list of (E_x, E_y, nu_xy, nu_yx) per case
 
