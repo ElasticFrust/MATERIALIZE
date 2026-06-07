@@ -72,7 +72,7 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     # All x DOFs and y DOFs of interior nodes are free.
     n_dof      = 2 * n
     fixed_mask = np.zeros(n_dof, dtype=bool)
-    fixed_val  = np.zeros(n_dof)
+    fixed_val  = p.ravel().copy()
 
     delta = eps * L / 2
     for i in top_idx:
@@ -103,7 +103,7 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
         f   = np.zeros((n, 2))
         np.add.at(f, edges[:,0],  fac[:,None] * dr)
         np.add.at(f, edges[:,1], -fac[:,None] * dr)
-        return E, (-f).ravel()[free_idx]
+        return E, f.ravel()[free_idx]
 
     res  = minimize(energy_grad, x0_free, jac=True, method='L-BFGS-B',
                     options={'maxiter':10000,'ftol':1e-15,'gtol':1e-10})
@@ -114,7 +114,7 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     # ── Transverse strain at middle third ──────────────────────────────────
     ycen  = (ymax + ymin) / 2
     band  = L / 6                              # middle third
-    mid   = (np.abs(pos[:,1] - ycen) < band) & \
+    mid   = (np.abs(p[:,1] - ycen) < band) & \
             (np.abs(p[:,0])  > 0.1)            # exclude nodes near x=0
     if mid.sum() < 3:
         return np.nan, np.nan
