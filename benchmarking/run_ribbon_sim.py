@@ -1,5 +1,5 @@
 """
-Ribbon uniaxial simulation.
+Ribbon uniaxial simulation — two mesh types.
 
 Geometry : 1:4 aspect ratio patch (width × height, height along y).
 BC       : y-DOFs of topmost and bottommost node rows are clamped (stretched
@@ -8,6 +8,10 @@ BC       : y-DOFs of topmost and bottommost node rows are clamped (stretched
 Measure  : transverse strain ε_xx at the middle third of the ribbon via
            linear regression of x_displaced vs x_reference.
 Output   : ν = -ε_xx / ε_yy,  E = σ_yy / ε_yy  (σ_yy from reaction force).
+
+Two simulation curves:
+  DF — distort first, then Delaunay-triangulate, then trim (generate_foam_distort_first)
+  TF — triangulate first (regular lattice), then distort positions, then trim
 
 Compared alongside the 4 MF variants from the 50×50 distort-first run.
 """
@@ -31,8 +35,30 @@ TRIM_FRAC    = 0.85
 N_TRIALS     = 20
 EPS_APPLIED  = 0.005           # applied y-strain (small → linear regime)
 MF_CACHE     = os.path.join(os.path.dirname(__file__), 'mf_50x50_distortfirst_data.npz')
-SIM_CACHE    = os.path.join(os.path.dirname(__file__), 'ribbon_sim_data.npz')
+SIM_CACHE_DF = os.path.join(os.path.dirname(__file__), 'ribbon_sim_data.npz')       # distort-first (existing)
+SIM_CACHE_TF = os.path.join(os.path.dirname(__file__), 'ribbon_sim_tf_data.npz')    # triangulate-first (new)
 OUT          = os.path.join(os.path.dirname(__file__), 'new', 'mf_50x50_with_ribbon_sim.png')
+
+
+# ── Mesh builders ────────────────────────────────────────────────────────────
+
+def make_distort_first(size, eta):
+    return D2C.generate_foam_distort_first(size, eta, trim_frac=TRIM_FRAC)
+
+
+def make_tri_first(size, eta):
+    """Triangulate regular lattice, distort positions, then trim edge triangles."""
+    DM = D2C.generate_foam_points(size, eta)
+    centroids = np.mean(DM.points[DM.simplices], axis=1)
+    cx, cy = centroids[:, 0], centroids[:, 1]
+    xc = (cx.max() + cx.min()) / 2
+    yc = (cy.max() + cy.min()) / 2
+    hw = (cx.max() - cx.min()) / 2
+    hh = (cy.max() - cy.min()) / 2
+    mask = (np.abs(cx - xc) <= TRIM_FRAC * hw) & (np.abs(cy - yc) <= TRIM_FRAC * hh)
+    DM.simplices = DM.simplices[mask]
+    return DM
+
 
 # ── Mesh / spring helpers ───────────────────────────────────────────────────
 
@@ -48,7 +74,6 @@ def build_unique_edges(simplices):
 
 def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     """Uniaxial ribbon test; returns (E, nu)."""
-    # Active nodes only
     active = np.unique(simplices.ravel())
     remap  = {old: new for new, old in enumerate(active)}
     p      = pts[active].copy()
@@ -56,7 +81,7 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     edges  = build_unique_edges(simps)
 
     n  = len(p)
-    l0 = np.sqrt(((p[edges[:,0]] - p[edges[:,1]])**2).sum(1))  # rest = actual
+    l0 = np.sqrt(((p[edges[:,0]] - p[edges[:,1]])**2).sum(1))
     k  = np.ones(len(edges))
 
     y    = p[:,1]
@@ -64,12 +89,9 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     L    = ymax - ymin
     W    = p[:,0].max() - p[:,0].min()
 
-    # Topmost / bottommost rows (within 1.5 of extremes)
     top_idx = np.where(y > ymax - 1.5)[0]
     bot_idx = np.where(y < ymin + 1.5)[0]
 
-    # Fixed DOFs: y of top row (stretched up) and y of bottom row (stretched down)
-    # All x DOFs and y DOFs of interior nodes are free.
     n_dof      = 2 * n
     fixed_mask = np.zeros(n_dof, dtype=bool)
     fixed_val  = p.ravel().copy()
@@ -85,9 +107,8 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     free_idx  = np.where(~fixed_mask)[0]
     fixed_idx = np.where( fixed_mask)[0]
 
-    # Initial guess: affine stretch in y, no lateral motion
-    x0_all         = p.ravel().copy()
-    x0_all[1::2]   = p[:,1] * (1 + eps)     # y stretched
+    x0_all           = p.ravel().copy()
+    x0_all[1::2]     = p[:,1] * (1 + eps)
     x0_all[fixed_idx] = fixed_val[fixed_idx]
     x0_free = x0_all[free_idx]
 
@@ -111,23 +132,18 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     pos_flat[free_idx] = res.x
     pos = pos_flat.reshape(n, 2)
 
-    # ── Transverse strain at middle third ──────────────────────────────────
     ycen  = (ymax + ymin) / 2
-    band  = L / 6                              # middle third
-    mid   = (np.abs(p[:,1] - ycen) < band) & \
-            (np.abs(p[:,0])  > 0.1)            # exclude nodes near x=0
+    band  = L / 6
+    mid   = (np.abs(p[:,1] - ycen) < band) & (np.abs(p[:,0]) > 0.1)
     if mid.sum() < 3:
         return np.nan, np.nan
 
     x_ref  = p  [mid, 0]
     x_def  = pos[mid, 0]
-    # linear regression: x_def = (1+eps_xx)*x_ref
     eps_xx = np.dot(x_def - x_ref, x_ref) / np.dot(x_ref, x_ref)
     eps_yy = eps
     nu     = -eps_xx / eps_yy
 
-    # ── Young's modulus from reaction force on top row ─────────────────────
-    # Force in y on each top node = sum of spring forces
     F_y = 0.0
     for i in top_idx:
         neighbors = np.where((edges[:,0]==i)|(edges[:,1]==i))[0]
@@ -145,14 +161,13 @@ def ribbon_sim(pts, simplices, eps=EPS_APPLIED):
     return E_mod, nu
 
 
-# ── Run or load ─────────────────────────────────────────────────────────────
-if os.path.exists(SIM_CACHE):
-    print(f"Loading simulation cache: {SIM_CACHE}")
-    sd     = np.load(SIM_CACHE)
-    E_sim  = sd['E_sim']
-    nu_sim = sd['nu_sim']
-    etas   = sd['etas']
-else:
+def run_or_load(cache_path, builder, label):
+    """Run simulation trials or load from cache."""
+    if os.path.exists(cache_path):
+        print(f"Loading {label} cache: {cache_path}")
+        sd = np.load(cache_path)
+        return sd['E_sim'], sd['nu_sim'], sd['etas']
+
     n_eta  = len(ETA_VALUES)
     E_sim  = np.full((n_eta, N_TRIALS), np.nan)
     nu_sim = np.full((n_eta, N_TRIALS), np.nan)
@@ -162,18 +177,27 @@ else:
         for trial in range(N_TRIALS):
             seed = 100 * i_eta + trial
             np.random.seed(seed)
-            DT   = D2C.generate_foam_distort_first(SIZE, eta, trim_frac=TRIM_FRAC)
+            DT    = builder(SIZE, eta)
             E_mod, nu = ribbon_sim(DT.points, DT.simplices)
             E_sim [i_eta, trial] = E_mod
             nu_sim[i_eta, trial] = nu
 
         elapsed = time.time() - t0
-        print(f"  η={eta:.2f}  E={np.nanmedian(E_sim[i_eta]):.4f}  "
+        print(f"  [{label}] η={eta:.2f}  E={np.nanmedian(E_sim[i_eta]):.4f}  "
               f"ν={np.nanmedian(nu_sim[i_eta]):.4f}  {elapsed:.0f}s", flush=True)
 
     etas = np.asarray(ETA_VALUES)
-    np.savez(SIM_CACHE, E_sim=E_sim, nu_sim=nu_sim, etas=etas)
-    print(f"Saved: {SIM_CACHE}")
+    np.savez(cache_path, E_sim=E_sim, nu_sim=nu_sim, etas=etas)
+    print(f"Saved: {cache_path}")
+    return E_sim, nu_sim, etas
+
+
+# ── Run or load both mesh types ───────────────────────────────────────────────
+print("=== Distort-first simulation ===")
+E_df, nu_df, etas = run_or_load(SIM_CACHE_DF, make_distort_first, 'DF')
+
+print("\n=== Triangulate-first simulation ===")
+E_tf, nu_tf, _    = run_or_load(SIM_CACHE_TF, make_tri_first,     'TF')
 
 # ── Load MF data ─────────────────────────────────────────────────────────────
 mf     = np.load(MF_CACHE)
@@ -183,17 +207,21 @@ nx_all = mf['nx_all'];  ny_all = mf['ny_all']
 E_mf   = 0.5 * (Ex_all[0] + Ey_all[0])   # (n_cases, n_eta, N_MF_TRIALS)
 nu_mf  = 0.5 * (nx_all[0] + ny_all[0])
 
-E0_mf  = np.nanmedian(E_mf[0, 0])         # standard MF at η=0
-E0_sim = np.nanmedian(E_sim[0])            # simulation at η=0
-E_mf_n = E_mf  / E0_mf
-E_sim_n = E_sim / E0_sim
+E0_mf  = np.nanmedian(E_mf[0, 0])
+E0_df  = np.nanmedian(E_df[0])
+E0_tf  = np.nanmedian(E_tf[0])
+E_mf_n = E_mf / E0_mf
+E_df_n = E_df / E0_df
+E_tf_n = E_tf / E0_tf
 
-print(f"\nE0_mf={E0_mf:.5f}  E0_sim={E0_sim:.5f}")
-print(f"\n{'eta':>5}  {'std_MF':>8}  {'AW_MF':>8}  {'std+KKT':>8}  {'AW+KKT':>8}  {'sim_E':>8}  {'sim_nu':>8}")
+print(f"\nE0_mf={E0_mf:.5f}  E0_df={E0_df:.5f}  E0_tf={E0_tf:.5f}")
+print(f"\n{'eta':>5}  {'std_MF':>8}  {'AW_MF':>8}  {'std+KKT':>8}  {'AW+KKT':>8}"
+      f"  {'DF_E':>8}  {'DF_nu':>8}  {'TF_E':>8}  {'TF_nu':>8}")
 for i, eta in enumerate(etas):
     row = [np.nanmedian(E_mf_n[c,i]) for c in range(4)]
     print(f"{eta:5.2f}  {'  '.join(f'{v:8.3f}' for v in row)}"
-          f"  {np.nanmedian(E_sim_n[i]):8.3f}  {np.nanmedian(nu_sim[i]):8.3f}")
+          f"  {np.nanmedian(E_df_n[i]):8.3f}  {np.nanmedian(nu_df[i]):8.3f}"
+          f"  {np.nanmedian(E_tf_n[i]):8.3f}  {np.nanmedian(nu_tf[i]):8.3f}")
 
 # ── Plot ─────────────────────────────────────────────────────────────────────
 MF_CASES = [
@@ -206,9 +234,9 @@ jitter = np.linspace(-0.009, 0.009, 4)
 
 fig, (ax_E, ax_nu) = plt.subplots(1, 2, figsize=(14, 5))
 
-for ax, mf_arr, sim_arr, ylabel, ylim in [
-    (ax_E,  E_mf_n,  E_sim_n,  r'$E / E_0$',            (0.0, 1.15)),
-    (ax_nu, nu_mf,   nu_sim,   r"Poisson's ratio $\nu$", (-0.5, 0.45)),
+for ax, mf_arr, df_arr, tf_arr, ylabel, ylim in [
+    (ax_E,  E_mf_n, E_df_n, E_tf_n, r'$E / E_0$',            (0.0, 1.15)),
+    (ax_nu, nu_mf,  nu_df,  nu_tf,  r"Poisson's ratio $\nu$", (-0.5, 0.45)),
 ]:
     for c, (label, color, marker, ls) in enumerate(MF_CASES):
         data = mf_arr[c]
@@ -221,15 +249,25 @@ for ax, mf_arr, sim_arr, ylabel, ylim in [
                     markersize=5, label=label, alpha=0.85, lw=1.6)
         ax.fill_between(etas, q1, q3, alpha=0.08, color=color)
 
-    # Ribbon simulation
-    med_s = np.nanmedian(sim_arr, axis=1)
-    q1_s  = np.nanpercentile(sim_arr, 25, axis=1)
-    q3_s  = np.nanpercentile(sim_arr, 75, axis=1)
-    ax.errorbar(etas, med_s,
-                yerr=[np.clip(med_s-q1_s,0,None), np.clip(q3_s-med_s,0,None)],
+    # Distort-first simulation
+    med_df = np.nanmedian(df_arr, axis=1)
+    q1_df  = np.nanpercentile(df_arr, 25, axis=1)
+    q3_df  = np.nanpercentile(df_arr, 75, axis=1)
+    ax.errorbar(etas, med_df,
+                yerr=[np.clip(med_df-q1_df,0,None), np.clip(q3_df-med_df,0,None)],
                 fmt='kP-', capsize=4, markersize=7, lw=2.2, zorder=5,
-                label=f'Ribbon sim ({N_TRIALS} trials, {SIZE[0]}×{SIZE[1]})')
-    ax.fill_between(etas, q1_s, q3_s, alpha=0.15, color='k')
+                label=f'Sim: distort-first ({SIZE[0]}×{SIZE[1]})')
+    ax.fill_between(etas, q1_df, q3_df, alpha=0.12, color='k')
+
+    # Triangulate-first simulation
+    med_tf = np.nanmedian(tf_arr, axis=1)
+    q1_tf  = np.nanpercentile(tf_arr, 25, axis=1)
+    q3_tf  = np.nanpercentile(tf_arr, 75, axis=1)
+    ax.errorbar(etas, med_tf,
+                yerr=[np.clip(med_tf-q1_tf,0,None), np.clip(q3_tf-med_tf,0,None)],
+                fmt='mX--', capsize=4, markersize=7, lw=2.2, zorder=5,
+                label=f'Sim: tri-first ({SIZE[0]}×{SIZE[1]})')
+    ax.fill_between(etas, q1_tf, q3_tf, alpha=0.12, color='m')
 
     ref = 1.0 if ax is ax_E else 0.0
     ax.axhline(ref, color='gray', lw=0.8, ls=':')
