@@ -29,7 +29,7 @@ N_TRIALS   = 20
 SIZE       = (20, 20)
 TRIM_FRAC  = 0.85
 CACHE      = os.path.join(os.path.dirname(__file__), 'mf_4panel_data.npz')
-OUT        = os.path.join(os.path.dirname(__file__), 'new', 'mf_4panel.png')
+OUT        = os.path.join(os.path.dirname(__file__), 'new', 'mf_4panel_4cases_20trials.png')
 
 # 4 solver variants per mesh
 CASES = [
