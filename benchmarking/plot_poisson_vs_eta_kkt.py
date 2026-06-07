@@ -1,9 +1,13 @@
 """
 Poisson ratio ν vs geometric disorder η — mean-field vs KKT-corrected.
 
-10 large runs (size=10×10) per eta value.
+10 runs (size=20×20, ~2270 vertices) per eta value, η ∈ [0, 0.5] (11 points).
 Compares the pre-KKT Woodbury mean-field solver (Disc_2_Cont_optimized)
 against the KKT edge-compatibility-corrected solver (Phase 2/forward_solver_torch).
+
+Results cached in poisson_vs_eta_kkt_data.npz. Delete the cache file to recompute.
+Output plot: poisson_vs_eta_kkt.png (left: raw scatter clipped to [-1,0.45],
+right: median ± IQR with Δν bar overlay).
 """
 import sys, os, copy
 import numpy as np

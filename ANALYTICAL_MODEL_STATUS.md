@@ -41,7 +41,23 @@ Full numerical comparison in `Phase 3/results_summary.txt` and `Phase 3/SESSION_
 
 Note: the simulation (KUBC) also has known biases (38% boundary-constrained nodes). A periodic boundary condition (PBC) simulation is the next step for a fairer comparison (see `Phase 4 - PBC simulation/`).
 
-### Possible fixes (to be explored)
+### KKT edge-compatibility correction (implemented — June 2026)
+
+The mean-field limitation was partially addressed by adding a KKT projection step after the Woodbury solve. For every interior edge $e$ shared by triangles $s_1$ and $s_2$ with edge vector $\Delta x$, the corrected $W$ satisfies:
+
+$$\bigl[W(s_1) - W(s_2)\bigr]^{\alpha\beta}_{\mu\nu}\, \Delta x^\mu \Delta x^\nu = 0$$
+
+The correction is geometrically equivalent to projecting $W_0$ (the unconstrained mean-field solution) onto the subspace of compatible metric fields, using the KKT system:
+
+$$\begin{pmatrix} P & J^\top \\ J & 0 \end{pmatrix} \begin{pmatrix} W \\ \Lambda \end{pmatrix} = \begin{pmatrix} -\delta A \\ 0 \end{pmatrix}$$
+
+**Effect on geometric disorder (uniform k):** For networks with $\eta \leq 0.30$, the correction consistently shifts $\nu$ more negative by $0.001$–$0.028$. At $\eta \geq 0.35$, both solvers become unstable (near-degenerate triangles), but the KKT correction partially stabilizes the median.
+
+**Effect on rigidity heterogeneity (the known failure mode):** The KKT correction enforces *edge-length* compatibility between neighbouring triangles, not full strain-field compatibility. It does not capture the long-range cooperative effects (percolation-like soft channels, stiff backbones) responsible for the 70% error on VD rigidity patterns. The correction reduces the error but does not eliminate it.
+
+**Implementation:** See `Phase 2/forward_solver_torch.py` — `_woodbury_kkt_sparse()` for networks with $N > 500$ triangles; `_woodbury_solve(J=...)` for smaller differentiable networks. Full algorithm documented in `Phase 2/README.md`.
+
+### Remaining fixes (to be explored)
 
 1. **Periodic boundary condition simulation** — better ground truth, matches the analytical infinite-medium assumption.
 2. **Cluster self-consistent method** — embed clusters of neighbouring triangles rather than single ones.
