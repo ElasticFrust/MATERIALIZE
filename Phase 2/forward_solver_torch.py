@@ -88,10 +88,9 @@ class ElasticSolver(nn.Module):
         self._build_edge_compatibility(pos_np, sim_np)
 
     def _build_edge_compatibility(self, positions, simplices):
-        """Find interior edges; build J (3*E_int × 9*N) for KKT correction."""
+        """Find interior edges; store (s1, s2, q) for sparse KKT correction."""
         N = len(simplices)
 
-        # Map sorted edge key → list of (tri_idx, node_a, node_b)
         edge_map = {}
         for s, tri in enumerate(simplices):
             for i in range(3):
@@ -108,7 +107,6 @@ class ElasticSolver(nn.Module):
                 s2 = entries[1][0]
                 dx = positions[na, 0] - positions[nb, 0]
                 dy = positions[na, 1] - positions[nb, 1]
-                # q_e is invariant to edge direction (dx→-dx leaves q unchanged)
                 s1_list.append(s1)
                 s2_list.append(s2)
                 q_list.append([dx * dx, 2.0 * dx * dy, dy * dy])
@@ -116,26 +114,30 @@ class ElasticSolver(nn.Module):
         E_int = len(s1_list)
         if E_int == 0:
             self.J = None
+            self.kkt_arrays = None
             return
 
         s1 = np.array(s1_list, dtype=np.int64)
         s2 = np.array(s2_list, dtype=np.int64)
         q  = np.array(q_list,  dtype=np.float64)  # (E_int, 3)
 
-        # J: (3*E_int, 9*N)
-        # Loading group k ∈ {0,1,2} → W components at positions {k, 3+k, 6+k}
-        # Row k*E_int + e: +q[e] at s1[e]*9 + {k, 3+k, 6+k}
-        #                  -q[e] at s2[e]*9 + {k, 3+k, 6+k}
-        J = np.zeros((3 * E_int, 9 * N), dtype=np.float64)
-        for k in range(3):
-            rows = np.arange(E_int) + k * E_int
-            for loc, blk in enumerate([0, 3, 6]):
-                cols_s1 = s1 * 9 + blk + k
-                cols_s2 = s2 * 9 + blk + k
-                J[rows, cols_s1] =  q[:, loc]
-                J[rows, cols_s2] = -q[:, loc]
+        # Always keep the sparse representation (used by the efficient KKT path)
+        self.kkt_arrays = (s1, s2, q)
 
-        self.J = torch.as_tensor(J, dtype=torch.float64)
+        # Build dense J only for small meshes where the O(N²) path is acceptable
+        # (≤ 500 triangles → y_J tensor < ~200 MB; larger meshes use the sparse path)
+        DENSE_THRESHOLD = 500
+        if N <= DENSE_THRESHOLD:
+            M_c = 3 * E_int
+            J = np.zeros((M_c, 9 * N), dtype=np.float64)
+            for k in range(3):
+                rows = np.arange(E_int) + k * E_int
+                for loc, blk in enumerate([0, 3, 6]):
+                    J[rows, s1 * 9 + blk + k] =  q[:, loc]
+                    J[rows, s2 * 9 + blk + k] = -q[:, loc]
+            self.J = torch.as_tensor(J, dtype=torch.float64)
+        else:
+            self.J = None  # sparse path will be used in forward()
 
     def forward(self, rigidities, rest_lengths=None):
         """Run the full forward pipeline with KKT edge-compatibility correction.
@@ -173,12 +175,16 @@ class ElasticSolver(nn.Module):
         B_blocks = _batch_to_9x9(delta)
         dA_vecs  = _batch_to_9vec(delta)
 
-        # Move J to same device/dtype as tensors (geometry buffer)
-        J = self.J
-        if J is not None:
-            J = J.to(dtype=bare.dtype, device=bare.device)
-
-        W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=J)
+        if self.J is not None:
+            # Small mesh: dense differentiable KKT path
+            W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
+                                J=self.J.to(dtype=bare.dtype, device=bare.device))
+        elif self.kkt_arrays is not None:
+            # Large mesh: memory-efficient sparse KKT via scipy (no autograd)
+            W_np = _woodbury_kkt_sparse(A_blocks, B_blocks, dA_vecs, self.kkt_arrays)
+            W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
+        else:
+            W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None)
 
         actual = _compute_actual_elastic_tensor(bare, W)
         C = actual.mean(dim=0)
@@ -285,6 +291,133 @@ def _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None):
 
     W = (W0.reshape(-1) - PinvJt @ Lambda).reshape(N, 9)
     return W
+
+
+def _woodbury_kkt_sparse(A_blocks, B_blocks, dA_vecs, kkt_arrays):
+    """Memory-efficient KKT correction using sparse G_local + rank-9 decomposition.
+
+    G = J P⁻¹ Jᵀ = G_local + (1/N) H IminusS⁻¹ Kᵀ
+
+    where:
+      G_local = J A_diag⁻¹ Jᵀ  (sparse, ~9 nnz/row)
+      H[i,:]  = (J A_diag⁻¹ U)[i,:]  (M_c × 9)
+      K[i,:]  = (V A_diag⁻¹ Jᵀ)[i,:]  (M_c × 9)
+
+    Solves via Woodbury on G_local (sparse LU) + rank-9 correction.
+    Returns W as numpy array (N, 9) — no gradient.
+    """
+    import scipy.sparse as sp
+    import scipy.sparse.linalg as spla
+
+    s1_arr, s2_arr, q_arr = kkt_arrays
+    E_int = len(s1_arr)
+    M_c   = 3 * E_int
+    N     = A_blocks.shape[0]
+
+    A_np = A_blocks.detach().double().numpy()  # (N, 9, 9)
+    B_np = B_blocks.detach().double().numpy()
+    dA_np = dA_vecs.detach().double().numpy()
+
+    eps = 1e-14 * np.abs(A_np).max()
+    I9  = np.eye(9)
+    A_reg = A_np + eps * I9[None]
+    A_inv = np.linalg.inv(A_reg)              # (N, 9, 9)
+
+    # Woodbury base solve → W0
+    y    = np.einsum('nij,nj->ni', A_inv, dA_np)
+    Vy   = np.einsum('nij,nj->i',  B_np, y)
+    S    = np.einsum('nij,njk->ik', B_np, A_inv) / N
+    IminusS = I9 - S
+    z    = np.linalg.solve(IminusS, Vy)
+    W0   = -(y + np.einsum('nij,j->ni', A_inv, z) / N)  # (N, 9)
+
+    # ── H and K  (M_c × 9) ──────────────────────────────────────────────────
+    # H[k*E+e, j] = Σ_loc q[e,loc] * (A_inv[s1, 3*loc+k, j] − A_inv[s2, 3*loc+k, j])
+    # K[k*E+e, j] = Σ_loc q[e,loc] * (BA_inv[s1, j, 3*loc+k] − BA_inv[s2, j, 3*loc+k])
+    BA_inv = np.einsum('nij,njk->nik', B_np, A_inv)  # (N, 9, 9)
+
+    # H[k*E+e, :] and K[k*E+e, :] each have a unique row index, so plain
+    # += is safe (no duplicate row indices within one (k, loc) pass).
+    H = np.zeros((M_c, 9))
+    K = np.zeros((M_c, 9))
+    for k in range(3):
+        rk = np.arange(E_int) + k * E_int
+        for loc in range(3):
+            col = 3 * loc + k
+            H[rk] += q_arr[:, loc:loc+1] * (A_inv[s1_arr, col, :] - A_inv[s2_arr, col, :])
+            K[rk] += q_arr[:, loc:loc+1] * (BA_inv[s1_arr, :, col] - BA_inv[s2_arr, :, col])
+
+    # ── Sparse G_local = J A_diag⁻¹ Jᵀ ────────────────────────────────────
+    # G_local[k1*E+e1, k2*E+e2] = Σ_{n shared} sg1*sg2 * q[e1] @ A_sub(n,k1,k2) @ q[e2]
+    # A_sub(n,k1,k2)[loc1,loc2] = A_inv[n, 3*loc1+k1, 3*loc2+k2]  (3×3 sub-block)
+    from collections import defaultdict
+    tri_edges = defaultdict(list)
+    for e in range(E_int):
+        tri_edges[s1_arr[e]].append((e, +1))
+        tri_edges[s2_arr[e]].append((e, -1))
+
+    rows_g, cols_g, data_g = [], [], []
+    LOC_ROWS = [np.array([k, 3+k, 6+k]) for k in range(3)]  # row idx sets per loading group
+
+    for n, elist in tri_edges.items():
+        An = A_inv[n]  # (9, 9)
+        for e1, sg1 in elist:
+            for e2, sg2 in elist:
+                val_sg = sg1 * sg2
+                for k1 in range(3):
+                    row = k1 * E_int + e1
+                    for k2 in range(3):
+                        col = k2 * E_int + e2
+                        A_sub = An[np.ix_(LOC_ROWS[k1], LOC_ROWS[k2])]  # 3×3
+                        val = val_sg * q_arr[e1] @ A_sub @ q_arr[e2]
+                        rows_g.append(row)
+                        cols_g.append(col)
+                        data_g.append(val)
+
+    G_local = sp.coo_matrix((data_g, (rows_g, cols_g)), shape=(M_c, M_c)).tocsc()
+    reg_gl  = 1e-12 * abs(max(data_g, default=1.0))
+    G_local = G_local + reg_gl * sp.eye(M_c, format='csc')
+
+    # ── r = J W₀ ────────────────────────────────────────────────────────────
+    # r[k*E+e] = Σ_{loc} q[e,loc] * (W0[s1*9+3*loc+k] - W0[s2*9+3*loc+k])
+    # Each row of J has a unique index (k*E+e), so plain += is safe here.
+    W0_flat = W0.reshape(-1)
+    r = np.zeros(M_c)
+    for k in range(3):
+        rk = np.arange(E_int) + k * E_int
+        for loc in range(3):
+            col = 3 * loc + k
+            r[rk] += q_arr[:, loc] * (W0_flat[s1_arr * 9 + col] - W0_flat[s2_arr * 9 + col])
+
+    # ── Woodbury solve on (G_local + (1/N) H IminusS⁻¹ Kᵀ) Λ = r ──────────
+    # Woodbury: (A + (1/N) H T Kᵀ)⁻¹ r  with T = IminusS⁻¹
+    # C = (1/N) T  →  C⁻¹ = N IminusS  →  M_mat = N*IminusS + Kᵀ G_local⁻¹ H
+    G_lu  = spla.factorized(G_local)
+    Lam0  = G_lu(r)                                   # G_local⁻¹ r
+    Y     = np.column_stack([G_lu(H[:, j]) for j in range(9)])  # G_local⁻¹ H (M_c,9)
+    M_mat = N * IminusS + K.T @ Y                     # 9×9  (C⁻¹ + V A⁻¹ U)
+    c     = np.linalg.solve(M_mat, K.T @ Lam0)        # 9-vec
+    Lambda = Lam0 - Y @ c                             # M_c-vec
+
+    # ── W = W₀ − P⁻¹ (Jᵀ Λ) ────────────────────────────────────────────────
+    # Jᵀ Λ — multiple edges can map to the same (triangle, col) index,
+    # so np.add.at is required to correctly accumulate duplicates.
+    JtLam = np.zeros(9 * N)
+    for k in range(3):
+        rk = np.arange(E_int) + k * E_int
+        Lk  = Lambda[rk]
+        for loc in range(3):
+            col = 3 * loc + k
+            np.add.at(JtLam, s1_arr * 9 + col, q_arr[:, loc] * Lk)
+            np.add.at(JtLam, s2_arr * 9 + col, -q_arr[:, loc] * Lk)
+
+    JtLam_b  = JtLam.reshape(N, 9)
+    AinvJtLam = np.einsum('nij,nj->ni', A_inv, JtLam_b)
+    gs        = np.einsum('nij,nj->i', B_np, AinvJtLam)
+    z_c       = np.linalg.solve(IminusS, gs)
+    PinvJtLam = AinvJtLam + np.einsum('nij,j->ni', A_inv, z_c) / N
+
+    return W0 - PinvJtLam
 
 
 def _compute_actual_elastic_tensor(bare_tensors, Ws):

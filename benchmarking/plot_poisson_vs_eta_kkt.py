@@ -22,7 +22,7 @@ import forward_solver_torch as fst
 # ── Parameters ────────────────────────────────────────────────────────────────
 ETA_VALUES = np.linspace(0.0, 0.5, 11)
 N_TRIALS   = 10
-SIZE       = (10, 10)
+SIZE       = (20, 20)   # ~2269 vertices, ~3726 triangles
 
 CACHE = os.path.join(os.path.dirname(__file__), 'poisson_vs_eta_kkt_data.npz')
 print(f"size={SIZE}  n_trials={N_TRIALS}  n_eta={len(ETA_VALUES)}")
@@ -143,7 +143,7 @@ ax.grid(alpha=0.3)
 
 fig.suptitle(
     rf"$\nu(\eta)$: mean-field vs KKT correction — "
-    rf"{SIZE[0]}$\times${SIZE[1]} network, {N_TRIALS} trials",
+    rf"{SIZE[0]}$\times${SIZE[1]} network (~2270 vertices), {N_TRIALS} trials",
     fontsize=13, y=1.02,
 )
 fig.tight_layout()
