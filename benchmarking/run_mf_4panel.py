@@ -25,11 +25,11 @@ import forward_solver_torch as fst
 from forward_solver_torch import _compute_actual_elastic_tensor
 
 ETA_VALUES = np.linspace(0.0, 0.5, 11)
-N_TRIALS   = 50
+N_TRIALS   = 20
 SIZE       = (50, 50)
 TRIM_FRAC  = 0.85
-CACHE      = os.path.join(os.path.dirname(__file__), 'mf_4panel_50x50_data.npz')
-OUT        = os.path.join(os.path.dirname(__file__), 'new', 'mf_4panel_50x50_50trials.png')
+CACHE      = os.path.join(os.path.dirname(__file__), 'mf_50x50_distortfirst_data.npz')
+OUT        = os.path.join(os.path.dirname(__file__), 'new', 'mf_50x50_distortfirst_20trials.png')
 
 # 4 solver variants per mesh
 CASES = [
@@ -62,8 +62,8 @@ def make_tri_first_trimmed(size, eta, trim_frac=TRIM_FRAC):
     DM.simplices = DM.simplices[mask]
     return DM
 
-MESH_BUILDERS = [make_distort_first, make_tri_first_trimmed]
-MESH_LABELS   = ['Distort → triangulate → trim', 'Triangulate → distort → trim']
+MESH_BUILDERS = [make_distort_first]
+MESH_LABELS   = ['Distort → triangulate → trim']
 
 # ── Voigt compliance → directional constants ──────────────────────────────────
 
@@ -170,44 +170,39 @@ for m in range(n_mesh):
 # ── Plot ──────────────────────────────────────────────────────────────────────
 jitter = np.linspace(-0.008, 0.008, n_cases)
 
-fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 PANEL_DATA = [
-    (E_n,   r'$E / E_0$',          True,  (0.0, 1.15)),
-    (nu_all, r"Poisson's ratio $\nu$", False, (-0.8, 0.45)),
+    (E_n,    r'$E / E_0$',              True,  (0.0, 1.15)),
+    (nu_all, r"Poisson's ratio $\nu$",  False, (-0.8, 0.45)),
 ]
 
-for col, (m, mesh_label) in enumerate(zip(range(n_mesh), MESH_LABELS)):
-    for row, (arr, ylabel, normalised, ylim) in enumerate(PANEL_DATA):
-        ax = axes[row, col]
-        for c, (aw, kkt, label, color, marker, ls) in enumerate(CASES):
-            data = arr[m, c]          # (n_eta, N_TRIALS)
-            med  = np.nanmedian(data, axis=1)
-            q1   = np.nanpercentile(data, 25, axis=1)
-            q3   = np.nanpercentile(data, 75, axis=1)
-            ax.errorbar(
-                etas + jitter[c], med,
-                yerr=[np.clip(med - q1, 0, None), np.clip(q3 - med, 0, None)],
-                fmt=f'{marker}{ls}', color=color, capsize=3,
-                markersize=5, label=label, alpha=0.9, lw=1.8,
-            )
-            ax.fill_between(etas, q1, q3, alpha=0.10, color=color)
+m = 0   # distort-first only
+for ax, (arr, ylabel, normalised, ylim) in zip(axes, PANEL_DATA):
+    for c, (aw, kkt, label, color, marker, ls) in enumerate(CASES):
+        data = arr[m, c]
+        med  = np.nanmedian(data, axis=1)
+        q1   = np.nanpercentile(data, 25, axis=1)
+        q3   = np.nanpercentile(data, 75, axis=1)
+        ax.errorbar(
+            etas + jitter[c], med,
+            yerr=[np.clip(med - q1, 0, None), np.clip(q3 - med, 0, None)],
+            fmt=f'{marker}{ls}', color=color, capsize=3,
+            markersize=5, label=label, alpha=0.9, lw=1.8,
+        )
+        ax.fill_between(etas, q1, q3, alpha=0.10, color=color)
 
-        if normalised:
-            ax.axhline(1.0, color='gray', lw=0.8, ls=':')
-        else:
-            ax.axhline(0.0, color='gray', lw=0.8, ls=':')
-        ax.set_xlabel(r'Disorder $\eta$', fontsize=12)
-        ax.set_ylabel(ylabel, fontsize=12)
-        ax.set_ylim(*ylim)
-        ax.set_xlim(-0.02, 0.52)
-        ax.legend(fontsize=9, loc='best')
-        ax.grid(alpha=0.3)
-        ax.set_title(mesh_label, fontsize=11)
+    ax.axhline(1.0 if normalised else 0.0, color='gray', lw=0.8, ls=':')
+    ax.set_xlabel(r'Disorder $\eta$', fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_ylim(*ylim)
+    ax.set_xlim(-0.02, 0.52)
+    ax.legend(fontsize=9, loc='best')
+    ax.grid(alpha=0.3)
 
 fig.suptitle(
-    rf"Elastic constants vs $\eta$ — pure MF vs AW MF vs AW+KKT  "
+    rf"Elastic constants vs $\eta$ — 4 solver variants, distort-first mesh  "
     rf"({SIZE[0]}×{SIZE[1]} network, {N_TRIALS} trials, trim={TRIM_FRAC})",
-    fontsize=13, y=1.01,
+    fontsize=13, y=1.02,
 )
 fig.tight_layout()
 fig.savefig(OUT, dpi=150, bbox_inches='tight')
