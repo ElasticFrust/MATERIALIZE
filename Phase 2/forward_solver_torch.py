@@ -148,15 +148,16 @@ class ElasticSolver(nn.Module):
         else:
             self.J = None  # sparse path will be used in forward()
 
-    def forward(self, rigidities, rest_lengths=None, area_weighted=False):
-        """Run the full forward pipeline with KKT edge-compatibility correction.
+    def forward(self, rigidities, rest_lengths=None, area_weighted=False, use_kkt=True):
+        """Run the forward pipeline.
 
         Args:
             rigidities:    (N, 3) tensor
             rest_lengths:  (N, 3) tensor or None
-            area_weighted: if True, use volume-weighted constraint Σ w_n δg(n)=0
-                           (paper appendix, optimal for Young's modulus); if False
-                           (default) use arithmetic constraint Σ δg(n)=0.
+            area_weighted: if True, use volume-weighted constraint Σ w_n δg(n)=0;
+                           if False use arithmetic constraint Σ δg(n)=0.
+            use_kkt:       if True, apply edge-compatibility (KKT) correction;
+                           if False, pure mean-field Woodbury only (no KKT).
 
         Returns:
             dict: elastic_tensor (6,), poisson, young, per_triangle (N,6),
@@ -193,11 +194,11 @@ class ElasticSolver(nn.Module):
         dA_vecs  = _batch_to_9vec(delta)
 
         if area_weighted:
-            if self.J is not None:
+            if use_kkt and self.J is not None:
                 W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
                                     J=self.J.to(dtype=bare.dtype, device=bare.device),
                                     weights=w)
-            elif self.kkt_arrays is not None:
+            elif use_kkt and self.kkt_arrays is not None:
                 W_np = _woodbury_kkt_sparse_aw(
                     A_blocks, B_blocks, dA_vecs, self.kkt_arrays,
                     self.area_weights.numpy())
@@ -205,10 +206,10 @@ class ElasticSolver(nn.Module):
             else:
                 W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=w)
         else:
-            if self.J is not None:
+            if use_kkt and self.J is not None:
                 W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
                                     J=self.J.to(dtype=bare.dtype, device=bare.device))
-            elif self.kkt_arrays is not None:
+            elif use_kkt and self.kkt_arrays is not None:
                 W_np = _woodbury_kkt_sparse(A_blocks, B_blocks, dA_vecs, self.kkt_arrays)
                 W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
             else:
