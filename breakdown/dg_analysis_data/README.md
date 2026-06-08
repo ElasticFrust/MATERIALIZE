@@ -31,7 +31,7 @@ Methods (no angle methods): ['Std', 'AW', 'Std+edge', 'AW+edge'].
 
 ## Key finding (corrected)
 With the metric-change δg, the MF is genuinely predictive at low/moderate disorder
-(Std vs sim corr at η=0.1,0.2 ≈ +0.862) and degrades with η; the MF tends to OVER-shoot
+(Std vs sim corr at η=0.1,0.2 ≈ +0.880) and degrades with η; the MF tends to OVER-shoot
 the magnitude (‖λ_MF‖/‖λ_sim‖ > 1, growing with η). At η=0 there is no non-affine metric
 change at all (perfect crystal deforms affinely). See `dg_corr_ratio_vs_eta.png`.
 

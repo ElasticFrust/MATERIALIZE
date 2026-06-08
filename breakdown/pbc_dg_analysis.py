@@ -18,9 +18,10 @@ and produced a spurious 'spread' even for a perfect, affinely-deforming crystal.
       is its metric (constant-strain element).
   - NON-AFFINE metric change (this is "delta_g"):
         sim :  delta_g(s) = g_tri - Delta_g           (= F_s^T F_s - F^T F)
-        MF  :  delta_g(s) = W_s : Delta_g   (the solver's 4-index strain concentration,
-               delta_g4 = W_mat @ Delta_g4, W_mat exactly as in
-               forward_solver_torch._compute_actual_elastic_tensor / Disc_2_Cont.Wmat)
+        MF  :  delta_g(s) = W_s : Delta_g   (strain concentration in the W3 layout,
+               delta_g[loc] = sum_k W3[loc,k] Delta_g[k], W3 = W.reshape(3,3) [loc,k];
+               this is the representation the edge-KKT constraint is written in -- with it
+               the edge-KKT solution is edge-compatible, matching the simulation)
   Both are symmetric 2x2; both vanish for an affine deformation; <delta_g_MF> = 0.
 
 ANALYSIS
@@ -245,27 +246,24 @@ def triangle_metric_change(edge_vecs, simplices, F, u):
     return np.einsum('nki,nkj->nij', Fs, Fs) - np.eye(2)     # F_s^T F_s - I  (n,2,2)
 
 
-# W_mat layout exactly as forward_solver_torch._compute_actual_elastic_tensor / Disc_2_Cont
-_WIDX = [(0, 0, 0), (0, 1, 1), (0, 2, 3), (0, 3, 4), (1, 0, 1), (1, 1, 2), (1, 2, 4),
-         (1, 3, 5), (2, 0, 3), (2, 1, 4), (2, 2, 6), (2, 3, 7), (3, 0, 4), (3, 1, 5),
-         (3, 2, 7), (3, 3, 8)]
-
-
 def mf_strain(W9, Delta_g):
-    """MF non-affine metric change per triangle: delta_g = W : Delta_g  (n_tri,2,2).
+    """MF non-affine metric change per triangle: delta_g[loc] = sum_k W3[loc,k] Delta_g[k].
 
-    Uses the solver's 4-vector contraction delta_g4 = W_mat @ Delta_g4, with
-    Delta_g4 = [Delta_g11, Delta_g12, Delta_g21, Delta_g22] the macroscopic METRIC change
-    (F^T F - I); the result is symmetrized (the metric change is symmetric).
-    <delta_g_MF> over triangles is ~0 (verified), confirming the convention.
+    W3 = W9.reshape(3,3) is the strain-concentration in [metric-component loc, loading-mode
+    k] layout (flat index 3*loc+k) -- the SAME representation the edge-KKT constraint is
+    written in (verified: with this representation the edge-KKT solution is edge-compatible,
+    matching the simulation, whereas the 4x4 W_mat used to assemble the elastic TENSOR is
+    NOT). loc/k index the metric components [g11, g12, g22].
+    (For uniaxial loading only the g11 column of W3 is exercised, so any shear-input factor
+    convention is irrelevant here; revisit for shear/biaxial loading.)
     """
     n = len(W9)
-    M = np.zeros((n, 4, 4))
-    for r, c, k in _WIDX:
-        M[:, r, c] = W9[:, k]
-    e4 = np.array([Delta_g[0, 0], Delta_g[0, 1], Delta_g[1, 0], Delta_g[1, 1]])
-    de = (M @ e4).reshape(n, 2, 2)
-    return 0.5 * (de + de.transpose(0, 2, 1))
+    W3 = W9.reshape(n, 3, 3)
+    dgv = W3 @ np.array([Delta_g[0, 0], Delta_g[0, 1], Delta_g[1, 1]])   # (n,3) [dg11,dg12,dg22]
+    g = np.empty((n, 2, 2))
+    g[:, 0, 0] = dgv[:, 0]; g[:, 1, 1] = dgv[:, 2]
+    g[:, 0, 1] = g[:, 1, 0] = dgv[:, 1]
+    return g
 
 
 def woodbury_W(mesh, area_weighted, use_kkt):
