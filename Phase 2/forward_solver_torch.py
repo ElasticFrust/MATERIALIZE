@@ -276,35 +276,22 @@ class ElasticSolver(nn.Module):
         B_blocks = _batch_to_9x9(delta)
         dA_vecs  = _batch_to_9vec(delta)
 
-        if use_angle_kkt and self.kkt_arrays is not None:
-            # Combined edge + vertex-angle constraints
+        if use_kkt and self.kkt_arrays is not None:
+            # All KKT paths (edge-only or edge+angle) use the combined solver.
+            # angle_arrays=None → edge-only; the per-loading-mode decoupling
+            # reduces the sparse solve from 3*E_int to E_int per loading mode.
+            _angle = self.angle_arrays if use_angle_kkt else None
             _weights = self.area_weights.numpy() if area_weighted else None
             W_np = _woodbury_kkt_sparse_combined(
                 A_blocks, B_blocks, dA_vecs,
-                self.kkt_arrays, self.angle_arrays,
-                weights=_weights)
+                self.kkt_arrays, _angle, weights=_weights)
             W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
-        elif area_weighted:
-            if use_kkt and self.J is not None:
-                W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
-                                    J=self.J.to(dtype=bare.dtype, device=bare.device),
-                                    weights=w)
-            elif use_kkt and self.kkt_arrays is not None:
-                W_np = _woodbury_kkt_sparse_aw(
-                    A_blocks, B_blocks, dA_vecs, self.kkt_arrays,
-                    self.area_weights.numpy())
-                W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
-            else:
-                W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=w)
+        elif use_kkt and self.J is not None:
+            W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
+                                J=self.J.to(dtype=bare.dtype, device=bare.device),
+                                weights=w)
         else:
-            if use_kkt and self.J is not None:
-                W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
-                                    J=self.J.to(dtype=bare.dtype, device=bare.device))
-            elif use_kkt and self.kkt_arrays is not None:
-                W_np = _woodbury_kkt_sparse(A_blocks, B_blocks, dA_vecs, self.kkt_arrays)
-                W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
-            else:
-                W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None)
+            W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=w)
 
         actual = _compute_actual_elastic_tensor(bare, W)
         if area_weighted:
@@ -715,7 +702,7 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
         Vy3 = np.einsum('n,nij,njk->ik', w, dM_np, y3)    # (3, 3)
         S3  = np.einsum('n,nij,njk->ik', w, dM_np, M_inv) # (3, 3)
     else:
-        Vy3 = np.einsum('nij,njk->ik', dM_np, y3) / N     # (3, 3)
+        Vy3 = np.einsum('nij,njk->ik', dM_np, y3)          # (3, 3)
         S3  = np.einsum('nij,njk->ik', dM_np, M_inv) / N  # (3, 3)
 
     IminusS3 = I3 - S3                                     # (3, 3)
@@ -846,7 +833,7 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
         PinvCt = AinvCt + np.einsum('nij,jk->nik', M_inv,
                                      np.linalg.solve(IminusS3, gs3))
     else:
-        gs3 = np.einsum('nij,njk->ik', dM_np, AinvCt) / N      # (3, 3)
+        gs3 = np.einsum('nij,njk->ik', dM_np, AinvCt)          # (3, 3)
         PinvCt = AinvCt + np.einsum('nij,jk->nik', M_inv,
                                      np.linalg.solve(IminusS3, gs3)) / N
 
