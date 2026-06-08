@@ -790,8 +790,8 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
     # edge part: Σ_l q[e,l] * M_inv[s1[e],l,m] → (E_int, 3)
     qM1  = np.einsum('el,elm->em', q_arr, M_inv[s1_arr])    # (E_int, 3)
     qM2  = np.einsum('el,elm->em', q_arr, M_inv[s2_arr])    # (E_int, 3)
-    qBM1 = np.einsum('el,elm->em', q_arr, BMA_inv[s1_arr])  # (E_int, 3)
-    qBM2 = np.einsum('el,elm->em', q_arr, BMA_inv[s2_arr])  # (E_int, 3)
+    qBM1 = np.einsum('el,eml->em', q_arr, BMA_inv[s1_arr])  # (E_int, 3)
+    qBM2 = np.einsum('el,eml->em', q_arr, BMA_inv[s2_arr])  # (E_int, 3)
     H0[:E_int] = qM1 - qM2
     K0[:E_int] = qBM1 - qBM2
     # angle part: scatter-add over pairs
