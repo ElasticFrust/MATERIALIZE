@@ -364,8 +364,10 @@ def _empty_summary(n_eta):
         summ[f'lam2_{name}'] = zeros()
         summ[f'theta_{name}'] = zeros()
     for name in METHOD_LABELS:
-        summ[f'dlam1_{name}'] = zeros()     # method - sim
+        summ[f'dlam1_{name}'] = zeros()     # method - sim (raw)
         summ[f'dlam2_{name}'] = zeros()
+        summ[f'dlam1n_{name}'] = zeros()    # (method - sim) / ||Delta_g||
+        summ[f'dlam2n_{name}'] = zeros()
         summ[f'dtheta_{name}'] = zeros()    # wrapped
     summ['min_angle'] = zeros()
     summ['area'] = zeros()
@@ -373,8 +375,13 @@ def _empty_summary(n_eta):
     return summ
 
 
-def _fill_summary_entry(summ, ie, it, method_dg, min_angle, area):
-    """Decompose each method's delta_g and store principal values / diffs vs sim."""
+def _fill_summary_entry(summ, ie, it, method_dg, min_angle, area, delta_g_norm):
+    """Decompose each method's delta_g and store principal values / diffs vs sim.
+
+    Principal-value differences are also stored normalized by ||Delta_g|| (Frobenius
+    norm of the global strain), making them dimensionless and independent of the strain
+    amplitude.
+    """
     prin = {name: principal(dg) for name, dg in method_dg.items()}
     l1s, l2s, ths = prin['sim']
     summ['lam1_sim'][ie, it] = l1s
@@ -390,6 +397,8 @@ def _fill_summary_entry(summ, ie, it, method_dg, min_angle, area):
         summ[f'theta_{label}'][ie, it] = th
         summ[f'dlam1_{label}'][ie, it] = l1 - l1s
         summ[f'dlam2_{label}'][ie, it] = l2 - l2s
+        summ[f'dlam1n_{label}'][ie, it] = (l1 - l1s) / delta_g_norm
+        summ[f'dlam2n_{label}'][ie, it] = (l2 - l2s) / delta_g_norm
         summ[f'dtheta_{label}'][ie, it] = wrap_angle(th - ths)
 
 
@@ -425,9 +434,10 @@ def main():
                 method_dg[label] = dg_m
                 method_W[label] = W
 
+            dgn = float(np.linalg.norm(_from_eng(Delta_g[None, :])[0]))
             _fill_summary_entry(summ, ie, it, method_dg,
                                 min_triangle_angles_from_edges(mesh['edge_vecs']),
-                                mesh['areas'])
+                                mesh['areas'], dgn)
 
             if eta == 0.0:
                 checks['eta0_ufluct_max'] = max(
@@ -511,9 +521,10 @@ def regenerate_from_stored():
                 Wm = s[f'W_{lab}'].reshape(-1, 3, 3)
                 method_dg[lab] = _from_eng(np.einsum('sik,k->si', Wm, Delta_g))
 
+            dgn = float(np.linalg.norm(_from_eng(Delta_g[None, :])[0]))
             _fill_summary_entry(summ, ie, it, method_dg,
                                 min_triangle_angles_from_edges(s['edge_vecs']),
-                                s['areas'])
+                                s['areas'], dgn)
             if 'resid' in s.files:
                 resid_max[ie, it] = float(s['resid'])
             if eta in (0.1, 0.2):
@@ -572,8 +583,8 @@ def make_plots():
 
     # 1) principal-value differences vs eta
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    for ax, key, ttl in [(axes[0], 'dlam1', r'$\Delta\lambda_1$ (method $-$ sim)'),
-                         (axes[1], 'dlam2', r'$\Delta\lambda_2$ (method $-$ sim)')]:
+    for ax, key, ttl in [(axes[0], 'dlam1n', r'$\Delta\lambda_1/\|\Delta g\|$ (method $-$ sim)'),
+                         (axes[1], 'dlam2n', r'$\Delta\lambda_2/\|\Delta g\|$ (method $-$ sim)')]:
         for lab in labels:
             m, lo, hi = med_iqr(d[f'{key}_{lab}'])
             ax.fill_between(etas, lo, hi, color=COLORS[lab], alpha=0.15)
@@ -582,6 +593,7 @@ def make_plots():
         ax.set_xlabel(r'$\eta$'); ax.set_ylabel(ttl); ax.set_title(ttl)
         ax.legend(fontsize=9); ax.grid(alpha=0.3)
     fig.suptitle(r'Per-triangle principal-value error of non-affine $\delta g=g_s-g$ '
+                 r'(normalized by $\|\Delta g\|$) '
                  f'vs simulation (N={int(d["N"])}, uniaxial)', fontsize=12)
     plt.tight_layout(); plt.savefig(os.path.join(PLOTS_DIR, 'dg_principal_diff_vs_eta.png'),
                                     dpi=150, bbox_inches='tight'); plt.close()
