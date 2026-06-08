@@ -1,4 +1,10 @@
 """
+[DEPRECATED / SUPERSEDED — not used by current work, kept for reference only]
+Legacy, unvalidated. Superseded by the self-contained PBC solve in
+breakdown/pbc_dg_analysis.py. Canonical terminology lives there:
+  ḡ = reference metric;  g = total metric = ḡ + Δg;  Δg = global strain = g − ḡ;
+  g_s = local per-triangle metric;  δg_s = g_s − g = W_s · Δg  (non-affine).
+
 PBC spring-network simulation — direct sparse linear solve.
 
 Since rest lengths = actual lengths, the equilibrium is exactly linear:

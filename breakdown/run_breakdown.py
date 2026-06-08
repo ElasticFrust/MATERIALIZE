@@ -1,4 +1,13 @@
 """
+[DEPRECATED / SUPERSEDED — not used by current work, kept for reference only]
+Replaced by breakdown/pbc_dg_analysis.py (self-contained + validated). This file and its
+imports (periodic_mesh.py, pbc_simulation.py) are the legacy, UNVALIDATED breakdown cluster
+and use a NON-canonical convention: `Gbar`/`gbar`, the `-W` sign, and a per-mode `W_sim`
+comparison that do NOT match the agreed terminology. Canonical terminology
+(see pbc_dg_analysis.py):
+  ḡ = reference metric;  g = total metric = ḡ + Δg;  Δg = global strain = g − ḡ;
+  g_s = local per-triangle metric;  δg_s = g_s − g = W_s · Δg  (non-affine).
+
 PBC simulation vs MF methods — per-triangle W comparison.
 
 W_sim[s, :, α] = actual non-affine metric change of triangle s per unit applied

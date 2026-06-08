@@ -2,13 +2,23 @@
 Per-triangle non-affine metric change (delta-g) under a single macroscopic strain:
 PBC spring-network simulation vs mean-field (Woodbury) and MF + edge-KKT.
 
-CONVENTION
-----------
-`delta_g` is the NON-AFFINE contribution only, matching the solver:
-  - MF / MF+KKT:  delta_g(s) = +W_code(s) @ gbar      (gbar = mean affine metric change)
-  - simulation :  delta_g(s) = g_def(s) - g_aff(s)     (affine part subtracted)
-The +W sign was validated against the simulation (positive correlation, matching
-magnitude at low eta); the -W convention in the legacy breakdown/ code is wrong.
+TERMINOLOGY (agreed)
+--------------------
+  g-bar (gbar) : the REFERENCE metric -- the ideal/rest distances. Per triangle this is
+                 its own rest metric `g_ref(s)` (the identity tensor in normalized units).
+  g            : the actual TOTAL (macroscopic) metric  =  g-bar + Delta_g.
+  Delta_g      : the GLOBAL strain  =  g - g-bar  (up to a factor 2). One tensor for the
+                 whole sample; here the mean affine metric change <g_aff - g_ref>.
+  g_s          : the LOCAL per-triangle metric (not a metric per se).
+  delta_g_s    : the NON-AFFINE local deformation of triangle s
+                 = g_s - g  =  g_s - g-bar - Delta_g.
+  Linear response (small Delta_g):  delta_g_s = W_s . Delta_g.
+
+So, per triangle:
+  - MF / MF+KKT : delta_g(s) = W(s) @ Delta_g          (W from the Phase 2 Woodbury solve)
+  - simulation  : delta_g(s) = (g_def(s) - g_ref(s)) - Delta_g
+Both are referenced to the SAME single global affine field Delta_g (there is no
+per-triangle "local affine").
 
 The metric of a triangle is g = [[a.a, a.b],[a.b, b.b]] for its two basis edge vectors
 a = e01, b = e02. g (and hence delta_g) is invariant to rigid translation/rotation, so it
@@ -23,6 +33,13 @@ method against the simulation via principal-value differences and angle differen
 This script is SELF-CONTAINED: it does NOT import the (unvalidated) breakdown modules
 `periodic_mesh.py` / `pbc_simulation.py`. It reuses only the Phase 2 core Woodbury
 functions, which have existing test coverage. It does not modify the Phase 2 solver.
+
+USAGE
+-----
+  python pbc_dg_analysis.py           # full run (simulate + analyse + plot)
+  python pbc_dg_analysis.py --regen   # rebuild summary + plots from STORED samples only
+                                       # (no re-simulation; applies the current delta_g
+                                       #  definitions to the already-saved raw arrays)
 
 All raw data is saved to breakdown/dg_analysis_data/ for later analysis.
 """
@@ -233,7 +250,7 @@ def _from_eng(v):
 
 
 def affine_dg(mesh, F):
-    """Per-triangle affine metric change delta_g_aff = g_aff - g_ref (n_tri,2,2)."""
+    """Per-triangle affine metric change g_aff - g_ref (n_tri,2,2), and g_ref, g_aff."""
     e01, e02 = mesh['edge_vecs'][:, 0], mesh['edge_vecs'][:, 1]
     g_ref = _gram(e01, e02)
     a_aff, b_aff = e01 @ F.T, e02 @ F.T
@@ -241,23 +258,36 @@ def affine_dg(mesh, F):
     return g_aff - g_ref, g_ref, g_aff
 
 
-def sim_naff_dg(mesh, F, u):
-    """Simulation non-affine metric change delta_g = g_def - g_aff (n_tri,2,2)."""
+def global_strain(dg_aff):
+    """Delta_g (3,) = global strain = mean (over triangles) affine metric change.
+
+    Single tensor for the whole sample (engineering basis). Areas are near-uniform here,
+    so unweighted vs area-weighted is negligible; we use the unweighted mean.
+    """
+    return _to_eng(dg_aff).mean(0)
+
+
+def deformed_metric(mesh, F, u):
+    """Per-triangle deformed local metric g_def (= g_s) from the equilibrium field u."""
     sx = mesh['simplices']
     e01, e02 = mesh['edge_vecs'][:, 0], mesh['edge_vecs'][:, 1]
     a_aff, b_aff = e01 @ F.T, e02 @ F.T
     du01 = u[sx[:, 1]] - u[sx[:, 0]]
     du02 = u[sx[:, 2]] - u[sx[:, 0]]
-    g_aff = _gram(a_aff, b_aff)
-    g_def = _gram(a_aff + du01, b_aff + du02)
-    return g_def - g_aff, g_def
+    return _gram(a_aff + du01, b_aff + du02)
+
+
+def sim_dg(g_def, g_ref, Delta_g):
+    """Simulation non-affine delta_g = g_s - g = (g_def - g_ref) - Delta_g (n_tri,2,2)."""
+    Dg_t = _from_eng(Delta_g[None, :])[0]                    # (2,2)
+    return (g_def - g_ref) - Dg_t[None, :, :]
 
 
 # ── Mean-field non-affine delta-g ─────────────────────────────────────────────
-def mf_dg(mesh, dg_aff, area_weighted, use_kkt):
-    """MF non-affine metric change per triangle (n_tri,2,2); also returns (W, gbar).
+def mf_dg(mesh, Delta_g, area_weighted, use_kkt):
+    """MF non-affine delta_g per triangle (n_tri,2,2) and the response W (n_tri,9).
 
-    delta_g_MF(s) = +W(s) @ gbar, gbar = (weighted) mean of the affine metric change.
+    delta_g_MF(s) = W(s) @ Delta_g, with Delta_g the global strain (engineering 3-vec).
     """
     e = mesh['edge_vecs']
     vx, vy = e[:, :, 0], e[:, :, 1]
@@ -287,15 +317,11 @@ def mf_dg(mesh, dg_aff, area_weighted, use_kkt):
         W = fst._woodbury_solve(A_bl, B_bl, dA, J=None, weights=wt).detach().numpy()
 
     Wm = W.reshape(-1, 3, 3)   # Wm[s, i, k]: metric component i, loading mode k
-    dg_aff_eng = _to_eng(dg_aff)
-    gbar = ((dg_aff_eng * w_np[:, None]).sum(0) if area_weighted
-            else dg_aff_eng.mean(0))                                   # (3,)
-    # Sign validated empirically (see header/README): +W @ gbar correlates POSITIVELY
-    # with the simulation non-affine δg and matches its magnitude at low η. The opposite
-    # (−W @ gbar) convention from the legacy, unvalidated breakdown/run_breakdown.py is
-    # WRONG (anti-correlated with the simulation).
-    dg_naff_eng = np.einsum('sik,k->si', Wm, gbar)                     # (n_tri, 3)
-    return _from_eng(dg_naff_eng), W, gbar
+    # delta_g_MF = W @ Delta_g. (Sign is the Phase 2 solver convention; note that with the
+    # global-affine definition the per-triangle MF delta_g is ~uncorrelated with the
+    # simulation -- see README -- so the sign cannot be fixed from this comparison.)
+    dg_naff_eng = np.einsum('sik,k->si', Wm, Delta_g)                  # (n_tri, 3)
+    return _from_eng(dg_naff_eng), W
 
 
 # ── Principal decomposition & geometry ────────────────────────────────────────
@@ -314,9 +340,8 @@ def wrap_angle(d):
     return (d + 90.0) % 180.0 - 90.0
 
 
-def min_triangle_angles(mesh):
-    e = mesh['edge_vecs']
-    e01, e02, e12 = e[:, 0], e[:, 1], e[:, 2]
+def min_triangle_angles_from_edges(edge_vecs):
+    e01, e02, e12 = edge_vecs[:, 0], edge_vecs[:, 1], edge_vecs[:, 2]
 
     def ang(a, b):
         c = (a * b).sum(1) / np.sqrt(np.maximum((a ** 2).sum(1) * (b ** 2).sum(1), 1e-30))
@@ -327,13 +352,10 @@ def min_triangle_angles(mesh):
     return np.minimum(np.minimum(a0, a1), a2)
 
 
-# ── Main sweep ────────────────────────────────────────────────────────────────
-def main():
-    F = np.eye(2) + DELTA * H_MACRO
-    n_eta = len(ETA_VALUES)
+# ── Summary accumulation (shared by full run and --regen) ─────────────────────
+def _empty_summary(n_eta):
     N_TRI = 2 * N * N
 
-    # summary accumulators, shape (n_eta, n_trials, N_TRI)
     def zeros():
         return np.full((n_eta, N_TRIALS, N_TRI), np.nan)
     summ = {}
@@ -348,10 +370,36 @@ def main():
     summ['min_angle'] = zeros()
     summ['area'] = zeros()
     summ['norm_sim'] = zeros()              # ||delta_g_sim||_F per triangle
-    resid_max = np.zeros((n_eta, N_TRIALS))
+    return summ
 
-    # validation flags
-    checks = {'eta0_sim_naff_max': 0.0, 'eta0_W_max': 0.0, 'eta0_faff_max': 0.0,
+
+def _fill_summary_entry(summ, ie, it, method_dg, min_angle, area):
+    """Decompose each method's delta_g and store principal values / diffs vs sim."""
+    prin = {name: principal(dg) for name, dg in method_dg.items()}
+    l1s, l2s, ths = prin['sim']
+    summ['lam1_sim'][ie, it] = l1s
+    summ['lam2_sim'][ie, it] = l2s
+    summ['theta_sim'][ie, it] = ths
+    summ['min_angle'][ie, it] = min_angle
+    summ['area'][ie, it] = area
+    summ['norm_sim'][ie, it] = np.sqrt((method_dg['sim'] ** 2).sum(axis=(1, 2)))
+    for label in METHOD_LABELS:
+        l1, l2, th = prin[label]
+        summ[f'lam1_{label}'][ie, it] = l1
+        summ[f'lam2_{label}'][ie, it] = l2
+        summ[f'theta_{label}'][ie, it] = th
+        summ[f'dlam1_{label}'][ie, it] = l1 - l1s
+        summ[f'dlam2_{label}'][ie, it] = l2 - l2s
+        summ[f'dtheta_{label}'][ie, it] = wrap_angle(th - ths)
+
+
+# ── Main sweep (simulate + analyse) ───────────────────────────────────────────
+def main():
+    F = np.eye(2) + DELTA * H_MACRO
+    n_eta = len(ETA_VALUES)
+    summ = _empty_summary(n_eta)
+    resid_max = np.zeros((n_eta, N_TRIALS))
+    checks = {'eta0_ufluct_max': 0.0, 'eta0_dgsim_max': 0.0, 'eta0_W_max': 0.0,
               'max_resid': 0.0, 'sign_corr_lowEta': []}
 
     t0 = time.time()
@@ -361,57 +409,39 @@ def main():
             mesh = build_periodic_tf_mesh(N, eta, seed)
 
             dg_aff, g_ref, g_aff = affine_dg(mesh, F)
+            Delta_g = global_strain(dg_aff)                  # (3,) single global strain
 
             u, resid = solve_pbc_fluctuation(mesh, F)
             resid_max[ie, it] = resid
             checks['max_resid'] = max(checks['max_resid'], resid)
 
-            dg_sim, g_def = sim_naff_dg(mesh, F, u)
+            g_def = deformed_metric(mesh, F, u)
+            dg_sim = sim_dg(g_def, g_ref, Delta_g)
 
             method_dg = {'sim': dg_sim}
-            method_W, method_gbar = {}, {}
+            method_W = {}
             for label, aw, kkt in METHODS:
-                dg_m, W, gbar = mf_dg(mesh, dg_aff, aw, kkt)
+                dg_m, W = mf_dg(mesh, Delta_g, aw, kkt)
                 method_dg[label] = dg_m
                 method_W[label] = W
-                method_gbar[label] = gbar
 
-            # principal decomposition
-            prin = {name: principal(dg) for name, dg in method_dg.items()}
-            l1s, l2s, ths = prin['sim']
-            summ['lam1_sim'][ie, it] = l1s
-            summ['lam2_sim'][ie, it] = l2s
-            summ['theta_sim'][ie, it] = ths
-            summ['min_angle'][ie, it] = min_triangle_angles(mesh)
-            summ['area'][ie, it] = mesh['areas']
-            summ['norm_sim'][ie, it] = np.sqrt((dg_sim ** 2).sum(axis=(1, 2)))
+            _fill_summary_entry(summ, ie, it, method_dg,
+                                min_triangle_angles_from_edges(mesh['edge_vecs']),
+                                mesh['areas'])
 
-            for label in METHOD_LABELS:
-                l1, l2, th = prin[label]
-                summ[f'lam1_{label}'][ie, it] = l1
-                summ[f'lam2_{label}'][ie, it] = l2
-                summ[f'theta_{label}'][ie, it] = th
-                summ[f'dlam1_{label}'][ie, it] = l1 - l1s
-                summ[f'dlam2_{label}'][ie, it] = l2 - l2s
-                summ[f'dtheta_{label}'][ie, it] = wrap_angle(th - ths)
-
-            # validation
             if eta == 0.0:
-                checks['eta0_sim_naff_max'] = max(
-                    checks['eta0_sim_naff_max'], float(np.abs(dg_sim).max()))
-                checks['eta0_faff_max'] = max(
-                    checks['eta0_faff_max'], resid)
+                checks['eta0_ufluct_max'] = max(
+                    checks['eta0_ufluct_max'], float(np.abs(u).max()))
+                checks['eta0_dgsim_max'] = max(
+                    checks['eta0_dgsim_max'], float(np.abs(dg_sim).max()))
                 for label in METHOD_LABELS:
                     checks['eta0_W_max'] = max(
                         checks['eta0_W_max'], float(np.abs(method_W[label]).max()))
             if eta in (0.1, 0.2):
-                a = method_dg['Std'].ravel()
-                b = dg_sim.ravel()
+                a = method_dg['Std'].ravel(); b = dg_sim.ravel()
                 if np.std(a) > 1e-30 and np.std(b) > 1e-30:
-                    checks['sign_corr_lowEta'].append(
-                        float(np.corrcoef(a, b)[0, 1]))
+                    checks['sign_corr_lowEta'].append(float(np.corrcoef(a, b)[0, 1]))
 
-            # per-sample full dump
             np.savez_compressed(
                 os.path.join(DATA_DIR, f'sample_eta{eta:.2f}_trial{it}.npz'),
                 N=N, eta=eta, seed=seed, F=F, delta=DELTA, H_macro=H_MACRO,
@@ -424,10 +454,9 @@ def main():
                 kkt_q=mesh['kkt_arrays'][2],
                 u_fluct=u, resid=resid,
                 g_ref=g_ref, g_aff=g_aff, g_def=g_def, dg_aff=dg_aff,
-                dg_sim=dg_sim,
+                Delta_g=Delta_g, dg_sim=dg_sim,
                 **{f'dg_{lab}': method_dg[lab] for lab in METHOD_LABELS},
                 **{f'W_{lab}': method_W[lab] for lab in METHOD_LABELS},
-                **{f'gbar_{lab}': method_gbar[lab] for lab in METHOD_LABELS},
                 method_labels=np.array(METHOD_LABELS),
             )
         print(f'  eta={eta:.2f} done  [{time.time() - t0:.0f}s]  '
@@ -435,29 +464,99 @@ def main():
               f"|dtheta| med (Std)="
               f"{np.nanmedian(np.abs(summ['dtheta_Std'][ie])):.2f} deg", flush=True)
 
-    # summary dump
-    np.savez_compressed(
-        os.path.join(DATA_DIR, 'summary.npz'),
-        eta_values=ETA_VALUES, n_trials=N_TRIALS, N=N, N_TRI=N_TRI,
-        F=F, delta=DELTA, H_macro=H_MACRO,
-        method_labels=np.array(METHOD_LABELS), resid_max=resid_max,
-        **summ,
-    )
-
-    # validation report
+    _save_summary(summ, resid_max)
     print('\n── Validation ──', flush=True)
-    print(f"  eta=0 sim non-affine |dg| max : {checks['eta0_sim_naff_max']:.3e} "
-          f"(expect ~0)")
-    print(f"  eta=0 MF |W| max              : {checks['eta0_W_max']:.3e} (expect ~0)")
+    print(f"  eta=0 relaxation |u| max      : {checks['eta0_ufluct_max']:.3e} "
+          f"(expect ~0: perfect crystal deforms affinely)")
+    print(f"  eta=0 MF |W| max              : {checks['eta0_W_max']:.3e} "
+          f"(expect ~0: no stiffness/geometry contrast)")
+    print(f"  eta=0 sim |dg| max            : {checks['eta0_dgsim_max']:.3e} "
+          f"(NONZERO and expected: 2 sublattice orientations strain differently; MF gives 0)")
     print(f"  PBC solve max force residual  : {checks['max_resid']:.3e} (expect ~0)")
     if checks['sign_corr_lowEta']:
         print(f"  Std vs sim corr (eta=0.1,0.2) : "
               f"mean {np.mean(checks['sign_corr_lowEta']):+.3f} "
-              f"(expect > 0 -> sign convention OK)")
+              f"(diagnostic; ~0 under the global-affine definition)")
     write_readme(checks)
     make_plots()
     print(f'\nTotal: {time.time() - t0:.0f}s. Data in {DATA_DIR}, plots in {PLOTS_DIR}',
           flush=True)
+
+
+# ── Regenerate from stored samples (no re-simulation) ─────────────────────────
+def regenerate_from_stored():
+    """Rebuild summary.npz + plots from already-saved sample_*.npz, applying the current
+    delta_g definitions (delta_g = g_s - g = (g_def - g_ref) - Delta_g) to the stored raw
+    arrays. Also rewrites each sample's `dg_*` / `Delta_g` fields in place (raw g_*/W/u are
+    preserved, so nothing is lost)."""
+    n_eta = len(ETA_VALUES)
+    summ = _empty_summary(n_eta)
+    resid_max = np.full((n_eta, N_TRIALS), np.nan)
+    corr_low = []
+    eta0 = {'u': 0.0, 'dg': 0.0, 'W': 0.0}
+    t0 = time.time()
+    for ie, eta in enumerate(ETA_VALUES):
+        for it in range(N_TRIALS):
+            path = os.path.join(DATA_DIR, f'sample_eta{eta:.2f}_trial{it}.npz')
+            if not os.path.exists(path):
+                print(f'  missing {os.path.basename(path)} -- skipping', flush=True)
+                continue
+            s = np.load(path, allow_pickle=True)
+            g_ref, g_aff, g_def = s['g_ref'], s['g_aff'], s['g_def']
+            Delta_g = global_strain(g_aff - g_ref)
+            dg_sim = sim_dg(g_def, g_ref, Delta_g)
+
+            method_dg = {'sim': dg_sim}
+            for lab in METHOD_LABELS:
+                Wm = s[f'W_{lab}'].reshape(-1, 3, 3)
+                method_dg[lab] = _from_eng(np.einsum('sik,k->si', Wm, Delta_g))
+
+            _fill_summary_entry(summ, ie, it, method_dg,
+                                min_triangle_angles_from_edges(s['edge_vecs']),
+                                s['areas'])
+            if 'resid' in s.files:
+                resid_max[ie, it] = float(s['resid'])
+            if eta in (0.1, 0.2):
+                a = method_dg['Std'].ravel(); b = dg_sim.ravel()
+                if np.std(a) > 1e-30 and np.std(b) > 1e-30:
+                    corr_low.append(float(np.corrcoef(a, b)[0, 1]))
+            if eta == 0.0:
+                if 'u_fluct' in s.files:
+                    eta0['u'] = max(eta0['u'], float(np.abs(s['u_fluct']).max()))
+                eta0['dg'] = max(eta0['dg'], float(np.abs(dg_sim).max()))
+                for lab in METHOD_LABELS:
+                    eta0['W'] = max(eta0['W'], float(np.abs(s[f'W_{lab}']).max()))
+
+            # rewrite the sample with corrected delta_g (raw arrays preserved)
+            d = {k: s[k] for k in s.files}
+            for lab in METHOD_LABELS:
+                d.pop(f'gbar_{lab}', None)          # drop legacy per-method gbar
+                d[f'dg_{lab}'] = method_dg[lab]
+            d['Delta_g'] = Delta_g
+            d['dg_sim'] = dg_sim
+            np.savez_compressed(path, **d)
+        print(f'  eta={eta:.2f} regenerated  [{time.time() - t0:.0f}s]  '
+              f"|dtheta| med (Std)={np.nanmedian(np.abs(summ['dtheta_Std'][ie])):.2f} deg",
+              flush=True)
+
+    _save_summary(summ, resid_max)
+    checks = {'eta0_ufluct_max': eta0['u'], 'eta0_dgsim_max': eta0['dg'],
+              'eta0_W_max': eta0['W'], 'max_resid': float(np.nanmax(resid_max)),
+              'sign_corr_lowEta': corr_low}
+    write_readme(checks)
+    make_plots()
+    print(f'\nRegenerated from stored data in {time.time() - t0:.0f}s. '
+          f'Data in {DATA_DIR}, plots in {PLOTS_DIR}', flush=True)
+
+
+def _save_summary(summ, resid_max):
+    np.savez_compressed(
+        os.path.join(DATA_DIR, 'summary.npz'),
+        eta_values=ETA_VALUES, n_trials=N_TRIALS, N=N, N_TRI=2 * N * N,
+        F=np.eye(2) + DELTA * H_MACRO, delta=DELTA, H_macro=H_MACRO,
+        method_labels=np.array(METHOD_LABELS), resid_max=resid_max,
+        **summ,
+    )
 
 
 # ── Plots ─────────────────────────────────────────────────────────────────────
@@ -482,8 +581,8 @@ def make_plots():
         ax.axhline(0, color='gray', lw=0.5, ls=':')
         ax.set_xlabel(r'$\eta$'); ax.set_ylabel(ttl); ax.set_title(ttl)
         ax.legend(fontsize=9); ax.grid(alpha=0.3)
-    fig.suptitle('Per-triangle principal-value error vs simulation '
-                 f'(N={int(d["N"])}, uniaxial)', fontsize=12)
+    fig.suptitle(r'Per-triangle principal-value error of non-affine $\delta g=g_s-g$ '
+                 f'vs simulation (N={int(d["N"])}, uniaxial)', fontsize=12)
     plt.tight_layout(); plt.savefig(os.path.join(PLOTS_DIR, 'dg_principal_diff_vs_eta.png'),
                                     dpi=150, bbox_inches='tight'); plt.close()
 
@@ -493,8 +592,9 @@ def make_plots():
         m, lo, hi = med_iqr(np.abs(d[f'dtheta_{lab}']))
         ax.fill_between(etas, lo, hi, color=COLORS[lab], alpha=0.15)
         ax.plot(etas, m, '-o', ms=4, color=COLORS[lab], label=lab)
+    ax.axhline(45, color='gray', lw=0.8, ls='--', label='random (45°)')
     ax.set_xlabel(r'$\eta$'); ax.set_ylabel(r'$|\Delta\theta|$ (deg)')
-    ax.set_title('Principal-axis misalignment of non-affine $\\delta g$ vs simulation')
+    ax.set_title(r'Principal-axis misalignment of non-affine $\delta g=g_s-g$ vs simulation')
     ax.legend(fontsize=9); ax.grid(alpha=0.3)
     plt.tight_layout(); plt.savefig(os.path.join(PLOTS_DIR, 'dg_angle_diff_vs_eta.png'),
                                     dpi=150, bbox_inches='tight'); plt.close()
@@ -503,11 +603,8 @@ def make_plots():
     ie = int(np.argmin(np.abs(etas - PLOT_ETA)))
     fig, axes = plt.subplots(2, 2, figsize=(13, 10))
     ma = d['min_angle'][ie].ravel()
-    ns = d['norm_sim'][ie].ravel()
     for j, lab in enumerate(labels):
         dth = np.abs(d[f'dtheta_{lab}'][ie]).ravel()
-        dl1 = d[f'dlam1_{lab}'][ie].ravel()
-        ax = axes[0, 0] if j == 0 else axes.flat[j]
         axes.flat[j].scatter(ma, dth, s=6, alpha=0.3, color=COLORS[lab])
         axes.flat[j].set_title(f'{lab}: |Δθ| vs min angle')
         axes.flat[j].set_xlabel('min triangle angle (deg)')
@@ -519,8 +616,7 @@ def make_plots():
     # 4) mesh maps at PLOT_ETA, trial 0 (|Δθ| and Δλ1)
     sample = os.path.join(DATA_DIR, f'sample_eta{etas[ie]:.2f}_trial0.npz')
     if os.path.exists(sample):
-        s = np.load(sample, allow_pickle=True)
-        _mesh_maps(s, labels)
+        _mesh_maps(np.load(sample, allow_pickle=True), labels)
 
     # 5) principal value / angle distributions
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
@@ -542,25 +638,19 @@ def make_plots():
 def _mesh_maps(s, labels):
     from matplotlib.collections import PolyCollection
     pts = s['pts']; sx = s['simplices']
-    # use wrapped centroid positions (base nodes) just for plotting layout
     tri_xy = pts[sx]                                    # (n_tri, 3, 2)
     fig, axes = plt.subplots(2, len(labels), figsize=(4.2 * len(labels), 9))
     for j, lab in enumerate(labels):
-        dg_m = s[f'dg_{lab}']; dg_s = s['dg_sim']
-        l1m, l2m, thm = principal(dg_m)
-        l1s, l2s, ths = principal(dg_s)
+        l1m, l2m, thm = principal(s[f'dg_{lab}'])
+        l1s, l2s, ths = principal(s['dg_sim'])
         dth = np.abs(wrap_angle(thm - ths))
         dl1 = l1m - l1s
         for row, vals, ttl, cmap in [(0, dth, f'{lab} |Δθ| (deg)', 'viridis'),
                                      (1, dl1, f'{lab} Δλ₁', 'coolwarm')]:
             ax = axes[row, j] if len(labels) > 1 else axes[row]
             vmax = np.nanpercentile(np.abs(vals), 98)
-            pc = PolyCollection(tri_xy, array=vals, cmap=cmap,
-                                edgecolors='none')
-            if cmap == 'coolwarm':
-                pc.set_clim(-vmax, vmax)
-            else:
-                pc.set_clim(0, vmax)
+            pc = PolyCollection(tri_xy, array=vals, cmap=cmap, edgecolors='none')
+            pc.set_clim(-vmax, vmax) if cmap == 'coolwarm' else pc.set_clim(0, vmax)
             ax.add_collection(pc); ax.autoscale_view()
             ax.set_aspect('equal'); ax.set_title(ttl, fontsize=10)
             ax.set_xticks([]); ax.set_yticks([])
@@ -572,18 +662,29 @@ def _mesh_maps(s, labels):
 
 
 def write_readme(checks):
+    sc = (np.mean(checks['sign_corr_lowEta'])
+          if checks.get('sign_corr_lowEta') else float('nan'))
     txt = f"""# dg_analysis_data — per-triangle non-affine δg: PBC sim vs MF / MF+KKT
 
 Generated by `breakdown/pbc_dg_analysis.py`.
 
-## What this is
-Per-triangle NON-AFFINE metric change `δg` under a single macroscopic strain
-(uniaxial εxx, amplitude δ={DELTA}), on periodic triangulate-first-then-deform meshes
-(N={N} → {2 * N * N} triangles), for η ∈ {list(ETA_VALUES)} × {N_TRIALS} trials.
+## Terminology
+- ḡ (g-bar) : REFERENCE metric (ideal/rest distances; per-triangle `g_ref`, identity in
+  normalized units).
+- g         : actual TOTAL macroscopic metric = ḡ + Δg.
+- Δg        : GLOBAL strain = g − ḡ (one tensor for the sample; here the mean affine
+  metric change ⟨g_aff − g_ref⟩, engineering basis). Stored as `Delta_g`.
+- g_s       : LOCAL per-triangle metric.
+- δg_s      : NON-AFFINE local deformation = g_s − g = (g_def − g_ref) − Δg.
+  Linear response: δg_s = W_s · Δg.
 
-`δg` = non-affine part only (matches the solver):
-  - MF / MF+KKT : δg(s) = +W(s) @ ḡ   (ḡ = mean affine metric change, engineering basis)
-  - simulation  : δg(s) = g_def(s) − g_aff(s)
+## What this is
+Per-triangle NON-AFFINE δg under a single macroscopic strain (uniaxial εxx, amplitude
+δ={DELTA}), on periodic triangulate-first-then-deform meshes (N={N} → {2 * N * N}
+triangles), for η ∈ {list(ETA_VALUES)} × {N_TRIALS} trials.
+  - MF / MF+KKT : δg(s) = W(s) · Δg
+  - simulation  : δg(s) = (g_def(s) − g_ref(s)) − Δg
+Both referenced to the SAME single global affine field Δg (no per-triangle local affine).
 Metric g = [[a·a,a·b],[a·b,b·b]] from edges a=e01, b=e02 (rotation/translation invariant).
 
 Methods (no angle methods): {METHOD_LABELS}.
@@ -593,8 +694,8 @@ Methods (no angle methods): {METHOD_LABELS}.
   mesh (`pts, simplices, tri_images, edge_vecs, actual_len2, areas, BL1, BL2,
   bond_u, bond_v, bond_R, kkt_s1, kkt_s2, kkt_q`), applied `F`/`H_macro`/`delta`,
   the equilibrium fluctuation field `u_fluct` and its `resid`,
-  per-triangle `g_ref, g_aff, g_def, dg_aff, dg_sim`,
-  per method `dg_<label>` (n_tri,2,2), `W_<label>` (n_tri,9), `gbar_<label>` (3,).
+  per-triangle `g_ref, g_aff, g_def, dg_aff`, the global strain `Delta_g` (3,),
+  `dg_sim` and per method `dg_<label>` (n_tri,2,2), `W_<label>` (n_tri,9).
   → W_sim for this strain is reconstructable from `u_fluct`+`F`+mesh; other strain
      modes only need re-solving on the stored mesh.
 - `summary.npz` — stacked `(n_eta, n_trials, n_tri)` arrays:
@@ -603,14 +704,21 @@ Methods (no angle methods): {METHOD_LABELS}.
   plus `eta_values, method_labels, F, resid_max`.
 
 ## Principal decomposition
-`δg` (symmetric 2×2) → eigenvalues λ1≥λ2 and principal-axis angle θ∈(−90,90].
+δg (symmetric 2×2) → eigenvalues λ1≥λ2 and principal-axis angle θ∈(−90,90].
 Comparison vs sim: Δλ1, Δλ2, Δθ (wrapped to (−90,90]).
 
+## Key finding
+With this (correct) global-affine definition, the MF per-triangle δg = W·Δg is
+~uncorrelated with the simulation (Std-vs-sim corr at η=0.1,0.2 ≈ {sc:+.3f}). The MF
+computes an exact per-triangle response but is too local — it does not encode the
+inter-triangle compatibility/confluency constraints that couple the real network. That
+coupling is the missing link.
+
 ## Validation (this run)
-- η=0 simulation non-affine |δg| max : {checks['eta0_sim_naff_max']:.3e}  (expect ~0)
-- η=0 MF |W| max                     : {checks['eta0_W_max']:.3e}  (expect ~0)
-- PBC solve max force residual       : {checks['max_resid']:.3e}  (expect ~0)
-- Std vs sim corr (η=0.1,0.2)         : {np.mean(checks['sign_corr_lowEta']) if checks['sign_corr_lowEta'] else float('nan'):+.3f}  (expect > 0)
+- η=0 relaxation |u_fluct| max : {checks.get('eta0_ufluct_max', float('nan')):.3e}  (expect ~0: a perfect crystal deforms affinely — no non-affine RELAXATION)
+- η=0 MF |W| max               : {checks['eta0_W_max']:.3e}  (expect ~0: no stiffness/geometry contrast)
+- η=0 sim |δg| max             : {checks.get('eta0_dgsim_max', float('nan')):.3e}  (NONZERO and expected: the 2 sublattice triangle orientations strain differently under uniaxial load, so g_s − g ≠ 0; the MF predicts δg=0 here)
+- PBC solve max force residual : {checks['max_resid']:.3e}  (expect ~0)
 
 NOTE: the `breakdown/periodic_mesh.py` / `pbc_simulation.py` modules were NOT used or
 trusted; mesh + PBC solve here are independent implementations validated by the checks
@@ -621,4 +729,7 @@ above.
 
 
 if __name__ == '__main__':
-    main()
+    if '--regen' in sys.argv:
+        regenerate_from_stored()
+    else:
+        main()

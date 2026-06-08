@@ -1,4 +1,10 @@
 """
+[DEPRECATED / SUPERSEDED — not used by current work, kept for reference only]
+Legacy, unvalidated. Superseded by build_periodic_tf_mesh() in
+breakdown/pbc_dg_analysis.py. Canonical terminology lives there:
+  ḡ = reference metric;  g = total metric = ḡ + Δg;  Δg = global strain = g − ḡ;
+  g_s = local per-triangle metric;  δg_s = g_s − g = W_s · Δg  (non-affine).
+
 Periodic TF (triangulate-first) triangular mesh on a rhombic torus.
 
 Regular N×N triangular lattice with periodicity vectors L1=[1,0], L2=[0.5,√3/2].
