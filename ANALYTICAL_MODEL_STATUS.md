@@ -57,10 +57,128 @@ $$\begin{pmatrix} P & J^\top \\ J & 0 \end{pmatrix} \begin{pmatrix} W \\ \Lambda
 
 **Implementation:** See `Phase 2/forward_solver_torch.py` — `_woodbury_kkt_sparse()` for networks with $N > 500$ triangles; `_woodbury_solve(J=...)` for smaller differentiable networks. Full algorithm documented in `Phase 2/README.md`.
 
+---
+
+## Bug fixes and benchmarking — June 2026
+
+### Bugs fixed in `_woodbury_kkt_sparse_combined`
+
+Three bugs were found and fixed in the refactored unified KKT function:
+
+**1. Spurious /N in non-AW Woodbury branch**
+
+The rank-correction `Vy = B·y` is a sum over triangles (no 1/N). Two lines divided by `N` erroneously:
+```python
+# BEFORE (buggy):
+Vy3 = np.einsum('nij,njk->ik', dM_np, y3) / N
+gs3 = np.einsum('nij,njk->ik', dM_np, AinvCt) / N
+# AFTER (fixed):
+Vy3 = np.einsum('nij,njk->ik', dM_np, y3)
+gs3 = np.einsum('nij,njk->ik', dM_np, AinvCt)
+```
+Effect: the Woodbury correction was ~N=800× too small, effectively disabling it.
+
+**2. K0 einsum transposition — edge part**
+
+`BMA_inv[s,i,k] = Σ_j δM[s,i,j]·M_inv[s,j,k]` is not symmetric. The K0 matrix
+requires contracting `q[e,l]` against row `m`, column `l` of `BMA_inv`:
+```python
+# BEFORE (buggy): contracts q[e,l] against BMA_inv[s1,l,m] (wrong axis order)
+qBM1 = np.einsum('el,elm->em', q_arr, BMA_inv[s1_arr])
+# AFTER (fixed):
+qBM1 = np.einsum('el,eml->em', q_arr, BMA_inv[s1_arr])
+```
+
+**3. K0 einsum transposition — angle part**
+
+Same transposition error in the angle-constraint branch:
+```python
+# BEFORE (buggy):
+aBM = np.einsum('pl,plm->pm', a_arr, BMA_inv[sv_arr])
+# AFTER (fixed):
+aBM = np.einsum('pl,pml->pm', a_arr, BMA_inv[sv_arr])
+```
+
+**4. Working precision**
+
+All inputs to `forward()` are now explicitly cast to `float64` at entry, preventing
+silent float32 degradation when called from PyTorch training loops:
+```python
+rigidities = rigidities.double()
+if rest_lengths is not None:
+    rest_lengths = rest_lengths.double()
+```
+
+### 20×20 benchmark: all six methods vs simulation (DF and TF meshes)
+
+Comparison of six MF variants against a direct spring-network simulation (KUBC with
+unit springs, rest lengths = equilibrium) on 20×20 foam meshes, 10 random trials per η,
+η ∈ {0.0, 0.05, …, 0.50}. Results normalized by each method's own η=0 value.
+
+**Mesh types:**
+- **DF** (distort-first): Delaunay triangulation after vertex distortion — well-shaped triangles
+- **TF** (triangulate-first): fixed topology, positions distorted after — can produce poor triangles at high η
+
+**Methods compared:** Std, AW (area-weighted), Std+edge, AW+edge, Std+full (edge+angle), AW+full
+
+**E/E₀ at η=0.5 (DF mesh):**
+
+| Method | E/E₀ | vs. Simulation (0.874) |
+|--------|-------|------------------------|
+| Simulation | 0.874 | — |
+| Std | 0.011 | −98% |
+| AW | 0.272 | −69% |
+| Std+edge | 0.023 | −97% |
+| AW+edge | 1.590 | diverges upward |
+| Std+full | 0.907 | unstable (diverged at η=0.4–0.45) |
+| AW+full | 164 | wildly divergent |
+
+**ν at η=0.5 (DF mesh):**
+
+| Method | ν | vs. Simulation (+0.281) |
+|--------|---|------------------------|
+| Simulation | +0.281 | — |
+| Std | −0.094 | wrong sign |
+| AW | +0.040 | low |
+| Std+edge | +0.084 | low |
+| AW+edge | −0.607 | wrong sign, large |
+| Std+full | −0.532 | unstable |
+| AW+full | +0.218 | unstable |
+
+**Key finding:** Even for the DF mesh with uniform k=1 springs (geometric disorder only),
+all MF methods dramatically underestimate E at high η. The simulation shows only ~13% drop
+in E/E₀ from η=0 to η=0.5; MF methods predict 70–99% drops or divergence.
+This contradicts the earlier assumption (recorded above) that "geometric disorder alone:
+deformed meshes with uniform k are well-captured." That finding held only for small η (≤0.20).
+
+**Why the MF fails for E:**
+
+The non-affine correction W grows with disorder. For large η, W can be large enough
+that the corrected elastic tensor C_eff = ⟨A(I+W)⟩ approaches zero. The real network
+maintains E through a stiff load-bearing backbone — cooperative percolation-like
+behaviour that is invisible to any per-triangle averaging scheme.
+
+**Why KKT edge constraints make E worse:**
+
+Adding edge compatibility constraints couples adjacent triangles. In a frustrated
+disordered network the KKT multipliers Λ become large, creating large correction
+terms that further reduce C_eff. The physical network routes around frustrated
+regions; the KKT system overcounts the frustration.
+
+**Why angle constraints (Std+full, AW+full) diverge:**
+
+The rest metrics in a disordered foam do not satisfy Σθ = 2π around interior vertices —
+the reference configuration is intrinsically frustrated. Enforcing angle constraints on
+a frustrated reference produces ill-conditioned KKT systems at moderate-to-high η,
+causing the Gram matrix G to become nearly singular and multipliers to blow up.
+
+**Plot:** `benchmarking/new/all6_comparison.png`
+
 ### Remaining fixes (to be explored)
 
 1. **Periodic boundary condition simulation** — better ground truth, matches the analytical infinite-medium assumption.
 2. **Cluster self-consistent method** — embed clusters of neighbouring triangles rather than single ones.
 3. **Differential effective medium** — add heterogeneity incrementally.
 4. **Reduce rigidity contrast** — use smaller `a` parameter so the mean-field remains valid.
-5. **Accept the limitation** — use the pipeline for designs with moderate rigidity contrast, where it is accurate.
+5. **Accept the limitation** — use the pipeline for designs with moderate rigidity contrast (η ≤ 0.20), where it is accurate.
+6. **GNN / ML forward model (Phase 4)** — learns the microstructure-to-property map directly from simulation data, bypassing the MF approximation entirely.
