@@ -151,26 +151,36 @@ in E/E₀ from η=0 to η=0.5; MF methods predict 70–99% drops or divergence.
 This contradicts the earlier assumption (recorded above) that "geometric disorder alone:
 deformed meshes with uniform k are well-captured." That finding held only for small η (≤0.20).
 
+Note: the reference geometry has **no frustration** — interior vertex angle sums equal 2π
+to machine precision at all η (confirmed numerically). The failures below are not
+caused by an inconsistent rest state.
+
 **Why the MF fails for E:**
 
-The non-affine correction W grows with disorder. For large η, W can be large enough
-that the corrected elastic tensor C_eff = ⟨A(I+W)⟩ approaches zero. The real network
-maintains E through a stiff load-bearing backbone — cooperative percolation-like
-behaviour that is invisible to any per-triangle averaging scheme.
+The MF framework assigns the same macroscopic strain Δg to every triangle. In a
+disordered network the real strain is spatially inhomogeneous: stiff regions deform
+less, soft ones more. The Woodbury non-affine correction W accounts for this
+perturbatively around the mean field, but for large disorder the perturbation is large
+and the correction overshoots — driving C_eff = ⟨A(I+W)⟩ toward zero. No backbone
+mechanism exists in the single-site MF to prevent this.
 
-**Why KKT edge constraints make E worse:**
+**Why KKT edge constraints do not rescue E:**
 
-Adding edge compatibility constraints couples adjacent triangles. In a frustrated
-disordered network the KKT multipliers Λ become large, creating large correction
-terms that further reduce C_eff. The physical network routes around frustrated
-regions; the KKT system overcounts the frustration.
+The edge-KKT correction projects W onto the subspace of compatible metric fields.
+When W_0 (the unconstrained MF solution) is already strongly negative (overshooting),
+the projection can push W further in the wrong direction. The constraints are physically
+correct; the problem is that they are applied on top of an already-wrong mean field.
 
 **Why angle constraints (Std+full, AW+full) diverge:**
 
-The rest metrics in a disordered foam do not satisfy Σθ = 2π around interior vertices —
-the reference configuration is intrinsically frustrated. Enforcing angle constraints on
-a frustrated reference produces ill-conditioned KKT systems at moderate-to-high η,
-causing the Gram matrix G to become nearly singular and multipliers to blow up.
+The rest configuration has angle sums exactly 2π — there is no inconsistency. The
+divergence is a numerical/geometric issue: as η grows, some triangles become elongated
+(minimum angles reach ~14° at η=0.35 for DF; smaller for TF). For a near-degenerate
+triangle, the angle gradient ∂θ/∂g is large in one direction, making the corresponding
+angle-constraint row nearly a linear combination of the edge-constraint rows already in
+the system. This near-redundancy drives eigenvalues of the Gram matrix G toward zero,
+causing the KKT solve to produce large multipliers Λ and a large (positive) correction
+to C_eff — hence the upward divergence rather than collapse to zero.
 
 **Plot:** `benchmarking/new/all6_comparison.png`
 

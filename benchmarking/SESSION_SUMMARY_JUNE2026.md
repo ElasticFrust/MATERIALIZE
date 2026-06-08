@@ -51,12 +51,20 @@ negative values (or diverges) at high η.
 
 ### 5. Why the MF keeps missing
 
-- **E**: The non-affine W correction grows with disorder and can reduce C_eff → 0.
-  The real network has a stiff backbone that is invisible to per-triangle averaging.
-- **KKT edge constraints**: Amplify the problem by coupling frustrated triangles;
-  large constraint multipliers further reduce C_eff.
-- **Angle constraints**: Rest metrics don't satisfy Σθ=2π in disordered foam
-  (intrinsic frustration), making the angle-KKT Gram matrix near-singular at η ≥ 0.30.
+Note: the reference geometry has **no frustration** — interior angle sums equal 2π to
+machine precision at all η. The failures are not caused by an inconsistent rest state.
+
+- **E (all MF methods)**: The MF assigns the same macroscopic strain Δg to every
+  triangle. Real networks have inhomogeneous strain. The Woodbury W correction accounts
+  for this perturbatively, but for large disorder the correction overshoots, driving
+  C_eff → 0. No backbone mechanism in single-site MF can prevent this.
+- **KKT edge constraints not helping**: They project W onto the compatible subspace, but
+  when W_0 (unconstrained MF) already overshoots, the projection goes in the wrong
+  direction. Geometrically correct, but applied on top of an already-wrong mean field.
+- **Angle constraints diverging**: Not frustration. At high η some triangles become
+  elongated (min angle ~14° at η=0.35 for DF). Near-degenerate triangles create
+  near-linear-dependence between angle and edge constraint rows in the Gram matrix G.
+  Near-zero eigenvalues of G produce large multipliers Λ and upward divergence in E.
 
 ### 6. Current state of the solver
 
