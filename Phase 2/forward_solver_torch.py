@@ -210,6 +210,7 @@ class ElasticSolver(nn.Module):
                 a = positions[v1] - positions[v]
                 b = positions[v2] - positions[v]
                 dth = _angle_gradient_vec(a, b)
+                dth[1] /= 2   # engineering Voigt: component 1 = 2*g_12
                 v_int_list.append(int_count)
                 s_list.append(s)
                 a_list.append(dth)
@@ -668,8 +669,8 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
       - E_int edge constraints  (kkt_arrays: s1, s2, q)
       - n_int angle constraints (angle_arrays: v_int, s, a_vec, n_int)
 
-    Total M_c = E_int + n_int constraints per loading mode.
-    H, K, r, CtLam are assembled with vectorised numpy; G_local is sparse COO.
+    Because A = kron(M, I_3) the 3 loading modes decouple completely.
+    G_0 (M_c × M_c) is factorised ONCE; 3 RHS are solved independently.
     weights: None → uniform 1/N; (N,) array → area-weighted.
     """
     import scipy.sparse as sp
@@ -688,72 +689,55 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
         n_int  = 0
     n_pairs = len(v_arr)
 
-    M_c  = E_int + n_int   # constraints per loading mode
-    M_c3 = 3 * M_c
-    N    = A_blocks.shape[0]
+    M_c = E_int + n_int   # constraints per loading mode
+    N   = A_blocks.shape[0]
 
-    A_np  = A_blocks.detach().double().numpy()
-    B_np  = B_blocks.detach().double().numpy()
-    dA_np = dA_vecs.detach().double().numpy()
+    A_np  = A_blocks.detach().double().numpy()   # (N, 9, 9) = kron(M, I_3)
+    B_np  = B_blocks.detach().double().numpy()   # (N, 9, 9) = kron(δM, I_3)
+    dA_np = dA_vecs.detach().double().numpy()    # (N, 9)
 
-    eps   = 1e-14 * np.abs(A_np).max()
-    I9    = np.eye(9)
-    A_inv = np.linalg.inv(A_np + eps * I9[None])   # (N, 9, 9)
+    # ── Extract 3×3 blocks (A = kron(M, I_3) → M = A[0:9:3, 0:9:3]) ────────
+    IDX3 = np.array([0, 3, 6])
+    M_np    = A_np[:, IDX3[:, None], IDX3[None, :]]        # (N, 3, 3)
+    dM_np   = B_np[:, IDX3[:, None], IDX3[None, :]]        # (N, 3, 3)
+    eps3    = 1e-14 * np.abs(M_np).max()
+    I3      = np.eye(3)
+    M_inv   = np.linalg.inv(M_np + eps3 * I3[None])        # (N, 3, 3)
 
     # ── Woodbury base solve → W0 ─────────────────────────────────────────────
-    y = np.einsum('nij,nj->ni', A_inv, dA_np)
+    # dA_np has shape (N, 9); each row [d0,d1,d2, d1,d2,d3, d2,d3,d4]
+    # Loading mode k: indices LOC_ROWS[k] = {k, 3+k, 6+k} → 3-vector
+    dA_3 = np.stack([dA_np[:, [k, 3+k, 6+k]] for k in range(3)], axis=2)  # (N, 3, 3)
+    y3   = np.einsum('nij,njk->nik', M_inv, dA_3)          # (N, 3, 3)
+
     if weights is not None:
         w  = weights
-        Vy = np.einsum('n,nij,nj->i',   w, B_np, y)
-        S  = np.einsum('n,nij,njk->ik', w, B_np, A_inv)
-        IminusS = I9 - S
-        z  = np.linalg.solve(IminusS, Vy)
-        W0     = -(y + np.einsum('nij,j->ni', A_inv, z))
-        BA_inv = np.einsum('n,nij,njk->nik', w, B_np, A_inv)
+        Vy3 = np.einsum('n,nij,njk->ik', w, dM_np, y3)    # (3, 3)
+        S3  = np.einsum('n,nij,njk->ik', w, dM_np, M_inv) # (3, 3)
     else:
-        Vy = np.einsum('nij,nj->i',  B_np, y)
-        S  = np.einsum('nij,njk->ik', B_np, A_inv) / N
-        IminusS = I9 - S
-        z  = np.linalg.solve(IminusS, Vy)
-        W0     = -(y + np.einsum('nij,j->ni', A_inv, z) / N)
-        BA_inv = np.einsum('nij,njk->nik', B_np, A_inv)
+        Vy3 = np.einsum('nij,njk->ik', dM_np, y3) / N     # (3, 3)
+        S3  = np.einsum('nij,njk->ik', dM_np, M_inv) / N  # (3, 3)
 
-    LOC_ROWS = [np.array([k, 3+k, 6+k]) for k in range(3)]
+    IminusS3 = I3 - S3                                     # (3, 3)
+    Z3       = np.linalg.solve(IminusS3, Vy3)              # (3, 3)
 
-    # ── H and K  (M_c3 × 9) — vectorised edge + angle separately ────────────
-    H = np.zeros((M_c3, 9))
-    K = np.zeros((M_c3, 9))
+    if weights is not None:
+        W0_3 = -(y3 + np.einsum('nij,jk->nik', M_inv, Z3))   # (N, 3, 3)
+    else:
+        W0_3 = -(y3 + np.einsum('nij,jk->nik', M_inv, Z3) / N)  # (N, 3, 3)
+
+    # Reconstruct W0 in flat (N, 9) layout
+    W0 = np.zeros((N, 9))
     for k in range(3):
-        for loc in range(3):
-            col = 3 * loc + k
-            # edge contribution (unique row per edge per k, no duplicates)
-            e_rows = k * M_c + np.arange(E_int)
-            H[e_rows] += q_arr[:, loc:loc+1] * (A_inv[s1_arr, col, :] - A_inv[s2_arr, col, :])
-            K[e_rows] += q_arr[:, loc:loc+1] * (BA_inv[s1_arr, :, col] - BA_inv[s2_arr, :, col])
-            # angle contribution (duplicate rows possible: same vertex, multiple triangles)
-            if n_pairs > 0:
-                a_rows = k * M_c + E_int + v_arr   # (n_pairs,)
-                vals_H = a_arr[:, loc:loc+1] * A_inv[sv_arr, col, :]   # (n_pairs,9)
-                vals_K = a_arr[:, loc:loc+1] * BA_inv[sv_arr, :, col]  # (n_pairs,9)
-                np.add.at(H, a_rows, vals_H)
-                np.add.at(K, a_rows, vals_K)
+        W0[:, [k, 3+k, 6+k]] = W0_3[:, :, k]
 
-    # ── r = C W₀  (vectorised) ───────────────────────────────────────────────
-    r = np.zeros(M_c3)
-    W0f = W0.reshape(-1)
-    for k in range(3):
-        e_rows = k * M_c + np.arange(E_int)
-        for loc in range(3):
-            col = 3 * loc + k
-            r[e_rows] += q_arr[:, loc] * (W0f[s1_arr*9+col] - W0f[s2_arr*9+col])
-        if n_pairs > 0:
-            a_rows = k * M_c + E_int + v_arr
-            for loc in range(3):
-                col = 3 * loc + k
-                np.add.at(r, a_rows, a_arr[:, loc] * W0[sv_arr, col])
+    # ── BA_inv (3×3 per triangle) for H/K assembly ──────────────────────────
+    if weights is not None:
+        BMA_inv = np.einsum('n,nij,njk->nik', w, dM_np, M_inv)  # (N, 3, 3)
+    else:
+        BMA_inv = np.einsum('nij,njk->nik', dM_np, M_inv)        # (N, 3, 3)
 
-    # ── Sparse G_local = C A_diag⁻¹ Cᵀ ─────────────────────────────────────
-    # Build triangle → edge-list (existing pattern)
+    # ── Sparse G_0 = C₀ M_diag⁻¹ C₀ᵀ  (M_c × M_c, shared by all k) ────────
     tri_edges = defaultdict(list)
     for e in range(E_int):
         tri_edges[s1_arr[e]].append((e, +1))
@@ -761,105 +745,117 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
 
     rows_g, cols_g, data_g = [], [], []
 
-    # (a) Edge-edge block (existing vectorised-per-triangle loop)
+    # (a) Edge-edge block
     for n, elist in tri_edges.items():
-        An = A_inv[n]
+        Mn = M_inv[n]   # (3, 3)
         for e1, sg1 in elist:
             for e2, sg2 in elist:
-                vsg = sg1 * sg2
-                for k1 in range(3):
-                    row = k1 * M_c + e1
-                    for k2 in range(3):
-                        col = k2 * M_c + e2
-                        A_sub = An[np.ix_(LOC_ROWS[k1], LOC_ROWS[k2])]
-                        rows_g.append(row); cols_g.append(col)
-                        data_g.append(vsg * float(q_arr[e1] @ A_sub @ q_arr[e2]))
+                val = sg1 * sg2 * float(q_arr[e1] @ Mn @ q_arr[e2])
+                rows_g.append(e1); cols_g.append(e2); data_g.append(val)
 
     if n_pairs > 0:
-        # Sort angle pairs by triangle for grouped processing
+        # Sort by triangle for batch processing
         ord_  = np.argsort(sv_arr, kind='stable')
-        sv_s  = sv_arr[ord_]
-        v_s   = v_arr[ord_]
-        a_s   = a_arr[ord_]
+        sv_s  = sv_arr[ord_]; v_s = v_arr[ord_]; a_s = a_arr[ord_]
         bnd   = np.where(np.diff(sv_s, prepend=-1, append=-1))[0]
 
-        # (b) Angle-angle block (batch per triangle)
+        # (b) Angle-angle block
         for i in range(len(bnd) - 1):
-            sl   = slice(bnd[i], bnd[i+1])
-            n    = sv_s[bnd[i]]
-            a_g  = a_s[sl]           # (d, 3)
-            v_g  = v_s[sl]           # (d,)
-            An   = A_inv[n]
-            for k1 in range(3):
-                for k2 in range(3):
-                    A_sub  = An[np.ix_(LOC_ROWS[k1], LOC_ROWS[k2])]
-                    G_vals = a_g @ A_sub @ a_g.T    # (d, d)
-                    ri = k1 * M_c + E_int + v_g
-                    ci = k2 * M_c + E_int + v_g
-                    ri2, ci2 = np.meshgrid(ri, ci, indexing='ij')
-                    rows_g.extend(ri2.ravel())
-                    cols_g.extend(ci2.ravel())
-                    data_g.extend(G_vals.ravel())
+            sl  = slice(bnd[i], bnd[i+1])
+            n   = sv_s[bnd[i]]
+            a_g = a_s[sl]; v_g = v_s[sl]
+            G_vals = a_g @ M_inv[n] @ a_g.T    # (d, d)
+            ri = E_int + v_g; ci = E_int + v_g
+            ri2, ci2 = np.meshgrid(ri, ci, indexing='ij')
+            rows_g.extend(ri2.ravel()); cols_g.extend(ci2.ravel())
+            data_g.extend(G_vals.ravel())
 
-        # (c) Edge-angle cross block (per triangle, small loops)
-        tri_angle = defaultdict(list)   # triangle → list of j (pair index)
+        # (c) Edge-angle cross block
+        tri_angle = defaultdict(list)
         for j in range(n_pairs):
             tri_angle[sv_arr[j]].append(j)
 
         for n, jlist in tri_angle.items():
             if n not in tri_edges:
                 continue
-            An = A_inv[n]
+            Mn = M_inv[n]
             for (e, sg) in tri_edges[n]:
                 for j in jlist:
-                    for k1 in range(3):
-                        for k2 in range(3):
-                            A_sub = An[np.ix_(LOC_ROWS[k1], LOC_ROWS[k2])]
-                            val   = sg * float(q_arr[e] @ A_sub @ a_arr[j])
-                            r_ea  = k1 * M_c + e
-                            c_ea  = k2 * M_c + E_int + v_arr[j]
-                            rows_g.append(r_ea); cols_g.append(c_ea); data_g.append(val)
-                            rows_g.append(c_ea); cols_g.append(r_ea); data_g.append(val)
+                    val = sg * float(q_arr[e] @ Mn @ a_arr[j])
+                    rows_g.append(e); cols_g.append(E_int + v_arr[j]); data_g.append(val)
+                    rows_g.append(E_int + v_arr[j]); cols_g.append(e); data_g.append(val)
 
-    G_local = sp.coo_matrix((data_g, (rows_g, cols_g)),
-                             shape=(M_c3, M_c3)).tocsc()
-    reg_gl  = 1e-12 * max(abs(v) for v in data_g) if data_g else 1e-12
-    G_local = G_local + reg_gl * sp.eye(M_c3, format='csc')
+    G_0 = sp.coo_matrix((data_g, (rows_g, cols_g)), shape=(M_c, M_c)).tocsc()
+    reg  = 1e-12 * max(abs(v) for v in data_g) if data_g else 1e-12
+    G_0  = G_0 + reg * sp.eye(M_c, format='csc')
+    G_lu = spla.factorized(G_0)
 
-    # ── Woodbury solve on (G_local + correction) Λ = r ──────────────────────
-    G_lu   = spla.factorized(G_local)
-    Lam0   = G_lu(r)
-    Y      = np.column_stack([G_lu(H[:, j]) for j in range(9)])
-    M_mat  = (IminusS if weights is not None else N * IminusS) + K.T @ Y
-    c_vec  = np.linalg.solve(M_mat, K.T @ Lam0)
-    Lambda = Lam0 - Y @ c_vec
+    # ── H_0, K_0  (M_c × 3) — shared by all loading modes ───────────────────
+    # H_0[e, loc'] = Σ_loc q[e,loc] * (M_inv[s1,loc,loc'] - M_inv[s2,loc,loc'])
+    # K_0[e, loc'] = Σ_loc q[e,loc] * (BMA_inv[s1,loc,loc'] - BMA_inv[s2,loc,loc'])
+    # (q @ M_inv) form vectorised
+    H0 = np.zeros((M_c, 3))
+    K0 = np.zeros((M_c, 3))
+    # edge part: Σ_l q[e,l] * M_inv[s1[e],l,m] → (E_int, 3)
+    qM1  = np.einsum('el,elm->em', q_arr, M_inv[s1_arr])    # (E_int, 3)
+    qM2  = np.einsum('el,elm->em', q_arr, M_inv[s2_arr])    # (E_int, 3)
+    qBM1 = np.einsum('el,elm->em', q_arr, BMA_inv[s1_arr])  # (E_int, 3)
+    qBM2 = np.einsum('el,elm->em', q_arr, BMA_inv[s2_arr])  # (E_int, 3)
+    H0[:E_int] = qM1 - qM2
+    K0[:E_int] = qBM1 - qBM2
+    # angle part: scatter-add over pairs
+    if n_pairs > 0:
+        aM  = np.einsum('pl,plm->pm', a_arr, M_inv[sv_arr])    # (n_pairs, 3)
+        aBM = np.einsum('pl,plm->pm', a_arr, BMA_inv[sv_arr])  # (n_pairs, 3)
+        np.add.at(H0, E_int + v_arr, aM)
+        np.add.at(K0, E_int + v_arr, aBM)
 
-    # ── W = W₀ − P⁻¹ (Cᵀ Λ) — vectorised ───────────────────────────────────
-    CtLam = np.zeros(9 * N)
+    # ── Y_0 = G_0⁻¹ H_0  (M_c × 3) ─────────────────────────────────────────
+    Y0 = np.column_stack([G_lu(H0[:, j]) for j in range(3)])  # (M_c, 3)
+    M_mat3 = (IminusS3 if weights is not None else N * IminusS3) + K0.T @ Y0  # (3, 3)
+
+    # ── Per loading mode: compute r_k, solve, apply correction ───────────────
+    Lambda = np.zeros((M_c, 3))
     for k in range(3):
-        Lk_e = Lambda[k * M_c + np.arange(E_int)]
-        for loc in range(3):
-            col = 3 * loc + k
-            np.add.at(CtLam, s1_arr * 9 + col,  q_arr[:, loc] * Lk_e)
-            np.add.at(CtLam, s2_arr * 9 + col, -q_arr[:, loc] * Lk_e)
+        # r_k[e] = q · (W0[s1,k-slice] - W0[s2,k-slice])
+        r_k = np.zeros(M_c)
+        diff = W0_3[s1_arr, :, k] - W0_3[s2_arr, :, k]   # (E_int, 3)
+        r_k[:E_int] = np.einsum('el,el->e', q_arr, diff)
         if n_pairs > 0:
-            Lk_a = Lambda[k * M_c + E_int + v_arr]   # (n_pairs,)
-            for loc in range(3):
-                col = 3 * loc + k
-                np.add.at(CtLam, sv_arr * 9 + col, a_arr[:, loc] * Lk_a)
+            np.add.at(r_k, E_int + v_arr,
+                      np.einsum('pl,pl->p', a_arr, W0_3[sv_arr, :, k]))
+        lam0   = G_lu(r_k)                                     # M_c
+        c_vec  = np.linalg.solve(M_mat3, K0.T @ lam0)         # 3
+        Lambda[:, k] = lam0 - Y0 @ c_vec
 
-    CtLam_b   = CtLam.reshape(N, 9)
-    AinvCtLam = np.einsum('nij,nj->ni', A_inv, CtLam_b)
+    # ── W = W₀ − P⁻¹ (C₀ᵀ Λ) per loading mode ──────────────────────────────
+    CtLam_3 = np.zeros((N, 3, 3))   # (N, loc, k)
+    for k in range(3):
+        Lk_e = Lambda[:E_int, k]    # (E_int,)
+        # edge scatter: Σ_e q[e,loc] * Lk_e at s1, -at s2
+        np.add.at(CtLam_3[:, :, k], s1_arr,  q_arr * Lk_e[:, None])
+        np.add.at(CtLam_3[:, :, k], s2_arr, -q_arr * Lk_e[:, None])
+        if n_pairs > 0:
+            Lk_a = Lambda[E_int + v_arr, k]   # (n_pairs,)
+            np.add.at(CtLam_3[:, :, k], sv_arr, a_arr * Lk_a[:, None])
+
+    # Apply P⁻¹ = (A - B)⁻¹  per loading mode k (3×3 systems)
+    AinvCt  = np.einsum('nij,njk->nik', M_inv, CtLam_3)         # (N, 3, 3)
     if weights is not None:
-        gs = np.einsum('n,nij,nj->i', w, B_np, AinvCtLam)
-        PinvCtLam = AinvCtLam + np.einsum('nij,j->ni', A_inv,
-                                           np.linalg.solve(IminusS, gs))
+        gs3 = np.einsum('n,nij,njk->ik', w, dM_np, AinvCt)     # (3, 3)
+        PinvCt = AinvCt + np.einsum('nij,jk->nik', M_inv,
+                                     np.linalg.solve(IminusS3, gs3))
     else:
-        gs = np.einsum('nij,nj->i', B_np, AinvCtLam)
-        PinvCtLam = AinvCtLam + np.einsum('nij,j->ni', A_inv,
-                                           np.linalg.solve(IminusS, gs)) / N
+        gs3 = np.einsum('nij,njk->ik', dM_np, AinvCt) / N      # (3, 3)
+        PinvCt = AinvCt + np.einsum('nij,jk->nik', M_inv,
+                                     np.linalg.solve(IminusS3, gs3)) / N
 
-    return W0 - PinvCtLam
+    # Reconstruct W in (N, 9) layout
+    dW = np.zeros((N, 9))
+    for k in range(3):
+        dW[:, [k, 3+k, 6+k]] = PinvCt[:, :, k]
+
+    return W0 - dW
 
 
 def _compute_actual_elastic_tensor(bare_tensors, Ws):
