@@ -797,7 +797,7 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
     # angle part: scatter-add over pairs
     if n_pairs > 0:
         aM  = np.einsum('pl,plm->pm', a_arr, M_inv[sv_arr])    # (n_pairs, 3)
-        aBM = np.einsum('pl,plm->pm', a_arr, BMA_inv[sv_arr])  # (n_pairs, 3)
+        aBM = np.einsum('pl,pml->pm', a_arr, BMA_inv[sv_arr])  # (n_pairs, 3)
         np.add.at(H0, E_int + v_arr, aM)
         np.add.at(K0, E_int + v_arr, aBM)
 
