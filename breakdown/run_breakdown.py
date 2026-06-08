@@ -2,17 +2,18 @@
 PBC simulation vs MF methods — per-triangle W comparison.
 
 W_sim[s, :, α] = actual non-affine metric change of triangle s per unit applied
-strain δ for mode α (= (g_def - g_aff)/δ from the sparse linear solve).
+strain δ for mode α (= (g_def - g_aff_local)/δ from the sparse linear solve).
 
-W_mf[s, :, k] from D2C theory is a *stiffness correction*, not a strain response:
-C_s^eff = A_s (I + W_s)².  The local strain is ε_s ≈ (I + W_s)^{-1} ε̄ ≈ ε̄ − W_s ε̄,
-so the non-affine metric change predicted by D2C is:
+D2C defines the non-affine response tensor W via:
+  δg(s) = W(s) · Δg   (paper sign convention, W > 0 for soft/long-bond triangles)
 
-  W_mf_pred[s, :, α] = -W_mf[s] @ G̅[:,α]   (note the minus sign!)
+The code computes W_code via (A-B)W = -δA where δA = A_s - Ā (triangle minus mean).
+The paper uses δA_paper = Ā - A_s (opposite sign), so W_code = -W_paper.
+Therefore the correct D2C prediction is:
+
+  W_mf_pred[s, :, α] = -W_code[s] @ G̅[:,α] = W_paper[s] @ G̅[:,α] ≈ W_sim
 
 where G̅[:,α] = mean_s(Δg_aff(s,α)) is the mean affine metric change per unit δ.
-Soft triangles (long bonds) have W_mf < 0 (lower stiffness) and W_sim > 0 (deform
-more than affine), confirming the sign convention.
 """
 import sys, os, time
 sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
@@ -119,9 +120,8 @@ def run_mf(mesh, area_weighted, use_kkt):
     # W_np (N_tri,9) → W_mf (N_tri,3,3): W_mf[s,i,k]=response of metric i to MF mode k
     W_mf = W_np.reshape(N_tri, 3, 3)
 
-    # D2C W measures stiffness deviation: C_s = A_s(I+W_s)².
-    # Non-affine local strain correction ≈ -(I+W_s - I)ε̄ = -W_s ε̄, hence the
-    # predicted non-affine metric change is -W_mf @ Gbar (note the sign).
+    # Code W_code = -(A-B)^{-1}(A_s - Ā) = -W_paper (opposite sign to paper's δA = Ā - A_s).
+    # Paper: δg = W_paper · Δg, so the correct prediction is -W_code @ Gbar = W_paper @ Gbar.
     Gbar = compute_Gbar_mat(mesh)               # (3, 3)
     W_mf_pred = -np.einsum('sik,ka->sia', W_mf, Gbar)  # (N_tri, 3, 3)
 
