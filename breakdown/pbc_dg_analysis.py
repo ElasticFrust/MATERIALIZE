@@ -547,9 +547,15 @@ def make_plots():
                                     dpi=150, bbox_inches='tight'); plt.close()
 
     # 2) principal-axis angle difference vs eta
+    # The principal-axis angle is undefined where the non-affine response is ~0 (e.g. the
+    # perfect crystal at eta=0). Mask triangles with ||dg_sim|| below a small floor so we
+    # don't plot angle-of-noise (which would sit at the random baseline, 45 deg).
+    dgnorm = float(np.linalg.norm(d['Delta_g'])) if 'Delta_g' in d.files else 2.0 * d['delta']
+    near0 = d['norm_sim'] < 1e-4 * dgnorm
     fig, ax = plt.subplots(figsize=(7, 5))
     for lab in labels:
-        m, lo, hi = med_iqr(np.abs(d[f'dtheta_{lab}']))
+        dth = np.where(near0, np.nan, np.abs(d[f'dtheta_{lab}']))
+        m, lo, hi = med_iqr(dth)
         ax.fill_between(etas, lo, hi, color=COLORS[lab], alpha=0.15)
         ax.plot(etas, m, '-o', ms=4, color=COLORS[lab], label=lab)
     ax.axhline(45, color='gray', lw=0.8, ls='--', label='random (45°)')
@@ -561,9 +567,12 @@ def make_plots():
 
     # 2b) correlation MF vs sim (component-wise) and magnitude ratio vs eta
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    dgnorm = float(np.linalg.norm(d['Delta_g'])) if 'Delta_g' in d.files else 2.0 * d['delta']
     for lab in labels:
         cc, rr = [], []
         for ie in range(len(etas)):
+            if np.nanmedian(d['norm_sim'][ie]) < 1e-4 * dgnorm:   # delta_g ~ 0: skip
+                cc.append(np.nan); rr.append(np.nan); continue
             sim = np.stack([d['lam1_sim'][ie].ravel(), d['lam2_sim'][ie].ravel()])
             met = np.stack([d[f'lam1_{lab}'][ie].ravel(), d[f'lam2_{lab}'][ie].ravel()])
             m = np.isfinite(sim).all(0) & np.isfinite(met).all(0)
