@@ -77,21 +77,20 @@ def main():
         print(f"{eta:>5.1f} {o['raw'][i]:>8.2f} {o['reN'][i]:>8.2f} {o['r14'][i]:>9.2f} | "
               f"{o['rawG'][i]:>8.2f} {o['reNG'][i]:>8.2f} {o['r14G'][i]:>9.2f} {o['corrG'][i]:>8.2f}")
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    for ax, scope, ttl in [(axes[0], ('raw', 'reN', 'r14'), 'all triangles'),
-                           (axes[1], ('rawG', 'reNG', 'r14G'), 'well-shaped (min∠>30°)')]:
-        for m, ls in [('Std', '-'), ('Std+edge', '--')]:
-            o = out[m]
-            ax.plot(ETAS, o[scope[0]], ls + 'o', color='#888', label=f'{m} raw')
-            ax.plot(ETAS, o[scope[1]], ls + 's', color='#1f77b4', label=f'{m} ÷ c(η)')
-            ax.plot(ETAS, o[scope[2]], ls + '^', color='#d62728', label=f'{m} ÷ 1.4')
-        # irreducible floor sqrt(1-corr^2) for Std (corr on >30 set)
-        floor = np.sqrt(np.clip(1 - np.array(out['Std']['corrG'])**2, 0, 1))
-        ax.plot(ETAS, floor, ':', color='k', label='dir. floor √(1−corr²)')
-        ax.set_xlabel('η'); ax.set_ylabel('relative RMS error'); ax.set_title(ttl)
-        ax.legend(fontsize=7, ncol=2); ax.grid(alpha=0.3); ax.set_ylim(0, None)
-    fig.suptitle('Renormalizing δg_MF by the overshoot: how much error is "just the scale"?',
-                 fontsize=12)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    for ax, m, ttl in [(axes[0], 'Std', 'Std  (no KKT)'),
+                       (axes[1], 'Std+edge', 'Std+edge  (edge-KKT)')]:
+        o = out[m]
+        ax.plot(ETAS, o['rawG'], '-o', color='#888888', label='raw MF')
+        ax.plot(ETAS, o['reNG'], '-s', color='#1f77b4', label='÷ c(η)  (per-η optimal)')
+        ax.plot(ETAS, o['r14G'], '-^', color='#d62728', label='÷ 1.4  (universal)')
+        floor = np.sqrt(np.clip(1 - np.array(o['corrG'])**2, 0, 1))
+        ax.plot(ETAS, floor, ':', color='k', lw=2, label='directional floor  √(1−corr²)')
+        ax.set_xlabel('η'); ax.set_title(ttl); ax.grid(alpha=0.3)
+        ax.legend(fontsize=9); ax.set_ylim(0, None)
+    axes[0].set_ylabel('relative RMS error  ||δg_MF(/c) − δg_sim|| / ||δg_sim||\n'
+                       '(well-shaped triangles, min∠ > 30°)')
+    fig.suptitle('Renormalizing δg_MF by the overshoot factor — Std vs edge-KKT', fontsize=12)
     plt.tight_layout()
     p = os.path.join(PLOTS, 'dg_renormalize_test.png')
     plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
