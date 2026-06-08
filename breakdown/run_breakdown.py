@@ -1,11 +1,18 @@
 """
 PBC simulation vs MF methods — per-triangle W comparison.
 
-W_mf[s, :, k] = non-affine response per unit macroscopic metric change e_k.
-W_sim[s, :, α] = actual non-affine response per unit applied strain δ for mode α.
+W_sim[s, :, α] = actual non-affine metric change of triangle s per unit applied
+strain δ for mode α (= (g_def - g_aff)/δ from the sparse linear solve).
 
-To compare them: W_mf_pred[s, :, α] = W_mf[s] @ G̅_α
+W_mf[s, :, k] from D2C theory is a *stiffness correction*, not a strain response:
+C_s^eff = A_s (I + W_s)².  The local strain is ε_s ≈ (I + W_s)^{-1} ε̄ ≈ ε̄ − W_s ε̄,
+so the non-affine metric change predicted by D2C is:
+
+  W_mf_pred[s, :, α] = -W_mf[s] @ G̅[:,α]   (note the minus sign!)
+
 where G̅[:,α] = mean_s(Δg_aff(s,α)) is the mean affine metric change per unit δ.
+Soft triangles (long bonds) have W_mf < 0 (lower stiffness) and W_sim > 0 (deform
+more than affine), confirming the sign convention.
 """
 import sys, os, time
 sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
@@ -112,9 +119,11 @@ def run_mf(mesh, area_weighted, use_kkt):
     # W_np (N_tri,9) → W_mf (N_tri,3,3): W_mf[s,i,k]=response of metric i to MF mode k
     W_mf = W_np.reshape(N_tri, 3, 3)
 
-    # Project to strain basis: W_mf_pred[s,:,α] = W_mf[s] @ G̅[:,α]
+    # D2C W measures stiffness deviation: C_s = A_s(I+W_s)².
+    # Non-affine local strain correction ≈ -(I+W_s - I)ε̄ = -W_s ε̄, hence the
+    # predicted non-affine metric change is -W_mf @ Gbar (note the sign).
     Gbar = compute_Gbar_mat(mesh)               # (3, 3)
-    W_mf_pred = np.einsum('sik,ka->sia', W_mf, Gbar)  # (N_tri, 3, 3)
+    W_mf_pred = -np.einsum('sik,ka->sia', W_mf, Gbar)  # (N_tri, 3, 3)
 
     # Elastic constants
     W_t = torch.as_tensor(W_np, dtype=torch.float64)

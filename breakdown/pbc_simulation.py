@@ -205,14 +205,16 @@ def extract_pbc_elastic_tensor(mesh, delta=1e-3):
         U[alpha] = v.ravel()
 
     # Affine elastic tensor
-    # C_affine[alpha, beta] = (1/Vol) * Σ_b (R^T eps_alpha R)(R^T eps_beta R) / |R|²
+    # C_affine[alpha, beta] = (1/Vol) * Σ_b stretch_a * stretch_b
+    # where stretch = (R·ε·R)/|R|  (physical bond extension per unit strain)
+    bonds_l = np.sqrt(bonds_l2)
     C_aff = np.zeros((n_modes, n_modes))
     for alpha, eps_a in enumerate(eps_modes):
         for beta, eps_b in enumerate(eps_modes):
             eps_a_R = bonds_R @ eps_a.T
             eps_b_R = bonds_R @ eps_b.T
-            stretch_a = (bonds_R * eps_a_R).sum(1) / bonds_l2
-            stretch_b = (bonds_R * eps_b_R).sum(1) / bonds_l2
+            stretch_a = (bonds_R * eps_a_R).sum(1) / bonds_l
+            stretch_b = (bonds_R * eps_b_R).sum(1) / bonds_l
             C_aff[alpha, beta] = stretch_a @ stretch_b / Vol
 
     # Non-affine correction: C[alpha,beta] -= (1/Vol) * f_alpha · u_beta
