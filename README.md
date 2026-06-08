@@ -1,2 +1,2 @@
-# MATERIALIZE
- Just another PINN. 
+# building PINN
+ Just another PINN.

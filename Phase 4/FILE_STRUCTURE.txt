@@ -1,0 +1,120 @@
+Phase 4/
+    PLAN.md                            # Detailed implementation plan
+    README.md                          # Phase 4 overview + results
+
+    # ── Data Pipeline ──
+    data/
+        __init__.py
+        topology_generators.py         # ALL lattice/mesh generators:
+                                       #   Category 1 (hex family): uses existing D2C functions
+                                       #   Category 2 (random):
+                                       #     - generate_blue_noise_network(size, min_dist)
+                                       #     - generate_clustered_network(size, n_clusters, std)
+                                       #     - generate_gradient_density_network(size, ratio)
+                                       #   Category 3 (lattices with basis, triangulated):
+                                       #     - generate_kagome_lattice(size)
+                                       #     - generate_square_lattice(size)
+                                       #     - generate_snub_square_lattice(size)
+                                       #     - generate_truncated_hex_lattice(size)
+                                       #     - generate_cairo_lattice(size)
+                                       #   Category 4 (non-triangulated + soft edges):
+                                       #     - generate_honeycomb_lattice(size, k_soft_ratio)
+                                       #     - triangulate_polygon_fan(vertices)
+                                       #     - triangulate_polygon_center(vertices)
+                                       #     - regularize_non_triangulated(mesh, k_soft_ratio)
+        graph_utils.py                 # Edge dedup, node feature init, tri->PyG conversion
+                                       #   - deduplicate_edges(simplices) -> edge_index, tri_edge_map
+                                       #   - init_node_features(pos, edge_index, edge_attr)
+                                       #   - triangulation_to_pyg(tri, rigidities, rest_lengths)
+        generate_dataset.py            # Main data generation script
+                                       #   - generate_single_sample(...)
+                                       #   - generate_dataset(config, n_workers)
+        dataset.py                     # PyG InMemoryDataset class
+                                       #   - ElasticMeshDataset(InMemoryDataset)
+        configs/
+            default_data_config.yaml   # Topology list, size list, param distributions
+
+    # ── GNN Forward Surrogate ──
+    gnn/
+        __init__.py
+        model.py                       # ForwardGNN class
+                                       #   - 4x NNConv(64, 64) with BatchNorm + residual
+                                       #   - Set2Set global pooling
+                                       #   - MLP readout: 128 -> 64 -> 32 -> 1
+                                       #   - Optional multi-task heads (nu, E, tensor)
+        train.py                       # Training loop
+                                       #   - AdamW, cosine LR, gradient clipping
+                                       #   - Logging to tensorboard/wandb
+                                       #   - Early stopping on val loss
+        evaluate.py                    # Test evaluation + error analysis
+                                       #   - Per-topology-class breakdown
+                                       #   - Scatter plot: predicted vs true nu
+                                       #   - Error vs mesh size, error vs topology
+        configs/
+            default_gnn_config.yaml
+
+    # ── CVAE Inverse ──
+    cvae/
+        __init__.py
+        encoder.py                     # CVAEEncoder(nn.Module)
+                                       #   - NNConv backbone (shared arch with GNN)
+                                       #   - Set2Set pool + nu_target embedding
+                                       #   - -> (mu, logvar), latent_dim=32
+        decoder.py                     # CVAEDecoder(nn.Module)
+                                       #   - Geometric edge features only (no k, l0)
+                                       #   - Node init: geom + z_broadcast + nu_embed
+                                       #   - NNConv layers -> edge MLP -> softplus
+                                       #   - Outputs: per-edge (k, l0)
+                                       #   - edge_mask: freezes soft regularization edges
+        model.py                       # FullCVAE: encoder + decoder + loss
+                                       #   - L_recon (log-space for k) + beta*L_KL + gamma*L_physics
+                                       #   - Beta warmup: 0->1 over 50 epochs
+                                       #   - Design variable masking (rig/rl/both)
+        train.py                       # CVAE training script
+                                       #   - Physics loss via GNN surrogate (fast) then actual solver
+        sample.py                      # Inference: sample z ~ N(0,I), decode
+        refine.py                      # Optional L-BFGS refinement of CVAE output
+                                       #   - Uses Phase 2 differentiable solver
+                                       #   - Expected: 5-10 steps vs 40-60 from random
+        configs/
+            default_cvae_config.yaml
+
+    # ── Interpretability ──
+    interpret/
+        __init__.py
+        saliency.py                    # Gradient + integrated-gradient saliency
+                                       #   - compute_edge_saliency(model, data)
+                                       #   - integrated_gradient_saliency(model, data, baseline, steps)
+        embeddings.py                  # Node embedding analysis
+                                       #   - extract_node_embeddings(model, data)
+                                       #   - umap_projection(embeddings, color_by)
+                                       #   - kmeans_node_clustering(embeddings, k)
+        subgraph_analysis.py           # Subgraph activation (CNN motif analogy)
+                                       #   - find_top_activated_subgraphs(model, dataset, layer, dim)
+                                       #   - cluster_subgraph_motifs(subgraphs)
+        gnn_explainer.py               # GNNExplainer wrapper
+                                       #   - explain_prediction(model, data)
+                                       #   - compare_with_saliency(explanation, saliency)
+        visualize.py                   # Unified lattice visualization
+                                       #   - visualize_edge_scores(pos, edges, scores, ...)
+                                       #   - visualize_node_clusters(pos, edges, labels, ...)
+                                       #   - Uses LineCollection (same as sweep_utils.plot_mesh)
+
+    # ── Tests ──
+    tests/
+        test_topology_generators.py    # Verify all generators -> valid meshes
+                                       #   - Check simplices are valid indices
+                                       #   - Check edge dedup is consistent
+                                       #   - Check soft-edge meshes have correct k ratios
+                                       #   - Verify honeycomb has coordination 3 (real edges only)
+        test_data_pipeline.py          # Test data gen + PyG dataset loading
+        test_gnn.py                    # Test GNN forward pass shapes
+        test_cvae.py                   # Test CVAE encode/decode/loss
+        test_interpret.py              # Test saliency, embedding extraction
+
+    # ── Shared ──
+    utils.py                           # Logging, config loading, seeding, device setup
+
+    # ── Outputs (gitignored) ──
+    checkpoints/                       # Saved model weights
+    outputs/                           # Plots, embeddings, analyses
