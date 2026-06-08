@@ -246,6 +246,10 @@ class ElasticSolver(nn.Module):
             dict: elastic_tensor (6,), poisson, young, per_triangle (N,6),
                   bare (N,5), W (N,9)
         """
+        rigidities = rigidities.double()
+        if rest_lengths is not None:
+            rest_lengths = rest_lengths.double()
+
         vx = self.edge_vecs[:, :, 0]
         vy = self.edge_vecs[:, :, 1]
 
