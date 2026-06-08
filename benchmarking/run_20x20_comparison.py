@@ -34,7 +34,7 @@ SIM_CACHE_DF  = os.path.join(os.path.dirname(__file__), 'sim20_df_data.npz')
 SIM_CACHE_TF  = os.path.join(os.path.dirname(__file__), 'sim20_tf_data.npz')
 MF_CACHE_DF   = os.path.join(os.path.dirname(__file__), 'mf20_df_data.npz')
 MF_CACHE_TF   = os.path.join(os.path.dirname(__file__), 'mf20_tf_data.npz')
-OUT           = os.path.join(os.path.dirname(__file__), 'comparison_20x20.png')
+OUT           = os.path.join(os.path.dirname(__file__), 'new', 'comparison_20x20.png')
 
 CASES = [
     (False, False, 'Std'),
