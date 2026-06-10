@@ -134,6 +134,15 @@
       (dilation resp. to e_yy, shear resp. to e_xy), spatial maps + value distributions.
       All corr >= 0.999 across all three networks and all three macro directions.
 
+- [ ] **Standardize visualizations.** The verification plots (`verify_solver_sweep.py`,
+      `verify_solver_final.py`, `verify_soft_region.py`, `verify_soft_circles_50x50*.py`,
+      etc.) have each grown their own ad-hoc layout, color scales, naming, and figure sizes.
+      Factor out a shared plotting module (e.g. `breakdown/plot_utils.py`) for the recurring
+      panel types -- sim-vs-solver parity scatter, per-triangle spatial maps (shared
+      colorbar/colormap conventions), response-distribution histograms, k/edge-length
+      diagnostic panels -- so new sim-vs-solver tests reuse one consistent visual language
+      instead of copy-pasted plotting code.
+
 ## Open questions / later
 - [ ] Cluster-radius selection: tie radius to a measured local correlation length
       (cheap for geometric, ~4–6 for strong rigidity contrast); or adaptive per-triangle.
