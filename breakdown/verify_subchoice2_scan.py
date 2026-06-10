@@ -10,6 +10,9 @@ Reports per-triangle dg corr / overshoot vs the PBC simulation (single uniaxial 
 import os, sys
 import numpy as np
 import scipy.sparse.linalg as spla
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
@@ -87,16 +90,50 @@ def vd(eta, a):
 def run(name, builder):
     print(f"\n=== {name} ===  per-triangle dg corr / overshoot vs sim  (dA = A_s - [A] S_s/[S_s])")
     print(f"{'eta':>5} | {'none corr':>9} {'over':>5} | {'edge corr':>9} {'over':>5} | {'all corr':>9} {'over':>5}")
+    res = {c: {'corr': [], 'over': []} for c in ('none', 'edge', 'all')}
     for eta in ETAS:
         A3, S, ev, sx, nn, kkt, F, simv = builder(eta)
         row = []
         for cfg in ('none', 'edge', 'all'):
             dg = solve_AmB(A3, S, ev, sx, nn, kkt, cfg, F)
-            row.append(metrics(dg, simv))
+            c, o = metrics(dg, simv)
+            res[cfg]['corr'].append(c); res[cfg]['over'].append(o); row.append((c, o))
         print(f"{eta:>5.1f} | {row[0][0]:>9.4f} {row[0][1]:>5.2f} | {row[1][0]:>9.4f} {row[1][1]:>5.2f} | "
               f"{row[2][0]:>9.4f} {row[2][1]:>5.2f}", flush=True)
+    return res
+
+
+def main():
+    cases = [('GEOMETRIC disorder (k=1)', geometric),
+             (f'VD rigidity contrast a={VD_CONTRAST}', lambda e: vd(e, VD_CONTRAST))]
+    results = [(name, run(name, b)) for name, b in cases]
+
+    style = {'none': ('#d62728', '-s', 'none (area-wtd MF)'),
+             'edge': ('#ff7f0e', '-^', 'edge KKT'),
+             'all':  ('#1f77b4', '-o', 'edge + angle (all)')}
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9), squeeze=False)
+    for i, (name, res) in enumerate(results):
+        for j, (key, ttl, lo, hi) in enumerate([('corr', 'per-triangle δg corr vs sim', -0.2, 1.05),
+                                                ('over', 'overshoot  ‖δg‖/‖δg_sim‖', 0.9, 1.35)]):
+            ax = axes[i, j]
+            for cfg in ('none', 'edge', 'all'):
+                col, mk, lab = style[cfg]
+                ax.plot(ETAS, res[cfg][key], mk, color=col, ms=5, label=lab)
+            if key == 'corr':
+                ax.axhline(1.0, color='gray', lw=0.6, ls=':')
+            else:
+                ax.axhline(1.0, color='gray', lw=0.6, ls=':')
+            ax.set_ylim(lo, hi); ax.set_xlabel('η'); ax.set_title(f'{name}\n{ttl}', fontsize=10)
+            ax.grid(alpha=0.3)
+            if i == 0 and j == 0:
+                ax.legend(fontsize=8, loc='lower left')
+    fig.suptitle('Area-weighted χ-elimination  δA = A_s − [A]·S_s/[S_s]  (the (A−B) form) vs simulation',
+                 fontsize=12)
+    plt.tight_layout()
+    p = os.path.join(HERE, 'plots', 'dg_subchoice2_scan.png')
+    plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
+    print('\nsaved', p)
 
 
 if __name__ == '__main__':
-    run('GEOMETRIC disorder (k=1)', geometric)
-    run(f'VD rigidity contrast a={VD_CONTRAST}', lambda e: vd(e, VD_CONTRAST))
+    main()
