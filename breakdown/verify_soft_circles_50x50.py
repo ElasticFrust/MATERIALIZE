@@ -133,7 +133,7 @@ def main():
         ('Poisson Delaunay (N*N pts)', lambda: build_poisson_geometry(N, seed=0)),
     ]
 
-    fig, axes = plt.subplots(3, 4, figsize=(18, 12))
+    fig, axes = plt.subplots(3, 6, figsize=(26, 12))
     for row, (label, builder) in enumerate(cases):
         t0 = time.time()
         geo = builder()
@@ -152,21 +152,41 @@ def main():
               f"n_soft_tri={len(soft_tris)}, corr={corr:.5f}, rmse_all={rmse:.4e}, "
               f"rmse_soft_tri={rmse_soft:.4e}  [{time.time()-t0:.1f}s]", flush=True)
 
+        cen = geo['pts'][geo['simplices']].mean(axis=1)
+
+        # column 0: original per-triangle rigidity k distribution (mean of the 3 edge k's)
         ax = axes[row, 0]
+        k_tri = geo['tri_k'].mean(axis=1)
+        sc = ax.scatter(cen[:, 0], cen[:, 1], c=k_tri, cmap='viridis', s=6)
+        for c in centres:
+            ax.add_patch(plt.Circle(c, r, facecolor='none', edgecolor='red', lw=1.5))
+        ax.set_title(f'{label}\nbond rigidity k (mean per tri)', fontsize=9)
+        ax.set_aspect('equal'); plt.colorbar(sc, ax=ax, fraction=0.046)
+
+        # column 1: edge-length distribution
+        ax = axes[row, 1]
+        lengths = np.sqrt(geo['actual_len2']).ravel()
+        if lengths.max() - lengths.min() < 1e-9:
+            ax.hist(lengths, bins=1, range=(lengths.min() - 0.01, lengths.max() + 0.01), color='#555')
+        else:
+            ax.hist(lengths, bins=60, color='#555')
+        ax.set_title('edge length distribution', fontsize=9)
+        ax.set_xlabel('edge length'); ax.set_ylabel('count')
+
+        ax = axes[row, 2]
         ax.scatter(flat_s.ravel(), flat_i.ravel(), s=2, alpha=0.2, color='#1f77b4', label='all tri')
         ax.scatter(flat_s[soft_tris].ravel(), flat_i[soft_tris].ravel(), s=10, color='#d62728',
                    label='soft-region tri', zorder=3)
         lo, hi = flat_s.min(), flat_s.max()
         ax.plot([lo, hi], [lo, hi], 'k--', lw=1)
         ax.set_xlabel('sim  W3(s)'); ax.set_ylabel('intrinsic solver  W3(s)')
-        ax.set_title(f'{label}\ncorr={corr:.4f}'); ax.legend(fontsize=7); ax.grid(alpha=0.3)
+        ax.set_title(f'corr={corr:.4f}'); ax.legend(fontsize=7); ax.grid(alpha=0.3)
 
-        cen = geo['pts'][geo['simplices']].mean(axis=1)
         dil_sim = Wsim[:, 0, 0] + Wsim[:, 2, 0]
         dil_int = Wint[:, 0, 0] + Wint[:, 2, 0]
         for col, (vals, ttl) in enumerate([(dil_sim, 'sim: dilation resp. to e_xx'),
                                             (dil_int, 'intrinsic: dilation resp. to e_xx'),
-                                            (dil_sim - dil_int, 'sim - intrinsic')], start=1):
+                                            (dil_sim - dil_int, 'sim - intrinsic')], start=3):
             ax = axes[row, col]
             vmax = np.abs(vals).max()
             sc = ax.scatter(cen[:, 0], cen[:, 1], c=vals, cmap='RdBu_r', vmin=-vmax, vmax=vmax, s=6)
