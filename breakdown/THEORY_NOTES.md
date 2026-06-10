@@ -82,3 +82,109 @@ the correlation length is longest.
   right environment (actual local neighbours)**.
 - A cluster forward model is a set of small, **non-iterative, loading-independent, local**
   linear solves (one per triangle, embarrassingly parallel) — see `Q1` below.
+
+## 5. The metric description IS complete — the only error is the zero-mean constraint
+
+The cluster works in node (configuration) space. The open question was whether the
+**metric** description can be made exact by imposing the right conditions on `W`, since
+configuration and metric descriptions should be equivalent whenever the Gauss–Codazzi
+(here just Gauss, i.e. discrete curvature) constraints hold. The answer is **yes**, and the
+single thing that was breaking it is the normalisation constraint `⟨δg⟩ = 0`.
+
+### 5.1 range(B) and ker(C)
+Work in the space of per-triangle metric fields (`3·n_tri` numbers: `δg11, δg12, δg22` per
+triangle).
+- **`B`** maps a node-displacement field `u` to the per-triangle non-affine metric change it
+  induces, `δg = B u` (with `δg_s = 2 sym(δU_s · E_ref,s⁻¹)`). So **`range(B)` = all metric
+  fields that some actual node motion can produce** — the *compatible / realisable* fields.
+  A field outside `range(B)` cannot be drawn as a deformed mesh: it carries discrete
+  Gaussian curvature (disclinations), `inc(δg) ≠ 0`.
+- **`C = [edge ; curvature ; mean]`** is the stack of constraint operators imposed in the
+  metric-KKT route; **`ker(C)` = all metric fields satisfying every imposed constraint** —
+  the subspace the KKT solve is confined to. The goal was `ker(C) = range(B)`.
+
+The earlier rank test found `dim ker(C) = dim range(B)` (both 126 at `N=8`) — **same
+dimension, but not the same subspace**. The mean rows tilt `ker(C)` away from `range(B)`.
+
+### 5.2 Isolating the culprit (test_mean_isolation.py)
+Change exactly one thing between two solves on the *same* compatible subspace
+(`δg = B u`), with the *same* loading (the simulation's affine spring force):
+- **V_A (the fix):** minimise the per-triangle metric energy `½ Σ_s δg_sᵀ H_s δg_s` over
+  `range(B)`, **no mean constraint**. `H_s = Σ_edges (1/4l²) q qᵀ`, `q=[vx²,2vxvy,vy²]`.
+- **V_B:** identical, but add only `(Mean·B) u = 0` via a Lagrange multiplier.
+
+Result on the stored `N=40` data (one trial per η):
+
+| η | V_A corr / overshoot | V_B (+mean) corr | V_B, spatial mean removed | sim ‖⟨δg⟩‖ |
+|---|---|---|---|---|
+| 0.1 | **0.9997 / 1.000** | 0.759 | 0.759 | 8.3e-2 |
+| 0.2 | **0.9999 / 1.000** | 0.688 | 0.688 | 3.8e-1 |
+| 0.3 | **0.9998 / 1.000** | 0.456 | 0.456 | 1.2e0 |
+| 0.4 | **0.9999 / 1.000** | −0.300 | −0.300 | 5.1e0 |
+| 0.5 | **1.0000 / 1.000** | 0.652 | 0.652 | 4.9e1 |
+
+So **V_A reproduces the simulation exactly at every η, including large η** (corr ≈ 1,
+overshoot 1.000). Adding *only* `⟨δg⟩ = 0` collapses it; and removing the spatial mean
+afterward does **not** recover it (V_B with mean removed ≈ V_B) — the damage is not a
+uniform offset, the constraint forces an entirely different compatible field. We are
+therefore certain the zero-mean/normalisation condition is the failure.
+
+### 5.3 How V_A is implemented *without* the mean — and where the loading comes from
+The original single-site derivation (§1) *needed* `⟨δg⟩ = 0`: eliminating its multiplier is
+what produced `χ = −⟨A⟩Δg` (every triangle carries the mean stress) and hence
+`δg = −A⁻¹δA·Δg`. V_A is **not** that solve. It does not embed a triangle in an average
+medium and never introduces a mean multiplier. Instead it is the *actual* global
+equilibrium written in metric space:
+- the field is parametrised as `δg = B u` (compatible by construction), and
+- the macroscopic load enters as a **forcing term** — the affine residual spring force
+  `f_aff` — not as a constraint on the metric average.
+
+Concretely V_A solves `K_m u = −2 f_aff` on the free DOF, with `K_m = Bᵀ blkdiag(H_s) B`;
+on the torus `K_m = 2K` so this is identical to the node-space equilibrium
+`K u = −f_aff`. **The macroscopic state is fixed by the displacement gradient / periodic
+boundary (a configuration quantity), not by the metric mean.** That is the whole point: the
+correct macroscopic condition lives on the *gradient* `F` (periodicity), and `⟨δg⟩` is then
+free to be whatever it is.
+
+### 5.4 "But how do you enforce that ⟨δg⟩ ≠ 0? Is a self-consistent calculation needed?"
+We enforce **nothing** on `⟨δg⟩`. We enforce (a) compatibility (`δg ∈ range B`) and (b) the
+periodic/gradient loading. `⟨δg⟩` comes out nonzero on its own. No self-consistent iteration
+is required for V_A — it is a single linear solve (and the cluster is its local truncation).
+
+The "self-consistency" the single-site MF was chasing (average-medium closure) is the wrong
+closure. If one insisted on staying in a *metric-only*, per-triangle-`W` language, the
+correct closure is **not** `⟨δg⟩ = 0` but the nonlinear area/`det` identity of §5.5, which
+couples triangles at second order. Working in node space (cluster, or V_A) makes that
+closure automatic, which is why no iteration is needed.
+
+### 5.5 The area question — it IS the area requirement, truncated to first order
+Claim to check (user): the area computed from the global affine metric must equal the sum of
+the per-triangle deformed areas — is that just the mean constraint, or is it an
+expansion needing higher order? **Numerically the exact identity holds:**
+
+`Σ_s A_ref,s · det(F_s) = det(F) · A_ref`  (rel. error 0 to η=0.4, 1.5e-4 at η=0.5),
+
+where `det(F_s) = √det(g_def,s) = √det(I + Δg + δg_s)`. This is a genuine conservation law —
+total area is set by `det(F)` (the periodic boundary), however the non-affine fluctuation
+redistributes it among triangles.
+
+Now expand `det(F_s)` in the strain:
+`det(F_s) = √det(I + Δg + δg_s) ≈ 1 + ½ tr(Δg + δg_s) + O(strain²)`.
+Summing with weights `A_ref,s` and using `det(F)·A_ref ≈ A_ref(1 + ½tr Δg)`:
+
+  **first order ⇒ `Σ_s A_ref,s tr(δg_s) = 0`, i.e. the (trace part of the) `⟨δg⟩ = 0`
+  constraint.**
+
+So the linear zero-mean constraint is *exactly the first-order truncation of the exact area
+requirement*. But the metric `δg` the simulation actually produces is the full nonlinear
+object, whose area-weighted trace mean is the **second-order** term. Verified: the
+area-weighted `⟨tr δg⟩` scales as `δ²` (strain amplitude `δ=1e-3`): ratio `⟨tr δg⟩/δ²` =
+0.08, 0.35, 1.0, 3.7 for η = 0.1–0.4 (O(1)·δ², genuinely second order; η=0.5 leaves the
+small-strain regime).
+
+**Resolution (your last clause is correct):** the two area framings are the same — it is the
+area requirement — *and* `⟨δg⟩ ≠ 0` precisely because the linear theory truncates an
+expansion. The single-site MF is a linear-response theory, so it imposes the first-order
+form `⟨δg⟩ = 0`, which **over-constrains** the true nonlinear field and is what breaks it.
+Imposing periodicity on `F` (V_A / cluster) keeps the exact nonlinear `det(F_s)` law without
+ever truncating, so it is correct to all orders.
