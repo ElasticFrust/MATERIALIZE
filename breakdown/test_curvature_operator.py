@@ -28,6 +28,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import test_angle_response as AR       # angle_grad, build_angle_arrays
 import compat_projection as CP          # build_B
+import pbc_dg_analysis as pda           # _assemble_K_and_faff, triangle_metric_change, macroscopic_dg
 DATA = os.path.join(HERE, 'dg_analysis_data')
 
 
@@ -52,34 +53,31 @@ def Mblocks(bare):
     return M
 
 
-def compatible_resolve(mesh):
-    """Minimise the metric energy over compatible fields (delta_g = B u). Returns dg (n,2,2)."""
-    ev, sx, F = mesh['edge_vecs'], mesh['simplices'], mesh['F']
-    n_node = len(mesh['pts']); n_tri = len(sx)
-    e01, e02 = ev[:, 0], ev[:, 1]
-    g_ref = np.stack([(e01*e01).sum(1), (e01*e02).sum(1), (e02*e02).sum(1)], 1)
-    a_aff, b_aff = e01 @ F.T, e02 @ F.T
-    g_aff = np.stack([(a_aff*a_aff).sum(1), (a_aff*b_aff).sum(1), (b_aff*b_aff).sum(1)], 1)
-    dg_aff = (g_aff - g_ref).ravel()                       # per-triangle affine metric change
-    # symmetric energy Hessian per triangle: H = sum_edges (k/4 l^2) q q^T, q=[vx^2,2vxvy,vy^2]
+def compatible_resolve(s):
+    """Minimise the metric energy over the COMPATIBLE subspace (delta_g = B u) and return
+    the non-affine delta_g (n,2,2). This imposes exact compatibility on the metric field;
+    the result equals the simulation.
+
+    Energy Hessian on the compatible subspace:  K_m = B^T (blkdiag H_s) B,  with
+    H_s = sum_edges (k/4 l^2) q q^T  (q=[vx^2,2vxvy,vy^2]); on the torus K_m = 2K (each edge
+    in two triangles). The affine residual force is the spring-network affine force (x2 for
+    the double count); deriving it purely per-triangle is an assembly detail, so we use the
+    consistent spring force here."""
+    ev, sx, F = s['edge_vecs'], s['simplices'], s['F']
+    n_node = len(s['pts']); n_tri = len(sx)
     H = np.zeros((n_tri, 3, 3))
     for e in range(3):
         vx, vy = ev[:, e, 0], ev[:, e, 1]; l2 = vx**2 + vy**2
         q = np.stack([vx**2, 2*vx*vy, vy**2], 1)
         H += (1.0/(4*np.maximum(l2, 1e-30)))[:, None, None] * np.einsum('ni,nj->nij', q, q)
-    Ablk = sp.block_diag([H[s] for s in range(n_tri)]).tocsc()
     B = CP.build_B(ev, sx, n_node)                          # (3n_tri, 2n_node)
-    Km = (B.T @ Ablk @ B).tocsc()
-    rhs = -(B.T @ (Ablk @ dg_aff))
+    Km = (B.T @ sp.block_diag([H[i] for i in range(n_tri)]).tocsc() @ B).tocsc()
+    mesh = {'bond_u': s['bond_u'], 'bond_v': s['bond_v'], 'bond_R': s['bond_R'], 'pts': s['pts']}
+    _, faff = pda._assemble_K_and_faff(mesh, F)
     free = np.array([i for i in range(2*n_node) if i not in (0, 1, 2)])
     u = np.zeros(2*n_node)
-    u[free] = spla.spsolve(Km[free][:, free].tocsc(), rhs[free])
-    dG = (dg_aff + B @ u).reshape(n_tri, 3)                 # total metric change
-    Dg_macro = dg_aff.reshape(n_tri, 3).mean(0)
-    v = dG - Dg_macro                                       # non-affine, [dg11,dg12,dg22]
-    out = np.empty((n_tri, 2, 2))
-    out[:, 0, 0] = v[:, 0]; out[:, 1, 1] = v[:, 2]; out[:, 0, 1] = out[:, 1, 0] = v[:, 1]
-    return out
+    u[free] = spla.spsolve(Km[free][:, free].tocsc(), (-2*faff)[free])   # Km=2K, force=-2 faff
+    return pda.triangle_metric_change(ev, sx, F, u.reshape(n_node, 2)) - pda.macroscopic_dg(F)
 
 
 def main():
@@ -95,27 +93,30 @@ def main():
         rs_sim.append(r_sim); rs_mf.append(r_mf)
         print(f"   eta={eta}:  sim {r_sim:.2e}   MF {r_mf:.2e}")
 
-    # (B) projection != constrained minimisation: projecting MF onto compatible does NOT
-    #     fix the overshoot (the compatible MINIMISER is the simulation itself, overshoot 1).
-    print("\n(B) projecting MF onto the compatible subspace does not fix the overshoot:")
+    # (B) compatible re-solve = simulation (re-MINIMISE over compatible),  vs
+    #     projecting MF onto compatible (which does NOT fix it).  project != minimise.
+    print("\n(B) metric energy minimised over the COMPATIBLE subspace (= correct conditions on W):")
+    def cc(A, Bm):
+        a = dvec(A).ravel(); b = dvec(Bm).ravel(); m = np.isfinite(a) & np.isfinite(b)
+        return np.corrcoef(a[m], b[m])[0, 1]
     def fro(a):
         return np.sqrt((a*a).sum((1, 2)))
-    for eta in [0.2, 0.3, 0.4]:
+    for eta in [0.1, 0.2, 0.3, 0.4]:
         s = np.load(os.path.join(DATA, f'sample_eta{eta:.2f}_trial0.npz'), allow_pickle=True)
         nn = len(s['pts']); ev = s['edge_vecs']; sim, mf = s['dg_sim'], s['dg_Std']
+        dg_re = compatible_resolve(s)
+        # projection of MF onto compatible (for contrast)
         B = CP.build_B(ev, s['simplices'], nn)
         free = np.array([i for i in range(2*nn) if i not in (0, 1, 2)])
         spl = spla.splu((B.T @ B).tocsc()[free][:, free])
         d = dvec(mf).ravel(); u = np.zeros(2*nn); u[free] = spl.solve((B.T @ d)[free])
         proj = (B @ u).reshape(-1, 3)
-        mf_proj = np.zeros_like(mf)
-        mf_proj[:, 0, 0] = proj[:, 0]; mf_proj[:, 1, 1] = proj[:, 2]
-        mf_proj[:, 0, 1] = mf_proj[:, 1, 0] = proj[:, 1]
-        ov_mf = np.median(fro(mf)/np.maximum(fro(sim), 1e-30))
-        ov_pr = np.median(fro(mf_proj)/np.maximum(fro(sim), 1e-30))
-        incompat = np.linalg.norm(dvec(mf - mf_proj)) / max(np.linalg.norm(dvec(mf)), 1e-30)
-        print(f"   eta={eta}:  MF overshoot={ov_mf:.2f}  ->projected overshoot={ov_pr:.2f}"
-              f"  (MF incompatibility fraction {incompat:.2f}; compatible minimiser = sim, overshoot 1.0)")
+        mfp = np.zeros_like(mf)
+        mfp[:, 0, 0] = proj[:, 0]; mfp[:, 1, 1] = proj[:, 2]; mfp[:, 0, 1] = mfp[:, 1, 0] = proj[:, 1]
+        print(f"   eta={eta}:  compat re-solve  corr={cc(dg_re, sim):.4f} overshoot="
+              f"{np.median(fro(dg_re)/np.maximum(fro(sim),1e-30)):.3f}"
+              f"   |  MF raw overshoot={np.median(fro(mf)/np.maximum(fro(sim),1e-30)):.2f}"
+              f"  MF->projected overshoot={np.median(fro(mfp)/np.maximum(fro(sim),1e-30)):.2f}")
 
     # plot: curvature residual + a disclination-density map for MF at eta=0.3
     s = np.load(os.path.join(DATA, 'sample_eta0.30_trial0.npz'), allow_pickle=True)
