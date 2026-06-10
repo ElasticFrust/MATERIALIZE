@@ -95,6 +95,25 @@
       inverse design and Phase 4 GNN labelling can use it. No new hyperparameters beyond
       the cluster radius.
 
+- [ ] **Implement and verify varying reference metric and residual stresses.** All tests so
+      far drive the solver with `rest_lengths` = the actual (current-configuration) edge
+      length, i.e. zero intrinsic residual stress (bare = actual reference metric). Extend
+      to per-edge `rest_lengths` != actual edge lengths (a non-trivial reference metric
+      g0(s) varying per triangle/bond), which induces residual (pre-)stress in the
+      unstrained network. Verify the forward solver's per-triangle response W3(s) and
+      homogenised ν/E against the PBC simulation for: (a) a spatially uniform rest-length
+      mismatch (uniform residual stress/pressure), and (b) a spatially varying reference
+      metric (e.g. localized inclusions or a smooth field of rest-length mismatches),
+      including combinations with rigidity disorder.
+
+- [ ] **Periodic complex structures.** Extend the sim-vs-solver verification beyond
+      triangulated lattices/Poisson-Delaunay to other periodic network topologies relevant
+      to metamaterial design (e.g. honeycomb / kagome-derived triangulations, multi-motif
+      unit cells, networks with engineered hierarchical or composite unit cells). Confirm
+      the periodic bookkeeping (`kkt_from_tri_bond`, `_build_intrinsic_constraints`,
+      `INTRINSIC_DENSE_MAX` fallback) generalises correctly and that per-triangle response
+      and homogenised ν/E still match the PBC simulation.
+
 - [x] **Final test: 10 networks, varied structure + rigidity distributions** (not eta-disorder
       sweep, not tanh-VD) — for each, own (N, eta, seed) periodic lattice + a distinct per-bond
       rigidity distribution (uniform random, lognormal, bimodal, bimodal-checkerboard clusters,
