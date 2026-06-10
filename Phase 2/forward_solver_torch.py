@@ -51,6 +51,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+# Max #triangles for the differentiable dense intrinsic Woodbury path; larger meshes
+# fall back to the (non-differentiable) sparse saddle solve.
+INTRINSIC_DENSE_MAX = 600
+
 
 def _angle_gradient_vec(a, b):
     """∂θ(a,b)/∂(g11,g12,g22) at reference Euclidean metric. Returns 3-vector."""
@@ -298,6 +302,19 @@ class ElasticSolver(nn.Module):
                 r.append(mu); c.append(3*s+mu); d.append(float(w[s]))
         self._M_S_sp = sp.csr_matrix((d, (r, c)), shape=(3, 3*N))
 
+    def _assemble_dense_J(self, use_kkt, use_angle):
+        """Dense (M_c × 3N) constraint matrix for the differentiable intrinsic Woodbury:
+        edge and/or curvature rows on the per-triangle metric field [dg11,dg12,dg22]."""
+        import scipy.sparse as sp
+        blocks = []
+        if use_kkt and self._J_edge_sp.shape[0] > 0:
+            blocks.append(self._J_edge_sp)
+        if use_angle and self._C_curv_sp.shape[0] > 0:
+            blocks.append(self._C_curv_sp)
+        if not blocks:
+            return None
+        return torch.as_tensor(sp.vstack(blocks).toarray(), dtype=torch.float64)
+
     def forward(self, rigidities, rest_lengths=None, method='intrinsic',
                 area_weighted=None, use_kkt=None, use_angle_kkt=None):
         """Run the forward pipeline.
@@ -320,8 +337,10 @@ class ElasticSolver(nn.Module):
                             angle-Gram correction.
 
         Toggles can be turned off individually; the intrinsic path has all three ON by
-        default. NOTE: the intrinsic solve currently runs in NumPy/SciPy (no autograd through
-        the saddle, like the existing sparse-KKT path); a differentiable version is TODO(3).
+        default. The intrinsic solve uses the area-weighted χ-elimination δA=A_s−[A]·S_s/[S_s]
+        (sub-choice 2): for ≤ INTRINSIC_DENSE_MAX triangles it runs a DIFFERENTIABLE torch
+        Woodbury (edge+curvature KKT); larger meshes fall back to the NumPy sparse saddle
+        (forward-only). Both reproduce the simulation; only the dense path carries gradients.
 
         Returns:
             dict: elastic_tensor (6,), poisson, young, per_triangle (N,6),
@@ -368,14 +387,32 @@ class ElasticSolver(nn.Module):
             mean_tensor = bare.mean(dim=0)
 
         if method == 'intrinsic':
-            # Block-diagonal per-triangle metric Hessian  A3(s) = Σ_e (k/4l²) q_e q_eᵀ
-            rig_np = rigidities.detach().cpu().numpy()              # (N,3)
-            l2_np  = length2.detach().cpu().numpy()                 # (N,3)
-            fac    = rig_np / (4.0 * np.maximum(l2_np, 1e-30))      # (N,3)
-            A3 = np.einsum('ne,nei,nej->nij', fac, self._q_geom, self._q_geom)  # (N,3,3)
-            W_np = _intrinsic_solve_W(A3, self._J_edge_sp, self._C_curv_sp, self._M_S_sp,
-                                      use_kkt, use_angle_kkt, area_weighted)
-            W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
+            Ntri = bare.shape[0]
+            # area weights for the χ-elimination: w_s = S_s/[S_s] (area-weighted) or 1/N.
+            if area_weighted:
+                w_eff = self.area_weights.to(dtype=bare.dtype, device=bare.device)
+            else:
+                w_eff = torch.full((Ntri,), 1.0 / Ntri, dtype=bare.dtype, device=bare.device)
+
+            if Ntri <= INTRINSIC_DENSE_MAX:
+                # differentiable area-weighted (A−B) Woodbury + dense edge/curvature KKT, on the
+                # SYMMETRIC metric Hessian A3(s) = Σ_e (k_e/4l_e²) q_e q_eᵀ.
+                q_geom = torch.as_tensor(self._q_geom, dtype=bare.dtype, device=bare.device)  # (N,3,3)
+                fac = rigidities / (4.0 * torch.clamp(length2, min=1e-30))                    # (N,3)
+                A3 = torch.einsum('ne,nei,nej->nij', fac, q_geom, q_geom)                     # (N,3,3)
+                J3 = self._assemble_dense_J(use_kkt, use_angle_kkt)
+                if J3 is not None:
+                    J3 = J3.to(dtype=bare.dtype, device=bare.device)
+                W = _woodbury_solve_aw(A3, w_eff, J3)
+            else:
+                # large-mesh fallback: explicit-multiplier sparse saddle (NumPy, non-diff)
+                rig_np = rigidities.detach().cpu().numpy()
+                l2_np  = length2.detach().cpu().numpy()
+                fac    = rig_np / (4.0 * np.maximum(l2_np, 1e-30))
+                A3 = np.einsum('ne,nei,nej->nij', fac, self._q_geom, self._q_geom)
+                W_np = _intrinsic_solve_W(A3, self._J_edge_sp, self._C_curv_sp, self._M_S_sp,
+                                          use_kkt, use_angle_kkt, area_weighted)
+                W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
         else:
             delta    = bare - mean_tensor
             A_blocks = _batch_to_9x9(bare)
@@ -490,6 +527,50 @@ def _intrinsic_solve_W(A3_blocks, J_edge, C_curv, M_S,
         # unconstrained: A3 W3 = -A3 ⇒ W3 = -I per triangle
         W3 = np.tile(-np.eye(3), (N, 1))             # (3N,3) stacked -I blocks
     return W3.reshape(N, 9)
+
+
+def _woodbury_solve_aw(A3, w, J3=None):
+    """Differentiable area-weighted χ-elimination (sub-choice 2), in 3×3 metric space.
+
+    Solves the (A − B) system with the CORRECT area weighting
+        A3(s) W(s) − w_s Σ_s' δA(s') W(s') = −δA(s),
+        δA(s) = A3(s) − w_s·[A3]   (area-scaled, [A3]=Σ_s A3(s)),   B[s,s']=w_s δA(s'),
+    then projects onto ker J3 (edge + curvature) via the KKT Schur complement.  The 3
+    loading modes are the columns (they decouple).  Pure torch ⇒ differentiable; reduces to
+    the unweighted G&B solve when w = 1/N.  A3 is the SYMMETRIC per-triangle metric Hessian
+    A3(s)=Σ_e (k_e/4l_e²) q_e q_eᵀ (the spring energy), so W feeds _compute_actual_elastic_tensor.
+
+    Closed form:  y=A_inv δA, Vy=Σ_s δA(s)y(s) [unweighted], Sw=Σ_s w_s δA(s)A_inv(s),
+    Zc=(I−Sw)⁻¹Vy, W0(s)=−(y(s)+w_s A_inv(s) Zc).
+
+    Args: A3 (N,3,3); w (N,) area weights summing to 1; J3 (M_c, 3N) or None.
+    Returns: W (N,9), layout [3*loc+k] = ∂δg_loc/∂Δg_k.
+    """
+    N = A3.shape[0]
+    eps = 1e-12 * A3.abs().max()
+    I3 = torch.eye(3, dtype=A3.dtype, device=A3.device)
+    dA = A3 - w.view(N, 1, 1) * A3.sum(0)                          # area-scaled deviation (N,3,3)
+    A_inv = torch.linalg.inv(A3 + eps * I3)                        # (N,3,3)
+    Y = torch.einsum('nij,njk->nik', A_inv, dA)                    # (N,3,3)
+    Vy = torch.einsum('nij,njk->ik', dA, Y)                        # (3,3) UNWEIGHTED
+    Sw = torch.einsum('n,nij,njk->ik', w, dA, A_inv)              # (3,3)
+    Zc = torch.linalg.solve(I3 - Sw, Vy)                          # (3,3)
+    W0 = -(Y + w.view(N, 1, 1) * torch.einsum('nij,jk->nik', A_inv, Zc))   # (N,3,3)
+
+    if J3 is None or J3.shape[0] == 0:
+        return W0.reshape(N, 9)
+
+    M_c = J3.shape[0]
+    Jt = J3.T.reshape(N, 3, M_c)                                   # (N,3,M_c)
+    yJ = torch.einsum('nij,njm->nim', A_inv, Jt)                   # (N,3,M_c)
+    VyJ = torch.einsum('nij,njm->im', dA, yJ)                      # (3,M_c) UNWEIGHTED
+    zJ = torch.linalg.solve(I3 - Sw, VyJ)                          # (3,M_c)
+    PinvJt = (yJ + w.view(N, 1, 1) * torch.einsum('nij,jm->nim', A_inv, zJ)).reshape(3*N, M_c)
+    G = J3 @ PinvJt                                                # (M_c,M_c)
+    r = J3 @ W0.reshape(3*N, 3)                                    # (M_c,3)
+    Lam = torch.linalg.lstsq(G, r).solution                       # lstsq tolerates redundant rows
+    W = (W0.reshape(3*N, 3) - PinvJt @ Lam).reshape(N, 3, 3)
+    return W.reshape(N, 9)
 
 
 def _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=None):

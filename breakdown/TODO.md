@@ -32,20 +32,13 @@
       `method='woodbury'`.
 
 ## Next
-- [ ] **Sub-choice 2: eliminate χ with consistent area-weighting** (the `(A−B_S)` Woodbury
-      form). VERIFIED recipe (`verify_subchoice2.py`, corr 1.0000 = sim, auto-satisfies
-      `Σ S_s δg=0` to 1e-16): use **`δA(s) = A_s − [A]·S_s/[S_s]`** (`[·]` = unweighted sum,
-      `S_s` = triangle area) and the coupling `(Bδg)(s) = (S_s/[S_s])·Σ_{s'} δA(s')δg(s')`
-      (row prefactor `1/N → S_s/[S_s]`); the A/B/Woodbury/KKT structure is otherwise
-      unchanged. NB this differs from the shipped `weights` path (which subtracts the
-      *constant* `⟨A⟩_S` → corr only 0.89) — that mismatch is the 0.93 gap. Bonus: this
-      reuses the **differentiable** dense `_woodbury_solve`, so it is a route to a
-      differentiable intrinsic-equivalent solver (still needs a stable curvature/angle block).
-- [ ] **Differentiable intrinsic path** — the saddle solve currently runs in NumPy/SciPy
-      (no autograd, like the existing sparse-KKT path), so `method='intrinsic'` is forward-only.
-      Gradient-based callers (Phase 3 inverse design) must use `method='woodbury'` until this
-      lands. Make the saddle solve autograd-friendly (dense torch for small meshes / implicit-
-      function gradient for the sparse solve). Ties into task (3).
+- [x] **Sub-choice 2 (area-weighted χ-elimination) SHIPPED + differentiable**
+      `δA(s) = A_s − [A]·S_s/[S_s]`, coupling `(Bδg)(s)=(S_s/[S_s])Σ_{s'}δA(s')δg(s')`, on the
+      SYMMETRIC metric Hessian `A3=Σ_e(k/4l²)q qᵀ`. Implemented as `_woodbury_solve_aw` (pure
+      torch) and made the engine of `method='intrinsic'` for ≤`INTRINSIC_DENSE_MAX` triangles
+      (sparse saddle fallback above that). Verified: reproduces sim ν/E across η (geometric +
+      VD), gradients correct (autograd vs finite-diff agree), `method='woodbury'` backward-
+      compatible (`verify_intrinsic_solver.py`, `verify_subchoice2*.py`).
 
 ## In progress
 - [ ] **(2) Batched cluster forward solver → homogenised C_eff / ν / E**, compared to the
