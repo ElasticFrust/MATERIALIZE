@@ -33,10 +33,14 @@
 
 ## Next
 - [ ] **Sub-choice 2: eliminate χ with consistent area-weighting** (the `(A−B_S)` Woodbury
-      form) — replace every `(1/N)Σ_s` in the χ-elimination with `(1/V)Σ_s S_s` (medium
-      `⟨A⟩_S`, operator `B(s,s′)=(S_{s′}/V)δA(s′)`, RHS, and normalisation) and add a stable
-      curvature block. Equivalent in exact arithmetic to the explicit-multiplier saddle but
-      closer to the paper; kept as an alternative to the shipped intrinsic path.
+      form). VERIFIED recipe (`verify_subchoice2.py`, corr 1.0000 = sim, auto-satisfies
+      `Σ S_s δg=0` to 1e-16): use **`δA(s) = A_s − [A]·S_s/[S_s]`** (`[·]` = unweighted sum,
+      `S_s` = triangle area) and the coupling `(Bδg)(s) = (S_s/[S_s])·Σ_{s'} δA(s')δg(s')`
+      (row prefactor `1/N → S_s/[S_s]`); the A/B/Woodbury/KKT structure is otherwise
+      unchanged. NB this differs from the shipped `weights` path (which subtracts the
+      *constant* `⟨A⟩_S` → corr only 0.89) — that mismatch is the 0.93 gap. Bonus: this
+      reuses the **differentiable** dense `_woodbury_solve`, so it is a route to a
+      differentiable intrinsic-equivalent solver (still needs a stable curvature/angle block).
 - [ ] **Differentiable intrinsic path** — the saddle solve currently runs in NumPy/SciPy
       (no autograd, like the existing sparse-KKT path), so `method='intrinsic'` is forward-only.
       Gradient-based callers (Phase 3 inverse design) must use `method='woodbury'` until this
