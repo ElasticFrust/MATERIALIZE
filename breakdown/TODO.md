@@ -117,6 +117,19 @@
       corr=0.994 (perfect lattice), corr=0.998 (disordered); the soft-region triangles'
       distinct (larger) response is captured correctly by the solver in both cases.
 
+- [x] **50x50, two soft circles, three network structures**: a fixed pair of circular
+      soft-bond regions (k=0.05 vs 1, r=0.05*Lx, centred in the box) embedded in (a) a
+      perfect periodic triangular lattice (eta=0), (b) a disordered one (eta=0.3), and (c) a
+      periodic Delaunay triangulation of N*N=2500 Poisson points (same density, built via
+      3x3-tile periodic Delaunay). Compared per-triangle response W3(s) sim vs
+      `forward(method='intrinsic')` (5000 triangles -> exercises the sparse-saddle
+      `INTRINSIC_DENSE_MAX` fallback) (`verify_soft_circles_50x50.py`,
+      `plots/dg_soft_circles_50x50.png`). corr = 1.0000 (perfect lattice), 1.0000
+      (eta=0.3), 0.9987 (Poisson-Delaunay) -- all three structures agree closely, including
+      the irregular non-lattice triangulation.
+      (Fixed a latent indexing bug in the soft-region triangle lookup, shared with
+      `verify_soft_region.py`: `tri_bond` values were used directly as triangle indices.)
+
 ## Open questions / later
 - [ ] Cluster-radius selection: tie radius to a measured local correlation length
       (cheap for geometric, ~4–6 for strong rigidity contrast); or adaptive per-triangle.

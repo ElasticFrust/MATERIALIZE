@@ -77,7 +77,7 @@ def main():
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
     for row, (label, eta, seed) in enumerate(cases):
         geo, bmask = build_case(eta, seed)
-        soft_tris = np.unique(geo['tri_bond'][np.isin(geo['tri_bond'], np.where(bmask)[0])])
+        soft_tris = np.where(np.isin(geo['tri_bond'], np.where(bmask)[0]).any(axis=1))[0]
         Wsim = sim_W3(geo)
         Wint = solver_W3(geo)
 
