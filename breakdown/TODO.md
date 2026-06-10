@@ -46,6 +46,17 @@
       (`test_cluster_Ceff.py`)
 
 ## Next
+- [ ] **Code cleanup / readability pass (esp. `Phase 2/forward_solver_torch.py`)** —
+      - Simplify all routines; use as little code as possible. Remove duplicated code and
+        unify repeated logic into a single reused function (e.g. the bare-tensor / `A3` /
+        `q=[vx²,2vxvy,vy²]` / metric-change builds recur across `forward`, the saddle, and the
+        breakdown scripts — factor into shared helpers).
+      - Use as few definitions/variables as possible: if two quantities are equal up to a
+        constant, inline the constant where needed instead of introducing a new variable.
+      - Emphasis on **human readability** throughout.
+      - Make every name informative and easy to use, and **follow the paper's conventions**
+        (G&B notation: `A(s)`, `δA`, `B`, `χ`, `λ`, `W`, `S_triangle`, etc.).
+
 - [ ] **Second-order (O(δ²)) term of the intrinsic metric solve** — the area-weighted
       normalisation `Σ_s S_s δg(s)=0` and the identity `M_S·Π ≡ 0` are only the **first
       order** of the exact area law `Σ_s S_s det(F_s) = det(F) Σ_s S_s`. This is why the
