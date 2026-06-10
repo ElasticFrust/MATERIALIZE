@@ -13,6 +13,14 @@
 - [x] **Cluster (local-patch) response** recovers the simulation's per-triangle δg —
       d=1 for geometric disorder, larger radius for rigidity contrast
       (`test_cluster_response.py`, `test_cluster_rigidity.py`).
+- [x] **Mean constraint isolated as the metric-solve failure**: the plain ⟨δg⟩=0 is wrong;
+      the correct normalisation is the **S_triangle-weighted** mean (implied by compatibility,
+      `M_S·Π ≡ 0`), and the curvature/incompatibility constraint `C δg=0` was missing
+      (`test_mean_isolation.py`, `test_curvature_operator.py`).
+- [x] **Intrinsic (configuration-free) metric solve** `[edge ; curvature ; area-weighted mean]`
+      reproduces the simulation's per-triangle δg (corr ≈1.0, η≤0.4) and homogenised C_eff/ν/E
+      to 3–4 digits, incl. signed VD rigidity contrast; full derivation in G&B notation
+      (`test_intrinsic_metric.py`, `test_intrinsic_VD.py`, `INTRINSIC_METRIC_SOLVE.md`).
 
 ## In progress
 - [ ] **(2) Batched cluster forward solver → homogenised C_eff / ν / E**, compared to the
@@ -20,6 +28,14 @@
       (`test_cluster_Ceff.py`)
 
 ## Next
+- [ ] **Second-order (O(δ²)) term of the intrinsic metric solve** — the area-weighted
+      normalisation `Σ_s S_s δg(s)=0` and the identity `M_S·Π ≡ 0` are only the **first
+      order** of the exact area law `Σ_s S_s det(F_s) = det(F) Σ_s S_s`. This is why the
+      intrinsic solve matches the simulation to η≈0.4 but slips at η=0.5 (where the `M_S·Π`
+      residual reaches ~3e-3 and ⟨tr δg⟩_S ~ δ²). Add the next order — i.e. carry the
+      nonlinear `det(F_s)` constraint (the quadratic-in-δg correction to the normalisation /
+      compatibility) — to make the metric solve exact at large η without resorting to the
+      cluster. Verify against sim ν/E at η=0.5 and across VD contrasts.
 - [ ] **(3) Differentiable cluster solver** — each triangle's response is a small local
       linear solve (3 RHS for the 3 macro modes); make it autograd-friendly so Phase 3
       inverse design and Phase 4 GNN labelling can use it. No new hyperparameters beyond
