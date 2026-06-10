@@ -129,6 +129,10 @@
       the irregular non-lattice triangulation.
       (Fixed a latent indexing bug in the soft-region triangle lookup, shared with
       `verify_soft_region.py`: `tri_bond` values were used directly as triangle indices.)
+      Extended (`verify_soft_circles_50x50_directions.py`,
+      `plots/dg_soft_circles_50x50_directions.png`) with the other two response directions
+      (dilation resp. to e_yy, shear resp. to e_xy), spatial maps + value distributions.
+      All corr >= 0.999 across all three networks and all three macro directions.
 
 ## Open questions / later
 - [ ] Cluster-radius selection: tie radius to a measured local correlation length
