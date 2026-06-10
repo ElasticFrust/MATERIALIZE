@@ -95,6 +95,20 @@
       inverse design and Phase 4 GNN labelling can use it. No new hyperparameters beyond
       the cluster radius.
 
+- [x] **Final test: 10 networks, varied structure + rigidity distributions** (not eta-disorder
+      sweep, not tanh-VD) — for each, own (N, eta, seed) periodic lattice + a distinct per-bond
+      rigidity distribution (uniform random, lognormal, bimodal, bimodal-checkerboard clusters,
+      x-graded, power-law, orientation-dependent k(θ), sparse soft/stiff inclusions, smooth
+      random field), comparing PBC sim vs `forward(method='intrinsic')` (`verify_solver_final.py`,
+      `plots/dg_solver_final_10networks.{png,npz}`). 8/10 cases agree to a few % in ν and E.
+      Two outliers with **spatially-correlated / long-range-structured** rigidity:
+      - bimodal checkerboard clusters: Δν≈+0.045, ΔE/E≈+14%
+      - orientation-dependent k(θ) (anisotropic, near-regular lattice): Δν≈-0.106, ΔE/E≈-47%
+      Both are patterns whose correlation length exceeds the per-triangle/edge/curvature
+      locality of the intrinsic solve — likely the same regime flagged in "cluster-radius
+      selection" below for strong rigidity contrast; needs a larger-radius/cluster correction
+      for spatially-correlated or anisotropic rigidity fields.
+
 ## Open questions / later
 - [ ] Cluster-radius selection: tie radius to a measured local correlation length
       (cheap for geometric, ~4–6 for strong rigidity contrast); or adaptive per-triangle.
