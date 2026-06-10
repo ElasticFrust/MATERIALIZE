@@ -66,6 +66,22 @@
         (9×9 asymmetric `M`-space vs 3×3 symmetric metric space — conflating them caused the
         ν=−0.001 bug this session).
 
+- [ ] **Remove unused / deprecated methods & code versions (repo-wide).** Now that the
+      `intrinsic` solve is the verified default, prune dead/superseded code so only one
+      canonical version of each routine remains:
+      - In `Phase 2/forward_solver_torch.py`: `_woodbury_kkt_sparse` is never reached by
+        `forward()` (the woodbury+KKT path uses `_woodbury_kkt_sparse_combined`); it survives
+        only because `benchmarking/` imports it. Decide: keep as a documented public helper or
+        retire it (and the `method='woodbury'` legacy path) once benchmarking is migrated.
+      - Stale duplicates elsewhere: `Phase 2/forward_solver_torch.py.bckp`,
+        `benchmarking/` local re-defs (`_woodbury_kkt_sparse_aw`, `run_all_models_comp.py`),
+        `Phase 3/area_fix_comparison.py::_woodbury_solve_area`, and any `*_vectorized` /
+        pre-refactor variants in `Disc_2_Cont_optimized` referenced by the Phase 2 tests.
+      - Audit `breakdown/` for superseded scripts (old MF/KKT experiments now subsumed by the
+        intrinsic solve) and mark/retire them; keep the verification suite.
+      - Each removal must be import-checked across `breakdown/`, `benchmarking/`, `Phase 3/4`
+        before deleting (the helpers are a de-facto cross-repo API).
+
 - [ ] **Second-order (O(δ²)) term of the intrinsic metric solve** — the area-weighted
       normalisation `Σ_s S_s δg(s)=0` and the identity `M_S·Π ≡ 0` are only the **first
       order** of the exact area law `Σ_s S_s det(F_s) = det(F) Σ_s S_s`. This is why the
