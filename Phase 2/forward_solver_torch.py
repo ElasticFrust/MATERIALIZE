@@ -1,50 +1,36 @@
 """
 Differentiable forward solver for 2D elastic spring networks.
 
-Implements the D2C (Disc-to-Continuum) homogenisation with exact edge-length
-compatibility constraints (KKT correction), derived in the working notes
-(Grossman & Boudaoud, PRR 2026, arXiv:2309.07844 — see derivation notes).
+Implements the D2C (Disc-to-Continuum) homogenisation of Grossman & Boudaoud
+(PRR 2026, arXiv:2309.07844). Each triangle s has a bare elastic tensor A(s);
+the per-triangle strain-concentration field W(s) (metric response δg(s)=W(s)Δḡ)
+is solved for, then homogenised into the effective tensor C_eff and ν, E.
 
-The original mean-field Woodbury solve (paper Eq. 19-20) is augmented with a
-projection step that enforces: for every interior edge e = (s1, s2, Δx),
+Two solve methods (selected by forward(method=...)):
 
-    [W(s1) - W(s2)]^{αβ}_{μν} Δx^μ Δx^ν = 0   for all loading modes αβ
+  'intrinsic'  (default) — the configuration-free metric solve that reproduces
+      the PBC simulation. Minimises the spring energy over the per-triangle
+      metric field subject to three constraints: edge compatibility, the
+      curvature / incompatibility constraint (zero discrete Gaussian curvature),
+      and the AREA-weighted normalisation Σ_s S_s δg(s)=0. Eliminating the
+      normalisation multiplier χ gives the area-weighted (A−B) Woodbury with
+      δA(s)=A(s)−[A]·S_s/[S_s] (see _woodbury_solve_aw). For ≤ INTRINSIC_DENSE_MAX
+      triangles this runs as a DIFFERENTIABLE dense torch solve; larger meshes
+      fall back to the NumPy sparse saddle (_intrinsic_solve_W, forward-only).
 
-This corrects the ~70% error on heterogeneous rigidity patterns by enforcing
-local metric compatibility between neighbouring triangles (not just the global
-mean-field constraint Σ_s W(s) = 0).
+  'woodbury'   (legacy) — the original G&B mean-field (A−B)W=−δA (Eq. 19-20),
+      optionally projected onto edge / vertex-angle compatibility via the KKT
+      step (_woodbury_solve, _woodbury_kkt_sparse_combined).
 
-===========================================================================
-THE 7-STEP FORWARD PIPELINE
-===========================================================================
+Pipeline: edge vectors v[n,i] → bare tensor A(n) (5 components) → solve W(n)
+(one of the methods above) → 4-index contraction (_compute_actual_elastic_tensor)
+→ homogenise to C_eff and extract ν, E.
 
-Step 1 — Edge vectors
-    v[n,i] = pos[edge_a] − pos[edge_b]    for triangle n, edge i ∈ {0,1,2}
-
-Step 2 — Bare elastic tensor  A[n]  (5 independent components)
-    factor[n,i] = k[n,i] / l₀²[n,i] / 16
-
-    a₀ = Σᵢ factor·vx⁴           (C₁₁₁₁)
-    a₁ = Σᵢ factor·vx³·vy        (C₁₁₁₂)
-    a₂ = Σᵢ factor·vx²·vy²       (C₁₁₂₂)
-    a₃ = Σᵢ factor·vx·vy³        (C₁₂₂₂)
-    a₄ = Σᵢ factor·vy⁴           (C₂₂₂₂)
-
-Step 3 — Deviation from mean
-    A₀   = mean(A, over triangles)
-    δA[n] = A[n] − A₀
-
-Step 4 — Build 9×9 block matrices  kron(M, I₃)
-
-Step 5 — Woodbury solve + KKT edge-compatibility correction
-    (A_full − B_full) W = −δA   solved by Woodbury (paper Eq. 20),
-    then W is projected onto ker J (compatible metric fields) via the KKT
-    system with multipliers Λ (one scalar per interior edge per loading mode).
-
-Step 6 — 4-index tensor contraction
-Step 7 — Homogenize and extract ν, E
-
-===========================================================================
+Note on representations: the bare tensor's 9×9 block form M (kron(M, I₃),
+_batch_to_9x9) is the ASYMMETRIC mixed-Voigt matrix used by the (A−B) Woodbury
+and the contraction. The intrinsic energy solve instead uses the SYMMETRIC 3×3
+metric Hessian A3(s)=Σ_e (k_e/4ℓ_e²) q_e q_eᵀ — these are NOT the same matrix
+(sym(M) ≠ A3), and using one where the other is required gives wrong physics.
 """
 
 import numpy as np
@@ -387,30 +373,30 @@ class ElasticSolver(nn.Module):
             mean_tensor = bare.mean(dim=0)
 
         if method == 'intrinsic':
+            # Per-triangle SYMMETRIC metric Hessian  A(s) = Σ_e (k_e / 4ℓ_e²) q_e q_eᵀ,
+            # with q_e = [vx², 2 vx vy, vy²] (self._q_geom). Built once and shared by both
+            # the differentiable dense Woodbury and the sparse-saddle fallback.
             Ntri = bare.shape[0]
-            # area weights for the χ-elimination: w_s = S_s/[S_s] (area-weighted) or 1/N.
+            q_geom = torch.as_tensor(self._q_geom, dtype=bare.dtype, device=bare.device)   # (N,3,3)
+            edge_stiff = rigidities / (4.0 * torch.clamp(length2, min=1e-30))              # k_e/4ℓ_e² (N,3)
+            A3 = torch.einsum('ne,nei,nej->nij', edge_stiff, q_geom, q_geom)               # (N,3,3)
+
+            # χ-elimination weight  w_s = S_s/[S_s] (area-weighted) or 1/N (arithmetic).
             if area_weighted:
                 w_eff = self.area_weights.to(dtype=bare.dtype, device=bare.device)
             else:
                 w_eff = torch.full((Ntri,), 1.0 / Ntri, dtype=bare.dtype, device=bare.device)
 
             if Ntri <= INTRINSIC_DENSE_MAX:
-                # differentiable area-weighted (A−B) Woodbury + dense edge/curvature KKT, on the
-                # SYMMETRIC metric Hessian A3(s) = Σ_e (k_e/4l_e²) q_e q_eᵀ.
-                q_geom = torch.as_tensor(self._q_geom, dtype=bare.dtype, device=bare.device)  # (N,3,3)
-                fac = rigidities / (4.0 * torch.clamp(length2, min=1e-30))                    # (N,3)
-                A3 = torch.einsum('ne,nei,nej->nij', fac, q_geom, q_geom)                     # (N,3,3)
+                # differentiable area-weighted χ-elimination + dense edge/curvature KKT
                 J3 = self._assemble_dense_J(use_kkt, use_angle_kkt)
                 if J3 is not None:
                     J3 = J3.to(dtype=bare.dtype, device=bare.device)
                 W = _woodbury_solve_aw(A3, w_eff, J3)
             else:
                 # large-mesh fallback: explicit-multiplier sparse saddle (NumPy, non-diff)
-                rig_np = rigidities.detach().cpu().numpy()
-                l2_np  = length2.detach().cpu().numpy()
-                fac    = rig_np / (4.0 * np.maximum(l2_np, 1e-30))
-                A3 = np.einsum('ne,nei,nej->nij', fac, self._q_geom, self._q_geom)
-                W_np = _intrinsic_solve_W(A3, self._J_edge_sp, self._C_curv_sp, self._M_S_sp,
+                W_np = _intrinsic_solve_W(A3.detach().cpu().numpy(),
+                                          self._J_edge_sp, self._C_curv_sp, self._M_S_sp,
                                           use_kkt, use_angle_kkt, area_weighted)
                 W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
         else:
@@ -463,7 +449,12 @@ class ElasticSolver(nn.Module):
 # ---------------------------------------------------------------------------
 
 def _batch_to_9x9(vecs5):
-    """(N, 5) → (N, 9, 9) block matrices kron(M, I₃)."""
+    """(N, 5) → (N, 9, 9) block matrices kron(M, I₃).
+
+    M is the ASYMMETRIC mixed-Voigt representation (factor 2 on the columns):
+    M=[[a0,2a1,a2],[a1,2a2,a3],[a2,2a3,a4]]. It is correct for the (A−B) Woodbury
+    response and the 4-index contraction, but it is NOT the symmetric energy
+    Hessian A3=Σ_e(k_e/4ℓ_e²)q_e q_eᵀ used by the intrinsic solve (sym(M) ≠ A3)."""
     N = vecs5.shape[0]
     a0, a1, a2, a3, a4 = vecs5[:, 0], vecs5[:, 1], vecs5[:, 2], vecs5[:, 3], vecs5[:, 4]
     M = torch.stack([
@@ -590,65 +581,36 @@ def _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=None):
     Returns:
         W: (N, 9)
     """
+    # Unweighted mean-field is just the area-weighted solve with w_n = 1/N (the constant
+    # commutes through the linear solve), so route both through one weighted code path.
     N = A_blocks.shape[0]
-    eps = 1e-14 * A_blocks.abs().max()
+    if weights is None:
+        weights = torch.full((N,), 1.0 / N, dtype=A_blocks.dtype, device=A_blocks.device)
+    w = weights                                                       # (N,)
     I9 = torch.eye(9, dtype=A_blocks.dtype, device=A_blocks.device)
-    A_reg = A_blocks + eps * I9.unsqueeze(0)
-    A_inv = torch.linalg.inv(A_reg)          # (N, 9, 9)
+    A_inv = torch.linalg.inv(A_blocks + 1e-14 * A_blocks.abs().max() * I9)   # (N, 9, 9)
 
-    y = torch.einsum('nij,nj->ni', A_inv, dA_vecs)         # (N, 9)
-
-    if weights is not None:
-        w = weights                                         # (N,)
-        Vy = torch.einsum('n,nij,nj->i', w, B_blocks, y)   # (9,)
-        S  = torch.einsum('n,nij,njk->ik', w, B_blocks, A_inv)  # (9,9) no /N
-        IminusS = I9 - S
-        z  = torch.linalg.solve(IminusS, Vy)
-        W0 = -(y + torch.einsum('nij,j->ni', A_inv, z))    # no /N
-    else:
-        Vy = torch.einsum('nij,nj->i',  B_blocks, y)       # (9,)
-        S  = torch.einsum('nij,njk->ik', B_blocks, A_inv) / N  # (9,9)
-        IminusS = I9 - S
-        z  = torch.linalg.solve(IminusS, Vy)
-        W0 = -(y + torch.einsum('nij,j->ni', A_inv, z) / N)
+    y       = torch.einsum('nij,nj->ni',    A_inv, dA_vecs)          # (N, 9)
+    Vy      = torch.einsum('n,nij,nj->i',   w, B_blocks, y)          # (9,)
+    S       = torch.einsum('n,nij,njk->ik', w, B_blocks, A_inv)      # (9, 9)
+    IminusS = I9 - S
+    z       = torch.linalg.solve(IminusS, Vy)                        # (9,)
+    W0      = -(y + torch.einsum('nij,j->ni', A_inv, z))             # (N, 9)
 
     if J is None or J.shape[0] == 0:
         return W0
 
-    # ------------------------------------------------------------------
-    # KKT correction: project W₀ onto ker J in the P-metric
-    #
-    # P⁻¹ applied to a batch of right-hand sides (columns of Jᵀ):
-    #   Jᵀ reshaped to (N, 9, M) where M = 3*E_int
-    #   y_J[n]   = A_inv[n] @ Jᵀ[n]          (N, 9, M)
-    #   Vy_J     = Σₙ [w_n] B[n] @ y_J[n]    (9, M)
-    #   z_J      = (I-S)⁻¹ @ Vy_J             (9, M)
-    #   PinvJt   = y_J + [1/N or 1] A_inv @ z_J  (9N, M)
-    # ------------------------------------------------------------------
-    M_c = J.shape[0]  # 3 * E_int
-
-    Jt         = J.T                               # (9N, M_c)
-    Jt_batched = Jt.reshape(N, 9, M_c)            # (N, 9, M_c)
-
-    y_J = torch.einsum('nij,njm->nim', A_inv, Jt_batched)   # (N, 9, M_c)
-
-    if weights is not None:
-        Vy_J = torch.einsum('n,nij,njm->im', w, B_blocks, y_J)   # (9, M_c)
-    else:
-        Vy_J = torch.einsum('nij,njm->im', B_blocks, y_J)         # (9, M_c)
-
-    z_J    = torch.linalg.solve(IminusS, Vy_J)              # (9, M_c)
-    corr_J = torch.einsum('nij,jm->nim', A_inv, z_J)        # (N, 9, M_c)
-    if weights is None:
-        corr_J = corr_J / N
-    PinvJt = (y_J + corr_J).reshape(9 * N, M_c)             # (9N, M_c)
-
-    G      = J @ PinvJt                                      # (M_c, M_c)
-    r      = J @ W0.reshape(-1)                              # (M_c,)
-    Lambda = torch.linalg.solve(G, r)                        # (M_c,)
-
-    W = (W0.reshape(-1) - PinvJt @ Lambda).reshape(N, 9)
-    return W
+    # KKT correction: project W₀ onto ker J in the P=(A−B) metric via P⁻¹ applied to the
+    # columns of Jᵀ (same Woodbury identity, reshaped to (N, 9, M_c) with M_c = 3·E_int).
+    M_c    = J.shape[0]
+    Jt_b   = J.T.reshape(N, 9, M_c)                                  # (N, 9, M_c)
+    y_J    = torch.einsum('nij,njm->nim',  A_inv, Jt_b)             # (N, 9, M_c)
+    Vy_J   = torch.einsum('n,nij,njm->im', w, B_blocks, y_J)        # (9, M_c)
+    z_J    = torch.linalg.solve(IminusS, Vy_J)                      # (9, M_c)
+    PinvJt = (y_J + torch.einsum('nij,jm->nim', A_inv, z_J)).reshape(9 * N, M_c)
+    G      = J @ PinvJt                                             # (M_c, M_c)
+    Lambda = torch.linalg.solve(G, J @ W0.reshape(-1))             # (M_c,)
+    return (W0.reshape(-1) - PinvJt @ Lambda).reshape(N, 9)
 
 
 def _woodbury_kkt_sparse(A_blocks, B_blocks, dA_vecs, kkt_arrays):
@@ -774,109 +736,6 @@ def _woodbury_kkt_sparse(A_blocks, B_blocks, dA_vecs, kkt_arrays):
     gs        = np.einsum('nij,nj->i', B_np, AinvJtLam)
     z_c       = np.linalg.solve(IminusS, gs)
     PinvJtLam = AinvJtLam + np.einsum('nij,j->ni', A_inv, z_c) / N
-
-    return W0 - PinvJtLam
-
-
-def _woodbury_kkt_sparse_aw(A_blocks, B_blocks, dA_vecs, kkt_arrays, weights):
-    """Area-weighted sparse KKT Woodbury (volume-weighted constraint Σ w_n δg(n)=0).
-
-    Identical to _woodbury_kkt_sparse except every 1/N is replaced by w_n and
-    the /N correction factors in W0 and PinvJtLam are dropped.
-
-    Args:
-        weights: (N,) numpy array summing to 1
-
-    Returns:
-        W: (N, 9) numpy array
-    """
-    import scipy.sparse as sp
-    import scipy.sparse.linalg as spla
-    from collections import defaultdict
-
-    s1_arr, s2_arr, q_arr = kkt_arrays
-    E_int = len(s1_arr)
-    M_c   = 3 * E_int
-    N     = A_blocks.shape[0]
-    w     = weights  # (N,)
-
-    A_np  = A_blocks.detach().double().numpy()
-    B_np  = B_blocks.detach().double().numpy()
-    dA_np = dA_vecs.detach().double().numpy()
-
-    eps   = 1e-14 * np.abs(A_np).max()
-    I9    = np.eye(9)
-    A_inv = np.linalg.inv(A_np + eps * I9[None])
-
-    y    = np.einsum('nij,nj->ni', A_inv, dA_np)
-    Vy   = np.einsum('n,nij,nj->i',   w, B_np, y)
-    S    = np.einsum('n,nij,njk->ik', w, B_np, A_inv)    # no /N
-    IminusS = I9 - S
-    z    = np.linalg.solve(IminusS, Vy)
-    W0   = -(y + np.einsum('nij,j->ni', A_inv, z))       # no /N
-
-    BA_inv_aw = np.einsum('n,nij,njk->nik', w, B_np, A_inv)
-
-    H = np.zeros((M_c, 9))
-    K = np.zeros((M_c, 9))
-    for k in range(3):
-        rk = np.arange(E_int) + k * E_int
-        for loc in range(3):
-            col = 3 * loc + k
-            H[rk] += q_arr[:, loc:loc+1] * (A_inv[s1_arr, col, :] - A_inv[s2_arr, col, :])
-            K[rk] += q_arr[:, loc:loc+1] * (BA_inv_aw[s1_arr, :, col] - BA_inv_aw[s2_arr, :, col])
-
-    tri_edges = defaultdict(list)
-    for e in range(E_int):
-        tri_edges[s1_arr[e]].append((e, +1))
-        tri_edges[s2_arr[e]].append((e, -1))
-
-    rows_g, cols_g, data_g = [], [], []
-    LOC_ROWS = [np.array([k, 3+k, 6+k]) for k in range(3)]
-    for n, elist in tri_edges.items():
-        An = A_inv[n]
-        for e1, sg1 in elist:
-            for e2, sg2 in elist:
-                val_sg = sg1 * sg2
-                for k1 in range(3):
-                    row = k1 * E_int + e1
-                    for k2 in range(3):
-                        col = k2 * E_int + e2
-                        val = val_sg * q_arr[e1] @ An[np.ix_(LOC_ROWS[k1], LOC_ROWS[k2])] @ q_arr[e2]
-                        rows_g.append(row); cols_g.append(col); data_g.append(val)
-
-    G_local = sp.coo_matrix((data_g, (rows_g, cols_g)), shape=(M_c, M_c)).tocsc()
-    G_local = G_local + 1e-12 * abs(max(data_g, default=1.0)) * sp.eye(M_c, format='csc')
-
-    W0_flat = W0.reshape(-1)
-    r = np.zeros(M_c)
-    for k in range(3):
-        rk = np.arange(E_int) + k * E_int
-        for loc in range(3):
-            col = 3 * loc + k
-            r[rk] += q_arr[:, loc] * (W0_flat[s1_arr*9+col] - W0_flat[s2_arr*9+col])
-
-    G_lu   = spla.factorized(G_local)
-    Lam0   = G_lu(r)
-    Y      = np.column_stack([G_lu(H[:, j]) for j in range(9)])
-    M_mat  = IminusS + K.T @ Y                   # no N factor
-    c      = np.linalg.solve(M_mat, K.T @ Lam0)
-    Lambda = Lam0 - Y @ c
-
-    JtLam = np.zeros(9 * N)
-    for k in range(3):
-        rk = np.arange(E_int) + k * E_int
-        Lk = Lambda[rk]
-        for loc in range(3):
-            col = 3 * loc + k
-            np.add.at(JtLam, s1_arr*9+col,  q_arr[:, loc] * Lk)
-            np.add.at(JtLam, s2_arr*9+col, -q_arr[:, loc] * Lk)
-
-    JtLam_b   = JtLam.reshape(N, 9)
-    AinvJtLam = np.einsum('nij,nj->ni', A_inv, JtLam_b)
-    gs        = np.einsum('n,nij,nj->i', w, B_np, AinvJtLam)
-    z_c       = np.linalg.solve(IminusS, gs)
-    PinvJtLam = AinvJtLam + np.einsum('nij,j->ni', A_inv, z_c)   # no /N
 
     return W0 - PinvJtLam
 

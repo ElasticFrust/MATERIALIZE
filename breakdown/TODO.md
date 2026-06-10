@@ -46,16 +46,25 @@
       (`test_cluster_Ceff.py`)
 
 ## Next
-- [ ] **Code cleanup / readability pass (esp. `Phase 2/forward_solver_torch.py`)** —
-      - Simplify all routines; use as little code as possible. Remove duplicated code and
-        unify repeated logic into a single reused function (e.g. the bare-tensor / `A3` /
-        `q=[vx²,2vxvy,vy²]` / metric-change builds recur across `forward`, the saddle, and the
-        breakdown scripts — factor into shared helpers).
-      - Use as few definitions/variables as possible: if two quantities are equal up to a
-        constant, inline the constant where needed instead of introducing a new variable.
-      - Emphasis on **human readability** throughout.
-      - Make every name informative and easy to use, and **follow the paper's conventions**
-        (G&B notation: `A(s)`, `δA`, `B`, `χ`, `λ`, `W`, `S_triangle`, etc.).
+- [x] **Code cleanup / readability pass on `Phase 2/forward_solver_torch.py`** (conservative,
+      forward-solver-only; −141 lines, public/semi-public API unchanged so breakdown/
+      benchmarking/Phase 3 still import every name). Verification-gated, each step diffed against
+      a frozen single-thread baseline (`verify_intrinsic_solver.py`, `verify_gb_formulation.py`,
+      autograd-vs-FD gradcheck — all identical; ν/E match sim as before, grads match FD to ~1e-7):
+      - Unified the per-triangle metric Hessian `A(s)=Σ_e(k_e/4ℓ_e²)q qᵀ` build in `forward()`
+        (was recomputed in both the dense and the fallback branch).
+      - Collapsed `_woodbury_solve`'s weighted/unweighted branches: unweighted **is** the
+        area-weighted solve with `w_n=1/N` (the constant commutes through the solve) — verified
+        bit-identical W, base + KKT branch.
+      - Deleted the unused `_woodbury_kkt_sparse_aw` (benchmarking keeps its own local copy).
+      - Rewrote the stale module docstring (now describes the `intrinsic` default + `woodbury`
+        legacy methods) and documented the `M` (asymmetric mixed-Voigt) vs `A3` (symmetric
+        Hessian) distinction at `_batch_to_9x9` to fence off that bug class.
+      - *Deliberately NOT merged:* `_woodbury_kkt_sparse_combined`'s weighted/unweighted branches
+        (the `N·(I−S)` vs `(I−S)` placement conditions the rank-3 Woodbury differently → ~1e-6
+        drift, a load-bearing numerical difference) and `_woodbury_solve` vs `_woodbury_solve_aw`
+        (9×9 asymmetric `M`-space vs 3×3 symmetric metric space — conflating them caused the
+        ν=−0.001 bug this session).
 
 - [ ] **Second-order (O(δ²)) term of the intrinsic metric solve** — the area-weighted
       normalisation `Σ_s S_s δg(s)=0` and the identity `M_S·Π ≡ 0` are only the **first
