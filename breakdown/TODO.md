@@ -81,6 +81,25 @@
         intrinsic solve) and mark/retire them; keep the verification suite.
       - Each removal must be import-checked across `breakdown/`, `benchmarking/`, `Phase 3/4`
         before deleting (the helpers are a de-facto cross-repo API).
+      - [x] **breakdown/ decluttered** (deleted, recoverable via git history): 12 dead-end
+        scripts whose findings are already written up here / in `THEORY_NOTES.md` --
+        `analyze_overshoot.py`, `test_cluster_response.py`, `test_cluster_combined.py`,
+        `test_renormalize.py`, `test_metric_constraints.py`, `verify_subchoice2{,_scan,_nuE,
+        _vd_contrasts}.py`, and the legacy/unvalidated trio `run_breakdown.py` /
+        `periodic_mesh.py` / `pbc_simulation.py` (superseded by the self-contained
+        `pbc_dg_analysis.py`). Their orphaned plots were removed too.
+        **Import-chain note (do NOT delete these):** `test_angle_response.py`,
+        `test_mean_isolation.py`, `test_curvature_operator.py`, `compat_projection.py` look
+        like superseded experiments but are load-bearing utility libs imported transitively by
+        the live verify suite (`verify_* -> test_intrinsic_VD -> test_intrinsic_metric ->
+        {test_angle_response, test_mean_isolation -> {compat_projection,
+        test_curvature_operator}}`; `verify_gb_formulation -> test_angle_response`). Kept the
+        18-module closure (11 libs + 7 `verify_*`) + the 4 docs.
+      - [x] **Phase 3/ decluttered**: `git mv large_sweep_4` (142M, isotropic variant of the
+        documented "most comprehensive" `large_sweep_5`) and `large_sweep_6` (28K, incomplete
+        pilot) into `Phase 3/_archive/`. Left `large_sweep_2`, `large_sweep_3`, `large_sweep_5`,
+        `poisson_ratio_targets` in place (cited as baselines; a future careful pass could
+        revisit whether `large_sweep_2`/`_3` are still needed).
 
 - [ ] **Second-order (O(δ²)) term of the intrinsic metric solve** — the area-weighted
       normalisation `Σ_s S_s δg(s)=0` and the identity `M_S·Π ≡ 0` are only the **first
