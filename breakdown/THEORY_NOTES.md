@@ -188,3 +188,67 @@ expansion. The single-site MF is a linear-response theory, so it imposes the fir
 form `⟨δg⟩ = 0`, which **over-constrains** the true nonlinear field and is what breaks it.
 Imposing periodicity on `F` (V_A / cluster) keeps the exact nonlinear `det(F_s)` law without
 ever truncating, so it is correct to all orders.
+
+### 5.6 The correct normalisation is AREA-WEIGHTED, and it is *implied by compatibility*
+The MF imposes the **plain** mean `Σ_s δg_s = 0`. The simulation does not satisfy it. It
+satisfies the **area-weighted** mean `Σ_s A_s δg_s = 0`. Measured on `dg_sim`
+(typical `|δg| ~ δ = 1e-3`):
+
+| η | ‖Σ δg_s‖ (plain) | ‖Σ A_s δg_s‖ (area) | rms‖δg‖ |
+|---|---|---|---|
+| 0.1 | 2.6e-5 | **5.8e-8** | 2.4e-4 |
+| 0.2 | 1.2e-4 | **2.5e-7** | 5.3e-4 |
+| 0.3 | 3.7e-4 | **7.2e-7** | 1.1e-3 |
+| 0.4 | 1.6e-3 | **2.6e-6** | 4.0e-3 |
+| 0.5 | 1.5e-2 | 2.1e-4 | 3.4e-1 |
+
+The plain mean is *comparable to the signal* at high η; the area-weighted mean is 3–4 orders
+**below** it (scaling as `δ²`). So the area-weighted mean vanishes; the plain one does not.
+
+Why area-weighting is the right one — it is a discrete **divergence-theorem identity**, not a
+modelling choice. As an operator on node displacements,
+```
+‖ (area-weighted mean) · B ‖ / ‖B‖ = 1.6e-16   (η≤0.3; 3e-3 at η=0.5)
+‖ (plain mean)         · B ‖ / ‖B‖ = 0.19 … 1.12
+```
+i.e. **`Σ_s A_s B_s ≡ 0`**: the area-weighted average of the (linearised) strain over a
+periodic cell is identically zero for *every* periodic displacement field
+(`Σ_s A_s ε_s = sym Σ_s ∮ u⊗n = 0`). Compatibility *implies* the area-weighted mean — it is
+redundant. The plain mean is **not** implied by compatibility, so adding it injects a
+constraint inconsistent with the realisable fields.
+
+Consequence, imposing each as a hard constraint on the otherwise-exact compatible solve
+(corr vs sim):
+
+| η | V_A (no mean) | + plain mean | + area-weighted mean |
+|---|---|---|---|
+| 0.2 | 0.9999 | 0.688 | **0.9998** |
+| 0.3 | 0.9998 | 0.456 | **0.9983** |
+| 0.4 | 0.9999 | −0.300 | **0.9994** |
+
+The area-weighted mean is harmless (redundant); the plain mean is destructive. (At η=0.5 the
+linear identity itself degrades — the `3e-3` residual — because the strain is no longer small
+vs the disorder; that is the `δ²` term of §5.5 becoming visible.)
+
+### 5.7 The intrinsic (configuration-free) derivation of the Hessian
+This makes the metric-only theory precise — **no node displacements needed**. Minimise the
+metric energy `½ Σ_s (Δg + δg_s)ᵀ H_s (Δg + δg_s)` over the per-triangle field `δg`, subject
+to the **intrinsic** constraints
+1. edge agreement,
+2. **compatibility / zero discrete curvature** `inc(δg)=0` (the vertex angle-deficit
+   operator — enforced by a stress-function/Airy multiplier, all in metric space), and
+3. **area-weighted** normalisation `Σ_s A_s δg_s = 0`,
+
+and **NOT** the plain mean. `ker([edge; curvature])` is exactly
+`range(B) ⊕ {3 homogeneous modes}`; the 3 homogeneous modes are the macroscopic strain (the
+loading), and the area-weighted normalisation removes precisely them, projecting onto
+`range(B)` — so this intrinsic solve equals V_A equals the simulation, **to first order**.
+The single-site MF differs by exactly two wrong choices: it *drops* (2) and it uses the plain
+form of (3).
+
+Everything is one **expansion**, not a free lunch: the exact closure is the nonlinear area
+law `Σ_s A_s det(F_s) = det(F) A_ref` (§5.5). Its `O(δ)` term is the area-weighted mean
+`Σ A_s δg_s = 0` (automatically satisfied by compatible fields); its `O(δ²)` term is the
+nonzero remainder. The effective Hessian `C_eff = ⟨C_bare,s · W_s⟩` falls out order by order
+from this expansion with the correct (area-weighted, compatibility-consistent) closure; it is
+*not* obtained for free, and it does not require passing through the configuration.
