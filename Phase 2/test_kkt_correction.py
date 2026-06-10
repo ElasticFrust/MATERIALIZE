@@ -56,7 +56,7 @@ def nu_new(tri, rigs_t=None):
     """Run the new KKT-corrected solver and return ν."""
     solver, default_rigs, default_rl = fst_new.from_triangulation(tri)
     r = rigs_t if rigs_t is not None else default_rigs
-    return solver(r, default_rl)['poisson'].item()
+    return solver(r, default_rl, method='woodbury')['poisson'].item()
 
 def section(title):
     print(f"\n{'='*65}")

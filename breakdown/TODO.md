@@ -21,6 +21,27 @@
       reproduces the simulation's per-triangle δg (corr ≈1.0, η≤0.4) and homogenised C_eff/ν/E
       to 3–4 digits, incl. signed VD rigidity contrast; full derivation in G&B notation
       (`test_intrinsic_metric.py`, `test_intrinsic_VD.py`, `INTRINSIC_METRIC_SOLVE.md`).
+- [x] **Verified G&B `(A−B)` Woodbury + area + edge + angle does NOT reproduce sim**
+      (corr 0.93→collapse at η≥0.4); the working route is the intrinsic block-diagonal solve
+      (`verify_gb_formulation.py`).
+- [x] **Intrinsic solver shipped in `forward_solver_torch.py`** — `forward(method='intrinsic')`
+      is the new default (explicit-multiplier, loading-independent W-saddle; block-diagonal A
+      + edge + curvature + `S_s`-mean), toggles `use_kkt`/`use_angle_kkt`/`area_weighted` ON
+      by default; old `(A−B)` reachable via `method='woodbury'`; verified to reproduce sim
+      ν/E across η (`verify_intrinsic_solver.py`). Woodbury regression tests pinned to
+      `method='woodbury'`.
+
+## Next
+- [ ] **Sub-choice 2: eliminate χ with consistent area-weighting** (the `(A−B_S)` Woodbury
+      form) — replace every `(1/N)Σ_s` in the χ-elimination with `(1/V)Σ_s S_s` (medium
+      `⟨A⟩_S`, operator `B(s,s′)=(S_{s′}/V)δA(s′)`, RHS, and normalisation) and add a stable
+      curvature block. Equivalent in exact arithmetic to the explicit-multiplier saddle but
+      closer to the paper; kept as an alternative to the shipped intrinsic path.
+- [ ] **Differentiable intrinsic path** — the saddle solve currently runs in NumPy/SciPy
+      (no autograd, like the existing sparse-KKT path), so `method='intrinsic'` is forward-only.
+      Gradient-based callers (Phase 3 inverse design) must use `method='woodbury'` until this
+      lands. Make the saddle solve autograd-friendly (dense torch for small meshes / implicit-
+      function gradient for the sparse solve). Ties into task (3).
 
 ## In progress
 - [ ] **(2) Batched cluster forward solver → homogenised C_eff / ν / E**, compared to the

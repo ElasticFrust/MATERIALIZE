@@ -117,6 +117,9 @@ class ElasticSolver(nn.Module):
         # Build vertex-angle compatibility constraints
         self._build_vertex_angle_constraints(pos_np, sim_np)
 
+        # Build the intrinsic-solver constraint operators (edge, curvature, area-mean)
+        self._build_intrinsic_constraints(sim_np)
+
     def _build_edge_compatibility(self, positions, simplices):
         """Find interior edges; store (s1, s2, q) for sparse KKT correction."""
         N = len(simplices)
@@ -227,25 +230,114 @@ class ElasticSolver(nn.Module):
             int_count,
         )
 
-    def forward(self, rigidities, rest_lengths=None, area_weighted=False, use_kkt=True,
-                use_angle_kkt=False):
+    def _build_intrinsic_constraints(self, simplices):
+        """Precompute the geometry-only operators for the intrinsic (explicit-multiplier)
+        solver: edge compatibility J, curvature/incompatibility C (zero discrete Gaussian
+        curvature, tensor convention — NO /2), and the area-weighted normalisation M_S.
+
+        All act on the per-triangle metric field δg ∈ ℝ^{3N} ([dg11,dg12,dg22] per triangle).
+        Built convention-robustly from edge vectors + node membership, so signs/periodicity
+        follow self.edge_vecs (correct whenever the geometry is set up consistently).
+        """
+        import scipy.sparse as sp
+        from collections import defaultdict
+        N = len(simplices)
+        ev = self.edge_vecs.numpy()                 # (N,3,2)
+        edges = self.edges.numpy()                  # (N,3,2) node-index pairs
+
+        # q per edge for the per-triangle metric Hessian A3 = Σ_e (k_e/4l_e²) q_e q_eᵀ
+        vx, vy = ev[:, :, 0], ev[:, :, 1]
+        self._q_geom = np.stack([vx ** 2, 2 * vx * vy, vy ** 2], axis=2)   # (N,3,3) [edge,comp]
+
+        # (1) edge operator from the sparse KKT arrays (periodic-correct when provided)
+        if self.kkt_arrays is not None:
+            s1, s2, q = self.kkt_arrays
+            r, c, d = [], [], []
+            for e in range(len(s1)):
+                for loc in range(3):
+                    r += [e, e]; c += [3*int(s1[e])+loc, 3*int(s2[e])+loc]
+                    d += [q[e, loc], -q[e, loc]]
+            self._J_edge_sp = sp.csr_matrix((d, (r, c)), shape=(len(s1), 3*N))
+        else:
+            self._J_edge_sp = sp.csr_matrix((0, 3*N))
+
+        # (2) curvature operator: per interior vertex, Σ_{s∋v} ∂θ_v^s/∂g · δg(s) = 0
+        ecount = defaultdict(int)
+        for s in range(N):
+            for i in range(3):
+                a, b = int(edges[s, i, 0]), int(edges[s, i, 1])
+                ecount[(min(a, b), max(a, b))] += 1
+        boundary = {v for (a, b), cnt in ecount.items() if cnt == 1 for v in (a, b)}
+        r, c, d = [], [], []
+        vint = {}; ni = 0
+        for s in range(N):
+            for v in (int(x) for x in simplices[s]):
+                if v in boundary:
+                    continue
+                vecs = []
+                for i in range(3):
+                    a, b = int(edges[s, i, 0]), int(edges[s, i, 1])
+                    if v == a:
+                        vecs.append(-ev[s, i])
+                    elif v == b:
+                        vecs.append(ev[s, i])
+                if len(vecs) != 2:
+                    continue
+                ag = _angle_gradient_vec(vecs[0], vecs[1])     # ∂θ/∂[g11,g12,g22], NO /2
+                if v not in vint:
+                    vint[v] = ni; ni += 1
+                for loc in range(3):
+                    r.append(vint[v]); c.append(3*s+loc); d.append(ag[loc])
+        self._C_curv_sp = sp.csr_matrix((d, (r, c)), shape=(ni, 3*N))
+
+        # (3) area-weighted normalisation  Σ_s S_s δg(s)_{μν} = 0
+        w = self.area_weights.numpy()
+        r, c, d = [], [], []
+        for mu in range(3):
+            for s in range(N):
+                r.append(mu); c.append(3*s+mu); d.append(float(w[s]))
+        self._M_S_sp = sp.csr_matrix((d, (r, c)), shape=(3, 3*N))
+
+    def forward(self, rigidities, rest_lengths=None, method='intrinsic',
+                area_weighted=None, use_kkt=None, use_angle_kkt=None):
         """Run the forward pipeline.
 
         Args:
             rigidities:     (N, 3) tensor
             rest_lengths:   (N, 3) tensor or None
-            area_weighted:  if True, use volume-weighted constraint Σ w_n δg(n)=0;
-                            if False use arithmetic constraint Σ δg(n)=0.
-            use_kkt:        if True, apply edge-compatibility (KKT) correction;
-                            if False, pure mean-field Woodbury only (no KKT).
-            use_angle_kkt:  if True, apply BOTH edge and vertex-angle compatibility
-                            constraints jointly (superset of use_kkt); if False,
-                            falls back to use_kkt behaviour (default False).
+            method:         'intrinsic' (default) — the explicit-multiplier, loading-
+                            independent metric solve (block-diagonal A + edge + curvature
+                            + area-weighted normalisation; reproduces the PBC simulation).
+                            'woodbury' — the original G&B (A−B) mean-field Woodbury path.
+            area_weighted:  None → default per method (intrinsic: True, woodbury: False).
+                            S_s-weighted normalisation Σ_s S_s δg(s)=0 (the correct,
+                            compatibility-implied condition); False → arithmetic Σ δg(n)=0.
+            use_kkt:        None → default True. Edge-length compatibility constraint.
+            use_angle_kkt:  None → default per method (intrinsic: True, woodbury: False).
+                            Vertex-angle / curvature (zero discrete Gaussian curvature)
+                            constraint. In the intrinsic path this is the robust sparse
+                            curvature operator; in the woodbury path it is the (fragile)
+                            angle-Gram correction.
+
+        Toggles can be turned off individually; the intrinsic path has all three ON by
+        default. NOTE: the intrinsic solve currently runs in NumPy/SciPy (no autograd through
+        the saddle, like the existing sparse-KKT path); a differentiable version is TODO(3).
 
         Returns:
             dict: elastic_tensor (6,), poisson, young, per_triangle (N,6),
                   bare (N,5), W (N,9)
         """
+        if method == 'intrinsic':
+            if area_weighted is None: area_weighted = True
+            if use_kkt is None: use_kkt = True
+            if use_angle_kkt is None: use_angle_kkt = True
+        elif method == 'woodbury':
+            if area_weighted is None: area_weighted = False
+            if use_kkt is None: use_kkt = True
+            if use_angle_kkt is None: use_angle_kkt = False
+        else:
+            raise ValueError(f"unknown method {method!r} (expected 'intrinsic' or 'woodbury')")
+
         rigidities = rigidities.double()
         if rest_lengths is not None:
             rest_lengths = rest_lengths.double()
@@ -275,27 +367,35 @@ class ElasticSolver(nn.Module):
             w = None
             mean_tensor = bare.mean(dim=0)
 
-        delta    = bare - mean_tensor
-        A_blocks = _batch_to_9x9(bare)
-        B_blocks = _batch_to_9x9(delta)
-        dA_vecs  = _batch_to_9vec(delta)
-
-        if use_kkt and self.kkt_arrays is not None:
-            # All KKT paths (edge-only or edge+angle) use the combined solver.
-            # angle_arrays=None → edge-only; the per-loading-mode decoupling
-            # reduces the sparse solve from 3*E_int to E_int per loading mode.
-            _angle = self.angle_arrays if use_angle_kkt else None
-            _weights = self.area_weights.numpy() if area_weighted else None
-            W_np = _woodbury_kkt_sparse_combined(
-                A_blocks, B_blocks, dA_vecs,
-                self.kkt_arrays, _angle, weights=_weights)
+        if method == 'intrinsic':
+            # Block-diagonal per-triangle metric Hessian  A3(s) = Σ_e (k/4l²) q_e q_eᵀ
+            rig_np = rigidities.detach().cpu().numpy()              # (N,3)
+            l2_np  = length2.detach().cpu().numpy()                 # (N,3)
+            fac    = rig_np / (4.0 * np.maximum(l2_np, 1e-30))      # (N,3)
+            A3 = np.einsum('ne,nei,nej->nij', fac, self._q_geom, self._q_geom)  # (N,3,3)
+            W_np = _intrinsic_solve_W(A3, self._J_edge_sp, self._C_curv_sp, self._M_S_sp,
+                                      use_kkt, use_angle_kkt, area_weighted)
             W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
-        elif use_kkt and self.J is not None:
-            W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
-                                J=self.J.to(dtype=bare.dtype, device=bare.device),
-                                weights=w)
         else:
-            W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=w)
+            delta    = bare - mean_tensor
+            A_blocks = _batch_to_9x9(bare)
+            B_blocks = _batch_to_9x9(delta)
+            dA_vecs  = _batch_to_9vec(delta)
+
+            if use_kkt and self.kkt_arrays is not None:
+                # All KKT paths (edge-only or edge+angle) use the combined solver.
+                _angle = self.angle_arrays if use_angle_kkt else None
+                _weights = self.area_weights.numpy() if area_weighted else None
+                W_np = _woodbury_kkt_sparse_combined(
+                    A_blocks, B_blocks, dA_vecs,
+                    self.kkt_arrays, _angle, weights=_weights)
+                W = torch.as_tensor(W_np, dtype=bare.dtype, device=bare.device)
+            elif use_kkt and self.J is not None:
+                W = _woodbury_solve(A_blocks, B_blocks, dA_vecs,
+                                    J=self.J.to(dtype=bare.dtype, device=bare.device),
+                                    weights=w)
+            else:
+                W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=w)
 
         actual = _compute_actual_elastic_tensor(bare, W)
         if area_weighted:
@@ -342,6 +442,54 @@ def _batch_to_9vec(vecs5):
     """(N, 5) → (N, 9) vectors  [a0,a1,a2, a1,a2,a3, a2,a3,a4]."""
     a0, a1, a2, a3, a4 = [vecs5[:, i] for i in range(5)]
     return torch.stack([a0, a1, a2, a1, a2, a3, a2, a3, a4], dim=1)
+
+
+def _intrinsic_solve_W(A3_blocks, J_edge, C_curv, M_S,
+                       use_kkt=True, use_angle=True, area_weighted=True):
+    """Loading-independent strain-concentration W via the explicit-multiplier sparse saddle.
+
+    Minimises ½(Δg+δg)ᵀ A (Δg+δg) over the per-triangle metric field with BLOCK-DIAGONAL A
+    (true spring energy — no mean-field (A−B)), subject to the constraint stack
+    C = [edge ; curvature ; area-weighted mean].  Stripping Δg gives, per triangle,
+        A3(s) W3(s) + Cᵀ(multipliers) = −A3(s),   C W = 0,
+    solved once with a 3-wide RHS as the regularised saddle
+        [ A   Cᵀ ] [W]   [ -A ]
+        [ C  -εI ] [Λ] = [  0 ].
+
+    Args:
+        A3_blocks: (N,3,3) symmetric per-triangle metric Hessian (numpy).
+        J_edge, C_curv, M_S: scipy.sparse constraint matrices (·×3N).
+        use_kkt/use_angle/area_weighted: include the edge/curvature/mean blocks.
+
+    Returns:
+        W (N,9) numpy, layout [3*loc+k] = ∂δg_loc/∂Δg_k (as _compute_actual_elastic_tensor expects).
+    """
+    import scipy.sparse as sp
+    import scipy.sparse.linalg as spla
+
+    N = A3_blocks.shape[0]
+    Hblk = sp.block_diag([A3_blocks[i] for i in range(N)], format='csc')
+    cons = []
+    if use_kkt and J_edge.shape[0] > 0:
+        cons.append(J_edge)
+    if use_angle and C_curv.shape[0] > 0:
+        cons.append(C_curv)
+    if area_weighted and M_S.shape[0] > 0:
+        cons.append(M_S)
+
+    rhs_top = -A3_blocks.reshape(3 * N, 3)           # block s = -A3(s)
+    if cons:
+        C = sp.vstack(cons).tocsc()
+        nC = C.shape[0]
+        eps = 1e-10 * float(np.abs(A3_blocks).max() or 1.0)
+        KKT = sp.bmat([[Hblk, C.T], [C, -eps * sp.eye(nC)]], format='csc')
+        rhs = np.vstack([rhs_top, np.zeros((nC, 3))])
+        x = spla.splu(KKT).solve(rhs)                # (3N+nC, 3), 3 RHS columns
+        W3 = np.asarray(x[:3 * N, :])
+    else:
+        # unconstrained: A3 W3 = -A3 ⇒ W3 = -I per triangle
+        W3 = np.tile(-np.eye(3), (N, 1))             # (3N,3) stacked -I blocks
+    return W3.reshape(N, 9)
 
 
 def _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=None):

@@ -51,7 +51,7 @@ def run_numpy(tri):
 def run_torch(tri):
     """Run PyTorch solver, return dict of results (as numpy)."""
     solver, rigs, rl = fst.from_triangulation(tri)
-    out = solver(rigs, rl)
+    out = solver(rigs, rl, method='woodbury')
     return {k: v.detach().numpy() for k, v in out.items()}
 
 
@@ -181,7 +181,7 @@ def test_custom_parameters():
     solver, _, _ = fst.from_triangulation(tri2)
     rigs_t = torch.tensor(rigs, dtype=torch.float64)
     rl_t = torch.tensor(rl, dtype=torch.float64)
-    pt_result = solver(rigs_t, rl_t)
+    pt_result = solver(rigs_t, rl_t, method='woodbury')
     pt_out = {k: v.detach().numpy() for k, v in pt_result.items()}
 
     ok = True
@@ -214,12 +214,12 @@ def test_gradient_correctness():
 
     def forward_poisson(rigs):
         """Scalar output for gradcheck."""
-        out = solver(rigs, default_rl)
+        out = solver(rigs, default_rl, method='woodbury')
         return out['poisson']
 
     def forward_young(rigs):
         """Scalar output for gradcheck."""
-        out = solver(rigs, default_rl)
+        out = solver(rigs, default_rl, method='woodbury')
         return out['young']
 
     rigs = torch.ones(N, 3, dtype=torch.float64, requires_grad=True)
@@ -237,7 +237,7 @@ def test_gradient_correctness():
     rl2 = default_rl.clone().detach().requires_grad_(True)
 
     def forward_poisson_rl(rl):
-        out = solver(rigs2, rl)
+        out = solver(rigs2, rl, method='woodbury')
         return out['poisson']
 
     print("  Checking gradients of Poisson's ratio w.r.t. rest_lengths...")
@@ -265,13 +265,13 @@ def test_performance():
         solver, rigs, rl = fst.from_triangulation(tri)
 
         # Warmup
-        solver(rigs, rl)
+        solver(rigs, rl, method='woodbury')
 
         # Benchmark
         times = []
         for _ in range(20):
             t0 = time.perf_counter()
-            solver(rigs, rl)
+            solver(rigs, rl, method='woodbury')
             times.append(time.perf_counter() - t0)
 
         mean_ms = np.mean(times) * 1000
@@ -285,7 +285,7 @@ def test_performance():
     rigs = torch.ones(N, 3, dtype=torch.float64, requires_grad=True)
 
     # Warmup
-    out = solver(rigs, rl)
+    out = solver(rigs, rl, method='woodbury')
     out['poisson'].backward()
 
     times = []
@@ -293,7 +293,7 @@ def test_performance():
         if rigs.grad is not None:
             rigs.grad.zero_()
         t0 = time.perf_counter()
-        out = solver(rigs, rl)
+        out = solver(rigs, rl, method='woodbury')
         out['poisson'].backward()
         times.append(time.perf_counter() - t0)
 
