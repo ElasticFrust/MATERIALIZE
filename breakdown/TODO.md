@@ -109,6 +109,14 @@
       selection" below for strong rigidity contrast; needs a larger-radius/cluster correction
       for spatially-correlated or anisotropic rigidity fields.
 
+- [x] **Soft-region per-triangle response test**: a small cluster (6 bonds around one vertex,
+      k=0.05 vs k=1 elsewhere) embedded in a perfect lattice (eta=0) and a disordered lattice
+      (eta=0.15); compared the per-triangle response W3(s) (delta_g(s)=W3(s)@Delta_g, all 3
+      macro modes) between PBC sim and `forward(method='intrinsic')`
+      (`verify_soft_region.py`, `plots/dg_soft_region_per_triangle.png`). Strong agreement:
+      corr=0.994 (perfect lattice), corr=0.998 (disordered); the soft-region triangles'
+      distinct (larger) response is captured correctly by the solver in both cases.
+
 ## Open questions / later
 - [ ] Cluster-radius selection: tie radius to a measured local correlation length
       (cheap for geometric, ~4–6 for strong rigidity contrast); or adaptive per-triangle.
