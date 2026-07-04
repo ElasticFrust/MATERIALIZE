@@ -1,0 +1,4 @@
+# Regenerable cached PBC-simulation samples (large; not tracked).
+# Recreate with pbc_dg_analysis.py if needed.
+dg_analysis_data/*.npz
+__pycache__/

@@ -185,8 +185,8 @@ The intrinsic solve reproduces the PBC (periodic) spring-network simulation:
   sign at high η).
 
 (Numerical tables are in `INTRINSIC_METRIC_SOLVE.md` §8. The verification scripts
-that produced them lived in the now-removed `breakdown/` folder — recoverable from
-git history; see §7.)
+that produce them live in `verification_tools/` — see `verification_tools/VERIFICATION_SUMMARY.md`
+and `verify_solver_sweep.py`.)
 
 ---
 
@@ -206,7 +206,6 @@ git history; see §7.)
    currently needs the dense path or a future differentiable sparse route.
 4. **Residual pre-stress / non-trivial reference metric** (`ℓ0 ≠ actual length`)
    is implemented but not yet verified against the simulation.
-5. **Test coverage.** The intrinsic verification suite was removed with `breakdown/`
-   in the 2026 cleanup (recoverable from git history). Re-establishing a minimal
-   `method='intrinsic'` regression test (ν(η=0)=1/3, a small autograd-vs-FD
-   gradcheck, one sim-parity point) is the recommended immediate follow-up.
+5. **Test coverage.** A minimal regression test lives in `Phase 2/test_forward_solver.py`
+   (ν(η=0)=1/3, autograd-vs-FD gradcheck, legacy path). The fuller sim-parity suite is
+   in `verification_tools/` (`verify_solver_sweep.py` and friends).
