@@ -1,5 +1,18 @@
 # Phase 4: GNN Surrogate + CVAE Inverse Design + Interpretability
 
+> **⚠️ OUT OF DATE — UPDATE THIS FIRST (2026 cleanup).**
+> This plan predates two major changes and must be revised before any Phase 4 work resumes:
+> 1. The forward solver was replaced. The mean-field D2C model this plan assumes is now
+>    the *legacy* path; the default is the **intrinsic** metric solve
+>    (`Phase 2/forward_solver_torch.py`, `method='intrinsic'`), which reproduces the PBC
+>    simulation. Any GNN/CVAE labels or physics-loss evaluations must use it — the old
+>    labels are invalid. See `ANALYTICAL_MODEL_STATUS.md`.
+> 2. The Phase 4 *implementation* (GNN, CVAE, interpretability, data pipeline, training
+>    scripts) was removed in the cleanup and lives only in git history. What remains is
+>    this plan plus the **topology generators** (`Phase 4/data/topology_generators.py`,
+>    `rigidity_patterns.py`) — whose fate (which topologies to generate at large scale)
+>    is still to be decided. Rescope this plan against the current solver before rebuilding.
+
 ## Table of Contents
 
 1. [Expanded Topology Catalog](#a-expanded-topology-catalog)
