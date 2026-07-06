@@ -9,6 +9,8 @@ Checks:
   3. Differentiability: gradients flow through the dense intrinsic path (<=600 tri).
   4. Autograd matches finite differences for d(nu)/d(k) (coarse tol).
   5. Legacy method='woodbury' still runs.
+  6. Large-N (>600 tri) adjoint path: grad-path forward == no-grad forward, and the adjoint
+     gradient matches finite differences (Component A).
 """
 
 import sys, os
@@ -86,6 +88,33 @@ def test_autograd_vs_fd():
     print(f"  [4] autograd vs finite-diff: {g_auto:.6e} vs {g_fd:.6e}  OK")
 
 
+def test_adjoint_large_N():
+    import forward_solver_torch as fst
+    np.random.seed(6)
+    tri = D2C.generate_foam_points((10, 10), 0.15)
+    solver, k0, l0 = from_triangulation(tri)
+    ntri = len(tri.simplices)
+    assert ntri > fst.INTRINSIC_DENSE_MAX, f"need >{fst.INTRINSIC_DENSE_MAX} tri, got {ntri}"
+
+    with torch.no_grad():                            # forward-only path
+        nu_ng = solver(k0, l0)['poisson'].item()
+    k = k0.clone().requires_grad_(True)
+    nu = solver(k, l0)['poisson']                    # differentiable adjoint path
+    assert abs(nu.item() - nu_ng) < 1e-12, "grad-path forward != no-grad forward"
+    nu.backward()
+    assert k.grad is not None and _finite(k.grad) and k.grad.abs().sum().item() > 0
+
+    g_auto = k.grad[0, 0].item()
+    eps = 1e-6
+    with torch.no_grad():
+        kp = k0.clone(); kp[0, 0] += eps
+        km = k0.clone(); km[0, 0] -= eps
+        g_fd = (solver(kp, l0)['poisson'].item() - solver(km, l0)['poisson'].item()) / (2 * eps)
+    assert abs(g_auto - g_fd) / max(1.0, abs(g_fd)) < 1e-4, f"adjoint {g_auto} vs FD {g_fd}"
+    print(f"  [6] adjoint large-N ({ntri} tri): forward identical, autograd={g_auto:.4e} "
+          f"vs FD={g_fd:.4e}  OK")
+
+
 def test_woodbury_legacy_runs():
     np.random.seed(4)
     tri = D2C.generate_foam_points((3, 3), 0.2)
@@ -102,6 +131,7 @@ if __name__ == '__main__':
         test_foam_finite,
         test_gradients_flow,
         test_autograd_vs_fd,
+        test_adjoint_large_N,
         test_woodbury_legacy_runs,
     ]
     print("forward_solver_torch regression test")

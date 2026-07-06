@@ -400,8 +400,13 @@ class ElasticSolver(nn.Module):
                 if J3 is not None:
                     J3 = J3.to(dtype=bare.dtype, device=bare.device)
                 W = _woodbury_solve_aw(A3, w_eff, J3)
+            elif torch.is_grad_enabled() and A3.requires_grad:
+                # large mesh WITH gradients: differentiable sparse saddle via the adjoint
+                # (forward is identical to _intrinsic_solve_W; backward reuses the factorisation)
+                W = _IntrinsicSparseWFn.apply(A3, self._J_edge_sp, self._C_curv_sp, self._M_S_sp,
+                                              use_kkt, use_angle_kkt, area_weighted)
             else:
-                # large-mesh fallback: explicit-multiplier sparse saddle (NumPy, non-diff)
+                # large-mesh forward-only: explicit-multiplier sparse saddle (NumPy, unchanged)
                 W_np = _intrinsic_solve_W(A3.detach().cpu().numpy(),
                                           self._J_edge_sp, self._C_curv_sp, self._M_S_sp,
                                           use_kkt, use_angle_kkt, area_weighted)
@@ -538,6 +543,64 @@ def _intrinsic_solve_W(A3_blocks, J_edge, C_curv, M_S,
         # unconstrained: A3 W3 = -A3 ⇒ W3 = -I per triangle
         W3 = np.tile(-np.eye(3), (N, 1))             # (3N,3) stacked -I blocks
     return W3.reshape(N, 9)
+
+
+class _IntrinsicSparseWFn(torch.autograd.Function):
+    """Differentiable large-mesh intrinsic solve (Ntri > INTRINSIC_DENSE_MAX).
+
+    forward: identical to `_intrinsic_solve_W` — the scipy sparse KKT saddle
+        [[H(A3), Cᵀ]; [C, −εI]] · [W; Λ] = [−A3_stacked; 0]  via `splu`.
+    backward: the ADJOINT of that linear solve. The KKT matrix is symmetric, so the adjoint
+        system uses the SAME factorisation (one extra triangular solve, ~O(N) assembly on top):
+            KKT · λ = [∂L/∂W; 0],   then   ∂L/∂A3(s) = −sym( λ_W(s) + λ_W(s) · W(s)ᵀ ).
+        A3(s) is the only k/l0-dependent input (the constraint operators J_edge/C_curv/M_S are
+        geometry-only); torch then continues A3 → edge_stiff = k/(4ℓ²) → k, l0.
+    This carries gradients for meshes above the dense cap at O(N) memory / sparse O(N^1.5) time —
+    forward-only cost is unchanged; gradients add ~one reused-factorisation solve."""
+
+    @staticmethod
+    def forward(ctx, A3, J_edge, C_curv, M_S, use_kkt, use_angle, area_weighted):
+        import scipy.sparse as sp
+        import scipy.sparse.linalg as spla
+        A3np = A3.detach().cpu().numpy()
+        N = A3np.shape[0]
+        Hblk = sp.block_diag([A3np[i] for i in range(N)], format='csc')
+        cons = []
+        if use_kkt and J_edge.shape[0] > 0:
+            cons.append(J_edge)
+        if use_angle and C_curv.shape[0] > 0:
+            cons.append(C_curv)
+        if area_weighted and M_S.shape[0] > 0:
+            cons.append(M_S)
+        rhs_top = -A3np.reshape(3 * N, 3)
+        if cons:
+            C = sp.vstack(cons).tocsc(); nC = C.shape[0]
+            eps = 1e-10 * float(np.abs(A3np).max() or 1.0)
+            KKT = sp.bmat([[Hblk, C.T], [C, -eps * sp.eye(nC)]], format='csc')
+            rhs = np.vstack([rhs_top, np.zeros((nC, 3))])
+            lu = spla.splu(KKT)
+            x = lu.solve(rhs)
+            W3 = np.asarray(x[:3 * N, :])
+            ctx.cache = (lu, x, N, nC)
+        else:
+            W3 = np.tile(-np.eye(3), (N, 1))
+            ctx.cache = (None, None, N, 0)
+        return torch.as_tensor(W3.reshape(N, 9), dtype=A3.dtype, device=A3.device)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        lu, x, N, nC = ctx.cache
+        none6 = (None, None, None, None, None, None)
+        if lu is None:                                    # W = −I, independent of A3
+            g0 = torch.zeros((N, 3, 3), dtype=grad_out.dtype, device=grad_out.device)
+            return (g0,) + none6
+        gW = grad_out.detach().cpu().numpy().reshape(N, 3, 3).reshape(3 * N, 3)
+        lam = lu.solve(np.vstack([gW, np.zeros((nC, 3))]))    # symmetric KKT → reuse factorisation
+        lamW = lam[:3 * N, :].reshape(N, 3, 3)
+        W3 = x[:3 * N, :].reshape(N, 3, 3)
+        G = -(lamW + np.einsum('nij,nkj->nik', lamW, W3))     # ∂L/∂A3(s)
+        G = 0.5 * (G + np.transpose(G, (0, 2, 1)))            # symmetrise (A3 = Σ_e k_e/4ℓ² q qᵀ)
+        return (torch.as_tensor(G, dtype=grad_out.dtype, device=grad_out.device),) + none6
 
 
 def _woodbury_solve_aw(A3, w, J3=None):

@@ -1,5 +1,10 @@
 # Phase 2 — Differentiable Forward Solver (PyTorch)
 
+> **➡️ For current usage, the API, physical units, and the large-mesh differentiable path, see
+> [`SOLVER_GUIDE.md`](SOLVER_GUIDE.md).** The **intrinsic** metric solve (`method='intrinsic'`) is
+> the verified default and reports **physical** ν/E; the sections below describe the *legacy*
+> mean-field/Woodbury path and its KKT correction (background/internals only).
+
 ## What's in this folder
 
 | File | What it does |
