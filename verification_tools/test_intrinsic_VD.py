@@ -79,45 +79,42 @@ def intrinsic_W3(mesh, eps=1e-10):
 
 
 def nuE(mesh):
-    """(nu,E) for sim, intrinsic metric, single-site MF."""
-    ev, sx = mesh['edge_vecs'], mesh['simplices']; nn = len(mesh['pts']); nt = len(sx)
-    bare = TR.bare_tensor(mesh)
-    Fk = [np.eye(2) + DELTA*M for M in MODES]
-    Dg_k = [CE.vec3(F.T@F - np.eye(2)) for F in Fk]
-    Dinv = np.linalg.inv(np.stack(Dg_k, axis=1))
-    K, _ = TR.assemble_K_faff(mesh, np.eye(2)); free = np.arange(2, 2*nn)
-    Ds = np.zeros((nt, 3, 3))
-    for k, F in enumerate(Fk):
-        fa = TR.assemble_K_faff(mesh, F)[1]
-        u = np.zeros(2*nn); u[free] = spla.spsolve(K[free][:, free].tocsc(), -fa[free])
-        Ds[:, :, k] = CE.vec3(CE.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - (F.T@F-np.eye(2)))
-    nu_s, E_s = CE.Ceff_nuE(mesh, Ds @ Dinv, bare)
-    nu_i, E_i = CE.Ceff_nuE(mesh, intrinsic_W3(mesh), bare)
-    nu_m, E_m = CE.Ceff_nuE(mesh, RG.mf_W3(bare), bare)
-    return nu_s, E_s, nu_i, E_i, nu_m, E_m
+    """PHYSICAL (nu,E): PBC simulation (virial=energy, truth) vs the production forward solver
+    (forward(method='intrinsic', physical_units=True)). Lazy import of make_solver avoids a
+    circular import with verify_solver_sweep (which imports kkt_from_tri_bond from here)."""
+    import torch
+    import physical_homog as PH
+    from verify_solver_sweep import make_solver
+    free = np.arange(2, 2 * len(mesh['pts']))
+    nu_s, E_s = PH.sim_nuE(mesh, free, TR.assemble_K_faff)
+    kkt = kkt_from_tri_bond(mesh['tri_bond'], mesh['edge_vecs'])
+    sv = make_solver(mesh, kkt)
+    rl = torch.as_tensor(np.sqrt(mesh['actual_len2']), dtype=torch.float64)
+    out = sv.forward(torch.as_tensor(mesh['tri_k'], dtype=torch.float64),
+                     rest_lengths=rl, method='intrinsic', physical_units=True)
+    return nu_s, E_s, float(out['poisson']), float(out['young'])
 
 
 def main():
-    res = {a: {k: [] for k in ['nu_s', 'E_s', 'nu_i', 'E_i', 'nu_m', 'E_m']} for a in CONTRASTS}
-    print(f"N={N}, VD k=1+tanh(a*(|R|-1)); intrinsic metric (edge+curv+area-mean) vs sim vs MF")
+    res = {a: {k: [] for k in ['nu_s', 'E_s', 'nu_i', 'E_i']} for a in CONTRASTS}
+    print(f"N={N}, VD k=1+tanh(a*(|R|-1)); PHYSICAL forward solver vs physical PBC simulation")
     for eta in ETAS:
         geo = VD.build_geometry(N, eta, seed=0)
         for a in CONTRASTS:
             VD.set_VD(geo, a)
-            ns, Es, ni, Ei, nm, Em = nuE(geo)
-            for kk, vv in zip(['nu_s', 'E_s', 'nu_i', 'E_i', 'nu_m', 'E_m'], [ns, Es, ni, Ei, nm, Em]):
+            ns, Es, ni, Ei = nuE(geo)
+            for kk, vv in zip(['nu_s', 'E_s', 'nu_i', 'E_i'], [ns, Es, ni, Ei]):
                 res[a][kk].append(vv)
-            print(f"  eta={eta:.1f} a={a:>+3}: nu sim/int/MF = {ns:+.3f}/{ni:+.3f}/{nm:+.3f}"
-                  f"   E = {Es:.4f}/{Ei:.4f}/{Em:.4f}", flush=True)
+            print(f"  eta={eta:.1f} a={a:>+3}: nu sim/solver = {ns:+.3f}/{ni:+.3f}"
+                  f"   E = {Es:.3f}/{Ei:.3f}", flush=True)
 
     nC = len(CONTRASTS)
     fig, axes = plt.subplots(nC, 2, figsize=(11, 3.0*nC), squeeze=False)
     for i, a in enumerate(CONTRASTS):
         for j, (key, ttl) in enumerate([('nu', 'ν'), ('E', 'E')]):
             ax = axes[i, j]
-            ax.plot(ETAS, res[a][f'{key}_s'], 'k-o', lw=2.2, ms=4, label='sim (truth)')
-            ax.plot(ETAS, res[a][f'{key}_i'], '-^', color='#1f77b4', ms=6, label='intrinsic metric')
-            ax.plot(ETAS, res[a][f'{key}_m'], '--s', color='#d62728', ms=4, label='single-site MF')
+            ax.plot(ETAS, res[a][f'{key}_s'], 'k-o', lw=2.2, ms=4, label='physical sim (truth)')
+            ax.plot(ETAS, res[a][f'{key}_i'], '-^', color='#1f77b4', ms=6, label='forward solver')
             if key == 'nu':
                 ax.axhline(0, color='gray', lw=0.5, ls=':')
             ax.set_ylabel(f'{ttl}  (a={a:+d})'); ax.grid(alpha=0.3)
@@ -125,7 +122,7 @@ def main():
                 ax.set_title(f'{ttl} vs η'); ax.legend(fontsize=8)
             if i == nC-1:
                 ax.set_xlabel('η')
-    fig.suptitle('ν and E vs η at several VD rigidity contrasts — intrinsic metric (area-weighted) vs sim vs MF',
+    fig.suptitle('ν and E vs η at several VD rigidity contrasts — PHYSICAL forward solver vs simulation',
                  fontsize=12)
     plt.tight_layout()
     p = os.path.join(HERE, 'plots', 'dg_intrinsic_VD_eta.png')

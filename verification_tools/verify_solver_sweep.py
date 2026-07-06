@@ -29,6 +29,7 @@ import test_cluster_Ceff as CE
 import test_cluster_rigidity as TR
 import test_cluster_VD as VD
 from test_intrinsic_VD import kkt_from_tri_bond
+import physical_homog as PH
 torch.set_default_dtype(torch.float64)
 
 DELTA = CE.DELTA
@@ -59,22 +60,17 @@ def make_solver(geo, kkt):
     return _mount(s, ev, (ev ** 2).sum(2), geo['areas'], kkt, sx)
 
 
-def sim_nuE(mesh, assemble, bare):
-    """Homogenised nu, E from the PBC equilibrium fluctuation (truth)."""
-    ev, sx = mesh['edge_vecs'], mesh['simplices']; nn = len(mesh['pts']); nt = len(sx)
-    K, _ = assemble(mesh, np.eye(2)); free = np.arange(2, 2 * nn)
-    Kff = K[free][:, free].tocsc()
-    D = np.zeros((nt, 3, 3))
-    for k, F in enumerate(Fk):
-        fa = assemble(mesh, F)[1]
-        u = np.zeros(2 * nn); u[free] = spla.spsolve(Kff, -fa[free])
-        D[:, :, k] = CE.vec3(CE.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - (F.T @ F - np.eye(2)))
-    return CE.Ceff_nuE(mesh, D @ Dinv, bare)
+def sim_nuE(mesh, assemble, bare=None):
+    """PHYSICAL (virial = energy) homogenised nu, E from the relaxed PBC network (truth).
+    (Was the legacy metric average CE.Ceff_nuE; that biased ν on disordered/anisotropic meshes.
+    `bare` is kept for call-site compatibility but unused.)"""
+    free = np.arange(2, 2 * len(mesh['pts']))
+    return PH.sim_nuE(mesh, free, assemble)
 
 
 def solver_nuE(solver, rig_np, rl):
     out = solver.forward(torch.as_tensor(rig_np, dtype=torch.float64),
-                         rest_lengths=rl, method='intrinsic')
+                         rest_lengths=rl, method='intrinsic', physical_units=True)
     return float(out['poisson']), float(out['young'])
 
 

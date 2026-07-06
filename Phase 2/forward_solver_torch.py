@@ -302,7 +302,8 @@ class ElasticSolver(nn.Module):
         return torch.as_tensor(sp.vstack(blocks).toarray(), dtype=torch.float64)
 
     def forward(self, rigidities, rest_lengths=None, method='intrinsic',
-                area_weighted=None, use_kkt=None, use_angle_kkt=None):
+                area_weighted=None, use_kkt=None, use_angle_kkt=None,
+                physical_units=False):
         """Run the forward pipeline.
 
         Args:
@@ -327,6 +328,12 @@ class ElasticSolver(nn.Module):
         (sub-choice 2): for ≤ INTRINSIC_DENSE_MAX triangles it runs a DIFFERENTIABLE torch
         Woodbury (edge+curvature KKT); larger meshes fall back to the NumPy sparse saddle
         (forward-only). Both reproduce the simulation; only the dense path carries gradients.
+
+        physical_units: None/False (default) → elastic_tensor & young in the internal
+                        (bare-tensor /16) scale, unchanged from before. True → rescale the
+                        homogenised tensor by 8·N/A_total to true physical (energy/virial)
+                        units. ν (poisson) is scale-invariant and identical either way; only
+                        E / elastic_tensor change. Exact for periodic meshes.
 
         Returns:
             dict: elastic_tensor (6,), poisson, young, per_triangle (N,6),
@@ -421,10 +428,23 @@ class ElasticSolver(nn.Module):
                 W = _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=w)
 
         actual = _compute_actual_elastic_tensor(bare, W)
-        if area_weighted:
-            C = (actual * w.unsqueeze(1)).sum(0)
-        else:
-            C = actual.mean(dim=0)
+        # Homogenised tensor = UNWEIGHTED mean of the per-triangle tensors. A(s) is the full
+        # per-triangle Hessian (no area prefactor), so the total energy is an unweighted sum
+        # and its Δg-Hessian is the unweighted sum → unweighted mean here. An area weight S_s
+        # in THIS average double-counts area and biases ν on variable-area (disordered) meshes
+        # (harmless only for equal-area crystals). NB: the area weight is still correct — and
+        # kept — in the compatibility normalisation Σ_s S_s δg(s)=0 (the χ / mean constraint).
+        C = actual.mean(dim=0)
+        if physical_units:
+            # Convert the internal (bare-tensor /16, per-triangle) elastic tensor to true
+            # physical (energy/virial) units. Derivation: Σ_s bare_s = (1/8)·Σ_bonds on a torus
+            # — the /16 in `bare` and the ×2 interior-edge double-count — and the average is 1/N
+            # vs the physical 1/A_total, so C_phys = (8·N / A_total)·C. This is a pure scalar, so
+            # ν is unchanged; only E / the elastic_tensor rescale. Exact for periodic meshes; on
+            # open finite samples the boundary edges (counted once) make it approximate.
+            e01, e02 = self.edge_vecs[:, 0], self.edge_vecs[:, 1]
+            areas = 0.5 * torch.abs(e01[:, 0] * e02[:, 1] - e01[:, 1] * e02[:, 0])
+            C = C * (8.0 * areas.shape[0] / areas.sum())
 
         poisson = (C[2] * C[3] - C[1] * C[4]) / (C[0] * C[3] - C[1] ** 2)
         young = (
