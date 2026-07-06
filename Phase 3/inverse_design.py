@@ -91,14 +91,23 @@ class DesignProblem:
 
     # ---- constructors ----
     @classmethod
-    def periodic(cls, N=14, eta=0.3, seed=0):
-        geo = VD.build_geometry(N, eta, seed=seed); VD.set_VD(geo, 0)
+    def from_geo(cls, geo):
+        """Build from a ready PERIODIC geometry dict (keys: pts, simplices, edge_vecs, bond_R,
+        areas, tri_bond, actual_len2; bond_k/tri_k set to 1 if absent). Use this for custom
+        topologies (e.g. affine-transformed anisotropic lattices)."""
+        if 'tri_k' not in geo:
+            VD.set_VD(geo, 0)                                    # default uniform k=1
         kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
         solver = make_solver(geo, kkt)
         bond_len = np.sqrt((geo['bond_R'] ** 2).sum(1))
         cen = geo['pts'][geo['simplices']].mean(1)
         return cls(solver, geo['tri_bond'], bond_len, geo['areas'], cen,
                    np.sqrt(geo['actual_len2']))
+
+    @classmethod
+    def periodic(cls, N=14, eta=0.3, seed=0):
+        geo = VD.build_geometry(N, eta, seed=seed); VD.set_VD(geo, 0)
+        return cls.from_geo(geo)
 
     @classmethod
     def open(cls, tri):
@@ -143,7 +152,7 @@ def _params_to_kl(raw, prob, mode):
     return k_bond, l0_bond
 
 
-def _loss(prob, objectives, k_bond, l0_bond):
+def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
     out = prob.forward(k_bond, l0_bond, physical_units=True)
     per = out['per_triangle']
     total = torch.zeros((), dtype=torch.float64)
@@ -157,6 +166,8 @@ def _loss(prob, objectives, k_bond, l0_bond):
             total = total + ob.weight * (E - ob.target) ** 2
         else:                                                            # 'tensor'
             total = total + ob.weight * ((C6 - ob.target) ** 2).mean()
+    if reg > 0.0:                                                        # keep k near-uniform:
+        total = total + reg * ((k_bond - 1.0) ** 2).mean()              # discourages floppy/unstable designs
     return total
 
 
@@ -172,9 +183,11 @@ def _init_raw(prob, mode, seed):
 
 
 def optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80,
-             n_restarts=1, seed=0, verbose=True):
-    """Design k (and/or l0) to meet the objectives. Returns the best result over restarts:
-    dict(k, l0, loss, history, raw)."""
+             n_restarts=1, seed=0, reg=0.0, verbose=True):
+    """Design k (and/or l0) to meet the objectives. `reg` (>0) adds a mean((k-1)²) penalty that
+    keeps k near-uniform — discourages the optimiser from exploiting floppy/unstable
+    configurations that satisfy a scalar target but collapse in simulation. Returns the best
+    result over restarts: dict(k, l0, loss, history, raw)."""
     assert mode in ('k', 'l0', 'both')
     best = None
     for r in range(n_restarts):
@@ -188,7 +201,7 @@ def optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80,
             def closure():
                 opt.zero_grad()
                 k_bond, l0_bond = _params_to_kl(raw, prob, mode)
-                l = _loss(prob, objectives, k_bond, l0_bond)
+                l = _loss(prob, objectives, k_bond, l0_bond, reg)
                 l.backward(); history.append(l.item()); return l
             opt.step(closure)
         else:                                                            # adam
@@ -196,11 +209,11 @@ def optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80,
             for _ in range(n_iter):
                 opt.zero_grad()
                 k_bond, l0_bond = _params_to_kl(raw, prob, mode)
-                l = _loss(prob, objectives, k_bond, l0_bond)
+                l = _loss(prob, objectives, k_bond, l0_bond, reg)
                 l.backward(); opt.step(); history.append(l.item())
         with torch.no_grad():
             k_bond, l0_bond = _params_to_kl(raw, prob, mode)
-            final = float(_loss(prob, objectives, k_bond, l0_bond))
+            final = float(_loss(prob, objectives, k_bond, l0_bond, reg))
         if verbose:
             print(f"  restart {r}: loss {history[0]:.3e} -> {final:.3e} ({len(history)} evals)")
         if best is None or final < best['loss']:
