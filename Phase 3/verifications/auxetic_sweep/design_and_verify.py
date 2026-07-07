@@ -30,6 +30,7 @@ def is_stable(design_nu, sim_nu, sim_E):
 
 def main():
     rows = []                       # (topo, N, target, design_nu, sim_nu, sim_E, stable)
+    reps = []                       # representative designs for the detail figure
     for topo, label, _ in C.TOPOS:
         for N in C.SIZES:
             for tgt in TARGETS:
@@ -41,8 +42,11 @@ def main():
                 snu, sE = C.sim_region_nuE(geo, None)
                 st = is_stable(dnu, snu, sE)
                 rows.append((topo, N, tgt, dnu, snu, sE, st))
-                print(f"  {topo:12s} N={N} tgt={tgt:+.2f} | design={dnu:+.3f} sim={snu:+.3f} "
+                print(f"  {topo:12s} N={N} tgt={tgt:+.2f} | solver={dnu:+.3f} sim={snu:+.3f} "
                       f"E={sE:9.3g} {'ok' if st else 'UNSTABLE'}", flush=True)
+                if N == C.SIZES[-1] and abs(tgt + 0.30) < 1e-9 and st and \
+                        topo in ('regular', 'aniso_shr', 'disorder_lo'):
+                    reps.append((f'{label} (ν→-0.3)', geo, res['k'], C.sim_per_triangle_C6(geo)))
 
     d = C.savedir(CASE)
     np.savez(os.path.join(d, 'results.npz'),
@@ -61,13 +65,18 @@ def main():
                 t, s = zip(*pts)
                 ax[0].scatter(t, s, c=C.TOPO_COLORS[topo], marker=C.SIZE_MARKERS[N], s=45,
                               edgecolor='k', linewidth=0.3, zorder=3)
+    solv = [(r[2], r[3]) for r in rows if r[6]]              # solver prediction (design)
+    if solv:
+        st_, ss_ = zip(*solv)
+        ax[0].scatter(st_, ss_, c='k', marker='+', s=22, alpha=0.6, zorder=2, label='solver (design)')
     unst = [(r[2]) for r in rows if not r[6]]
     if unst:
         ax[0].scatter(unst, [hi - 0.03] * len(unst), c='red', marker='x', s=40,
                       label=f'unstable design ({len(unst)})', zorder=4)
     ax[0].axhline(0, color='gray', lw=0.5, ls=':'); ax[0].axvline(0, color='gray', lw=0.5, ls=':')
-    ax[0].set_xlabel('target ν'); ax[0].set_ylabel('SIMULATED ν (designed network)')
-    ax[0].set_title('Designed → simulated global ν vs target\n(independent energy/virial check; stable designs)')
+    ax[0].set_xlabel('target ν'); ax[0].set_ylabel('achieved ν (designed network)')
+    ax[0].set_title('Designed ν vs target — colored = SIMULATION (independent), + = solver\n'
+                    '(stable designs; solver prediction confirmed by sim)')
     ax[0].legend(fontsize=8); ax[0].grid(alpha=0.3)
     # panel 1: achievable range — sim nu vs target lines per topology (stable), saturation visible
     for topo, label, _ in C.TOPOS:
@@ -92,6 +101,12 @@ def main():
     p = os.path.join(d, f'{CASE}.png')
     plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
     print('saved', p)
+
+    if reps:
+        C.design_detail_figure(os.path.join(d, f'{CASE}_detail.png'), reps,
+                               f'{CASE}: designed networks (ν→-0.3, largest size) — '
+                               f'rigidity k, local ν, local E')
+        print('saved', os.path.join(d, f'{CASE}_detail.png'))
 
 
 if __name__ == '__main__':

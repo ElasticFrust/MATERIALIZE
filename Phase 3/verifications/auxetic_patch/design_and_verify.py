@@ -31,7 +31,8 @@ def regions(prob):
 
 
 def main():
-    rows = []                       # (topo, N, out_nu, patch_nu)
+    rows = []                       # (topo, N, out_nu, patch_nu, out_solver, patch_solver)
+    reps = []                       # detail-figure designs
     rep = None                      # representative for the spatial map
     for topo, label, _ in C.TOPOS:
         for N in C.SIZES:
@@ -40,20 +41,25 @@ def main():
             objs = [C.Objective('nu', NU_OUT, region=outside, weight=1.0),
                     C.Objective('nu', NU_PATCH, region=patch, weight=1.5)]
             res = C.optimize(prob, objs, mode='k', n_iter=120, reg=REG, verbose=False)
+            oo = C.solver_region_nuE(prob, res['k'], outside)[0]     # solver prediction
+            pp = C.solver_region_nuE(prob, res['k'], patch)[0]
             C.apply_k_to_geo(geo, res['k'])
             C6_per = C.sim_per_triangle_C6(geo)
             out_nu = C.c6_nuE(C.region_phys_C6(geo, C6_per, outside))[0]
             pat_nu = C.c6_nuE(C.region_phys_C6(geo, C6_per, patch))[0]
-            rows.append((topo, N, out_nu, pat_nu))
-            print(f"  {topo:12s} N={N} | outside nu={out_nu:+.3f} (->{NU_OUT:+.2f})  "
-                  f"patch nu={pat_nu:+.3f} (->{NU_PATCH:+.2f})", flush=True)
+            rows.append((topo, N, out_nu, pat_nu, oo, pp))
+            print(f"  {topo:12s} N={N} | outside nu solver/sim={oo:+.3f}/{out_nu:+.3f}  "
+                  f"patch nu solver/sim={pp:+.3f}/{pat_nu:+.3f}", flush=True)
             if topo == 'disorder_lo' and N == C.SIZES[-1]:
                 rep = dict(geo=geo, prob=prob, C6_per=C6_per, patch=patch)
+            if N == C.SIZES[-1] and topo in ('regular', 'aniso_shr', 'disorder_lo'):
+                reps.append((label, geo, res['k'], C6_per))
 
     d = C.savedir(CASE)
     np.savez(os.path.join(d, 'results.npz'),
              topo=[r[0] for r in rows], N=[r[1] for r in rows],
              out_nu=[r[2] for r in rows], patch_nu=[r[3] for r in rows],
+             out_solver=[r[4] for r in rows], patch_solver=[r[5] for r in rows],
              target_out=NU_OUT, target_patch=NU_PATCH)
 
     fig, ax = plt.subplots(1, 2, figsize=(13.5, 5.8))
@@ -63,14 +69,15 @@ def main():
                   zorder=5, label='target')
     for topo, label, _ in C.TOPOS:
         for N in C.SIZES:
-            m = [(r[2], r[3]) for r in rows if r[0] == topo and r[1] == N]
+            m = [r for r in rows if r[0] == topo and r[1] == N]
             if m:
-                o, p = m[0]
+                o, p, so, sp = m[0][2], m[0][3], m[0][4], m[0][5]
                 ax[0].scatter([o], [p], c=C.TOPO_COLORS[topo], marker=C.SIZE_MARKERS[N], s=70,
                               edgecolor='k', linewidth=0.4, zorder=3,
                               label=label if N == C.SIZES[0] else None)
+                ax[0].scatter([so], [sp], c='k', marker='+', s=30, alpha=0.6, zorder=2)
     ax[0].axhline(0, color='gray', lw=0.4, ls=':')
-    ax[0].set_xlabel('SIMULATED outside ν'); ax[0].set_ylabel('SIMULATED patch ν')
+    ax[0].set_xlabel('outside ν  (colored=sim, + =solver)'); ax[0].set_ylabel('patch ν')
     ax[0].set_title(f'Mixed design: outside → {NU_OUT:+.2f}, patch → {NU_PATCH:+.2f}\n'
                     f'(each point = one topology×size, simulated)')
     ax[0].legend(fontsize=7); ax[0].grid(alpha=0.3)
@@ -105,6 +112,12 @@ def main():
     p = os.path.join(d, f'{CASE}.png')
     plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
     print('saved', p)
+
+    if reps:
+        C.design_detail_figure(os.path.join(d, f'{CASE}_detail.png'), reps,
+                               f'{CASE}: designed networks (auxetic patch in a positive matrix, '
+                               f'largest size) — rigidity k, local ν, local E')
+        print('saved', os.path.join(d, f'{CASE}_detail.png'))
 
 
 if __name__ == '__main__':

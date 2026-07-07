@@ -100,7 +100,7 @@ class DesignProblem:
         kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
         solver = make_solver(geo, kkt)
         bond_len = np.sqrt((geo['bond_R'] ** 2).sum(1))
-        cen = geo['pts'][geo['simplices']].mean(1)
+        cen = geo.get('centroids', geo['pts'][geo['simplices']].mean(1))   # image-correct if present
         return cls(solver, geo['tri_bond'], bond_len, geo['areas'], cen,
                    np.sqrt(geo['actual_len2']))
 

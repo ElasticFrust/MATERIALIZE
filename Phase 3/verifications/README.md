@@ -11,13 +11,23 @@ python "Phase 3/verifications/<case>/design_and_verify.py"
 ```
 
 ## Shared harness — `_common.py`
-- **Topologies (periodic):** `regular` triangular · `aniso_str` (affine stretch 1.5,0.8) ·
-  `aniso_shr` (shear 0.4) · `disorder_lo` (η=0.20) · `disorder_hi` (η=0.35).
-- **Sizes:** `SIZES = [12, 20]` → ~288 triangles (dense solver path) and ~800 (adjoint path).
+- **Lattice constructor (`make_lattice`):** base vectors `v1=(1,0)`, `v2=(φ/2, ψ·√3/2)`
+  (`φ=ψ=1` → regular triangular); keep a SQUARE real-space region as an axis-aligned PERIODIC box;
+  PBC via periodic Delaunay. `verify_lattice.py` is the geometry/physics/design gate (regular →
+  ν=1/3, E=2/√3; solver = sim exactly; boxes square; valid PBC).
+- **Topologies (periodic):** `regular` (φ=ψ=1) · `aniso_str` (ψ=0.6, compressed rows) ·
+  `aniso_shr` (φ=1.5, sheared) · `disorder_lo` (η=0.20) · `disorder_hi` (η=0.35). See
+  `topologies_overview.png` (real geometry — the anisotropy is visible).
+- **Sizes:** `SIZES = [8, 12]` (square half-size) → ~600 / ~1300 triangles (both adjoint path).
+- **Plots:** REAL geometry in a SQUARE axes frame + periodic-box outline (`draw_network` with line
+  color/width ∝ k; `local_scalar_field` → local ν/E maps; `square_frame`/`draw_box`). Each case also
+  saves a `<case>_detail.png`: designed rigidity network + local ν map + local E map per
+  representative design.
 - **Independent simulation:** `sim_per_triangle_C6` relaxes the designed network once and returns
   the physical per-triangle tensors; `region_phys_C6` averages any region; `nu_E_theta` gives the
-  directional ν(θ)/E(θ). A light uniformity regulariser (`reg` in `optimize`) discourages the
-  optimiser from exploiting floppy/unstable configurations.
+  directional ν(θ)/E(θ); `solver_region_nuE` is the solver's own prediction (plotted beside the sim
+  on every summary). A light uniformity regulariser (`reg` in `optimize`) discourages the optimiser
+  from exploiting floppy/unstable configurations.
 
 **Verification strength (stated on each plot):**
 - **Global ν/E** — the sim ground truth (energy = virial) is *independent* of the solver's

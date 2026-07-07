@@ -20,6 +20,7 @@ Verification strength (be explicit in plots):
 import os, sys
 import numpy as np
 import torch
+from scipy.spatial import Delaunay
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 P3 = os.path.dirname(HERE)
@@ -38,14 +39,26 @@ torch.set_default_dtype(torch.float64)
 
 # ---- topology x size matrix ------------------------------------------------------------------
 TOPOS = [
-    ('regular',     'regular triangular',        None),
-    ('aniso_str',   'non-sym (stretch 1.5,0.8)', np.diag([1.5, 0.8])),
-    ('aniso_shr',   'non-sym (shear 0.4)',       np.array([[1.0, 0.4], [0.0, 1.0]])),
-    ('disorder_lo', 'disordered eta=0.20',       None),
-    ('disorder_hi', 'disordered eta=0.35',       None),
+    ('regular',     'regular (phi=psi=1)',  None),
+    ('aniso_str',   'non-sym (psi=0.6)',    None),
+    ('aniso_shr',   'non-sym (phi=1.5)',    None),
+    ('disorder_lo', 'disordered eta=0.20',  None),
+    ('disorder_hi', 'disordered eta=0.35',  None),
 ]
 TOPO_IDS = [t[0] for t in TOPOS]
-SIZES = [12, 20]                                         # 288 tri (dense path) / 800 tri (adjoint path)
+SIZES = [8, 12]                                          # square half-size -> ~600 / ~1300 triangles
+_TOPO_PARAMS = {                                         # (phi, psi, eta) for the preferred make_lattice
+    'regular':     (1.0, 1.0, 0.00),
+    'aniso_str':   (1.0, 0.6, 0.00),                     # rows compressed in y
+    'aniso_shr':   (1.5, 1.0, 0.00),                     # sheared rows
+    'disorder_lo': (1.0, 1.0, 0.20),
+    'disorder_hi': (1.0, 1.0, 0.35),
+}
+# legacy affine constants (used only by make_topology_affine, kept for reference)
+_L1 = np.array([1.0, 0.0]); _L2 = np.array([0.5, np.sqrt(3) / 2])
+_TOPO_M = {'regular': np.eye(2), 'aniso_str': np.diag([1.5, 0.8]),
+           'aniso_shr': np.array([[1.0, 0.4], [0.0, 1.0]]),
+           'disorder_lo': np.eye(2), 'disorder_hi': np.eye(2)}
 
 
 def _affine(geo, M):
@@ -57,22 +70,163 @@ def _affine(geo, M):
     return geo
 
 
-def make_topology(topo_id, N, seed=0):
-    """Return a periodic geometry dict (uniform k=1) for a named topology at size N."""
-    if topo_id == 'regular':
-        geo = VD.build_geometry(N, 0.0, seed=seed)
-    elif topo_id == 'aniso_str':
-        geo = _affine(VD.build_geometry(N, 0.0, seed=seed), np.diag([1.5, 0.8]))
-    elif topo_id == 'aniso_shr':
-        geo = _affine(VD.build_geometry(N, 0.0, seed=seed), np.array([[1.0, 0.4], [0.0, 1.0]]))
-    elif topo_id == 'disorder_lo':
-        geo = VD.build_geometry(N, 0.20, seed=seed)
-    elif topo_id == 'disorder_hi':
-        geo = VD.build_geometry(N, 0.35, seed=seed)
-    else:
-        raise ValueError(topo_id)
-    VD.set_VD(geo, 0)                                    # uniform k=1
+def make_topology_affine(topo_id, N, seed=0):
+    """DEPRECATED (kept for reference). Old affine-transform topologies whose parallelogram box is
+    hidden by the square/fractional view. Superseded by make_lattice / make_topology below."""
+    eta = {'regular': 0.0, 'aniso_str': 0.0, 'aniso_shr': 0.0,
+           'disorder_lo': 0.20, 'disorder_hi': 0.35}[topo_id]
+    M = _TOPO_M[topo_id]
+    geo = VD.build_geometry(N, eta, seed=seed)
+    if not np.allclose(M, np.eye(2)):
+        geo = _affine(geo, M)
+    VD.set_VD(geo, 0)
+    geo['BL1'] = M @ (N * _L1); geo['BL2'] = M @ (N * _L2)
     return geo
+
+
+# ---- PREFERRED lattice constructor (square real-space region, PBC via periodic Delaunay) -----
+def _ny_commensurate(phi, Lx, row_h):
+    """Row count = multiple of the period p (smallest with p·φ/2 integer, so a rectangular box is a
+    true periodic supercell) whose height Ny·row_h is CLOSEST to Lx (→ box as square as possible)."""
+    period = 2
+    for base in (2, 3, 4, 5, 6, 8, 10, 12):
+        if abs(base * phi / 2 - round(base * phi / 2)) < 1e-9:
+            period = base
+            break
+    ny_real = Lx / row_h
+    lo = max(period, (int(ny_real) // period) * period)
+    hi = lo + period
+    return lo if abs(lo * row_h - Lx) <= abs(hi * row_h - Lx) else hi
+
+
+def _periodic_delaunay(pts, Lx, Ly):
+    """Periodic Delaunay of a point cloud in [0,Lx)x[0,Ly) via the 3x3-tile trick -> geo dict with
+    an axis-aligned SQUARE-ish box BL1=(Lx,0), BL2=(0,Ly)."""
+    n = len(pts); box = np.array([Lx, Ly])
+    shifts = np.array([(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)])
+    tiled = np.concatenate([pts + s * box for s in shifts], axis=0)
+    shift_of = np.repeat(shifts, n, axis=0)
+    simp_t = Delaunay(tiled).simplices
+    cen = tiled[simp_t].mean(1)
+    keep = (cen[:, 0] >= 0) & (cen[:, 0] < Lx) & (cen[:, 1] >= 0) & (cen[:, 1] < Ly)
+    simp_t = simp_t[keep]; nt = len(simp_t)
+    canon = simp_t % n; sft = shift_of[simp_t]
+    p0, p1, p2 = tiled[simp_t[:, 0]], tiled[simp_t[:, 1]], tiled[simp_t[:, 2]]
+    centroids = (p0 + p1 + p2) / 3.0                     # TRUE centroids (image-correct, in the box)
+    edge_vecs = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
+    l2 = (edge_vecs ** 2).sum(2)
+    areas = 0.5 * np.abs(edge_vecs[:, 0, 0] * edge_vecs[:, 1, 1]
+                         - edge_vecs[:, 0, 1] * edge_vecs[:, 1, 0])
+    pairs = [(0, 1, 0), (0, 2, 1), (1, 2, 2)]
+    keymap = {}; bonds = []; tri_bond = np.zeros((nt, 3), np.int64)
+    for ti in range(nt):
+        for ka, kb, ei in pairs:
+            ca, cb = int(canon[ti, ka]), int(canon[ti, kb])
+            d = sft[ti, kb] - sft[ti, ka]; dp = (int(d[0]), int(d[1])); R = edge_vecs[ti, ei]
+            if (ca, dp[0], dp[1]) <= (cb, -dp[0], -dp[1]):
+                key, Rk = (ca, cb, dp[0], dp[1]), R
+            else:
+                key, Rk = (cb, ca, -dp[0], -dp[1]), -R
+            if key not in keymap:
+                keymap[key] = len(bonds); bonds.append((key[0], key[1], Rk))
+            tri_bond[ti, ei] = keymap[key]
+    return dict(pts=pts, simplices=canon, edge_vecs=edge_vecs, actual_len2=l2,
+                bond_u=np.array([b[0] for b in bonds], np.int64),
+                bond_v=np.array([b[1] for b in bonds], np.int64),
+                bond_R=np.array([b[2] for b in bonds], float),
+                tri_bond=tri_bond, areas=areas, centroids=centroids,
+                BL1=np.array([Lx, 0.0]), BL2=np.array([0.0, Ly]))
+
+
+def make_lattice(phi, psi, half=10.0, seed=0, eta=0.0):
+    """Preferred constructor. Base vectors v1=(1,0), v2=(φ/2, ψ·√3/2) (φ=ψ=1 → regular triangular);
+    lattice = all m·v1+n·v2; keep a SQUARE real-space region (|x|,|y| ≤ half) as an axis-aligned
+    PERIODIC box. Optional eta perturbs positions (disordered). Returns a geo dict (k not set)."""
+    Nx = max(4, int(round(2 * half)))
+    row_h = psi * np.sqrt(3) / 2
+    Lx = float(Nx)
+    Ny = _ny_commensurate(phi, Lx, row_h)
+    Ly = Ny * row_h
+    m, n = np.meshgrid(np.arange(Nx), np.arange(Ny), indexing='ij')
+    x = (m.ravel() + n.ravel() * phi / 2.0) % Nx
+    y = n.ravel() * row_h
+    pts = np.stack([x, y], 1).astype(float)
+    if eta > 0:
+        rng = np.random.default_rng(seed)
+        ang = rng.uniform(0, 2 * np.pi, len(pts))
+        pts = pts + eta * np.stack([np.cos(ang), np.sin(ang)], 1)
+        pts[:, 0] %= Lx; pts[:, 1] %= Ly
+    return _periodic_delaunay(pts, Lx, Ly)
+
+
+def make_topology(topo_id, half, seed=0):
+    """Named topology at square half-size `half`, built with the preferred make_lattice
+    (square real-space PBC region; anisotropy visible in the real geometry)."""
+    phi, psi, eta = _TOPO_PARAMS[topo_id]
+    return make_lattice(phi, psi, half=half, seed=seed, eta=eta)
+
+
+# ---- square / fractional plotting (periodic wrap) --------------------------------------------
+def _box(geo):
+    return np.column_stack([geo['BL1'], geo['BL2']])    # 2x2, columns = box vectors
+
+
+def to_square(geo, pts):
+    """Map real positions to fractional lattice coords in [0,1)^2 (periodic wrap → square region)."""
+    frac = np.linalg.solve(_box(geo), np.atleast_2d(np.asarray(pts)).T).T
+    return frac % 1.0
+
+
+def square_frame(ax, geo, pad=0.04):
+    """Real geometry, but force a SQUARE axes frame that bounds the periodic box (undistorted:
+    equal aspect, so a stretched/sheared lattice fills a parallelogram within the square)."""
+    corners = np.array([[0, 0], geo['BL1'], geo['BL2'], geo['BL1'] + geo['BL2']], float)
+    cx, cy = corners.mean(0)
+    half = 0.5 * max(np.ptp(corners[:, 0]), np.ptp(corners[:, 1])) * (1 + pad)
+    ax.set_xlim(cx - half, cx + half); ax.set_ylim(cy - half, cy + half)
+    ax.set_aspect('equal'); ax.set_xticks([]); ax.set_yticks([])
+
+
+def draw_box(ax, geo, **kw):
+    B1, B2 = geo['BL1'], geo['BL2']
+    poly = np.array([[0, 0], B1, B1 + B2, B2, [0, 0]], float)
+    ax.plot(poly[:, 0], poly[:, 1], color=kw.pop('color', '0.55'), lw=kw.pop('lw', 0.9),
+            ls=kw.pop('ls', '--'), zorder=1)
+
+
+def draw_network(ax, geo, k_bond, cmap='viridis', lw_scale=3.0, box=True):
+    """Draw the network in REAL geometry (per-bond line color AND width ∝ rigidity k), inside a
+    square axes frame. Bonds crossing the periodic boundary appear as short stubs at the edges."""
+    from matplotlib.collections import LineCollection
+    u = geo['pts'][geo['bond_u']]
+    segs = np.stack([u, u + geo['bond_R']], axis=1)      # real-coordinate segments
+    k = np.asarray(k_bond, float)
+    lw = 0.25 + lw_scale * k / (k.max() + 1e-12)
+    lc = LineCollection(segs, array=k, cmap=cmap, linewidths=lw, zorder=2)
+    ax.add_collection(lc)
+    if box:
+        draw_box(ax, geo)
+    square_frame(ax, geo)
+    return lc
+
+
+def local_scalar_field(geo, C6_per, quantity='nu', ncell=None):
+    """Per-triangle local ν or E, binned on a fractional [0,1]^2 grid but returned at REAL
+    triangle-centroid positions (so it plots on the real geometry). Returns (real_centroids, val).
+    Grid resolution defaults to ~7 triangles/cell so the map fills."""
+    cen = geo.get('centroids', geo['pts'][geo['simplices']].mean(1))
+    if ncell is None:
+        ncell = max(6, int(round(np.sqrt(len(cen) / 7.0))))
+    fc = to_square(geo, cen)                             # fractional coords only for binning
+    val = np.full(len(cen), np.nan)
+    for i in range(ncell):
+        for j in range(ncell):
+            sel = np.where((fc[:, 0] >= i / ncell) & (fc[:, 0] < (i + 1) / ncell) &
+                           (fc[:, 1] >= j / ncell) & (fc[:, 1] < (j + 1) / ncell))[0]
+            if len(sel) >= 3:
+                nu, E = c6_nuE(region_phys_C6(geo, C6_per, sel))
+                val[sel] = nu if quantity == 'nu' else E
+    return cen, val
 
 
 def make_case(topo_id, N, seed=0):
@@ -132,6 +286,15 @@ def sim_region_nuE(geo, region=None):
     return c6_nuE(sim_region_C6(geo, region))
 
 
+def solver_region_nuE(prob, k_bond, region=None):
+    """The FORWARD SOLVER's own prediction (physical) for the designed k over a region — plot
+    alongside the simulation to show the solver's prediction is itself confirmed."""
+    with torch.no_grad():
+        out = prob.forward(k_bond, physical_units=True)
+        C6 = prob.region_tensor(out['per_triangle'], region).numpy()
+    return c6_nuE(C6)
+
+
 # ---- directional response nu(theta), E(theta) (for the anisotropy case) ----------------------
 def _compliance_tensor(C6):
     Cv = np.array([[C6[0], C6[2], C6[1]], [C6[2], C6[5], C6[4]], [C6[1], C6[4], C6[3]]])
@@ -161,15 +324,11 @@ def nu_E_theta(C6, thetas):
 
 
 # ---- reference tensors (for isotropize / anisotropize cross-targets) -------------------------
-def reference_C6(kind, N=16):
+def reference_C6(kind, half=8):
     """Physical 6-vector of a uniform-k reference lattice: 'iso' = regular triangular (nu=1/3),
-    'aniso' = stretched lattice. Size-independent (bulk value); used as design targets."""
-    if kind == 'iso':
-        geo = make_topology('regular', N)
-    elif kind == 'aniso':
-        geo = make_topology('aniso_str', N)
-    else:
-        raise ValueError(kind)
+    'aniso' = compressed-row lattice. Size-independent (bulk value); used as design targets."""
+    geo = make_topology({'iso': 'regular', 'aniso': 'aniso_str'}[kind], half)
+    VD.set_VD(geo, 0)                                    # uniform k=1 (sets bond_k / tri_k)
     return sim_region_C6(geo, None)
 
 
@@ -183,3 +342,31 @@ def savedir(case):
     d = os.path.join(HERE, case)
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def design_detail_figure(path, entries, title):
+    """entries: list of (name, geo, k_bond, C6_per). One row per design, three panels in REAL
+    geometry / square frame: [ designed rigidity network | local ν map | local E map ]."""
+    import matplotlib.pyplot as plt
+    n = len(entries)
+    fig, axes = plt.subplots(n, 3, figsize=(13.5, 4.3 * n), squeeze=False)
+    for r, (name, geo, kb, C6) in enumerate(entries):
+        lc = draw_network(axes[r, 0], geo, kb, cmap='viridis')
+        plt.colorbar(lc, ax=axes[r, 0], fraction=0.046, label='k')
+        axes[r, 0].set_ylabel(name, fontsize=9)
+        axes[r, 0].set_title('designed rigidity k (width∝k)' if r == 0 else '', fontsize=10)
+        for col, (q, cmap, ttl) in enumerate([('nu', 'RdBu_r', 'local ν'),
+                                              ('E', 'viridis', 'local E')], start=1):
+            cen, val = local_scalar_field(geo, C6, q)
+            g = ~np.isnan(val)
+            kw = {}
+            if q == 'nu' and g.any():
+                vlim = np.nanpercentile(np.abs(val[g]), 95)
+                kw = dict(vmin=-vlim, vmax=vlim)
+            sc = axes[r, col].scatter(cen[g, 0], cen[g, 1], c=val[g], cmap=cmap, s=9, **kw)
+            draw_box(axes[r, col], geo); square_frame(axes[r, col], geo)
+            axes[r, col].set_title(ttl if r == 0 else '', fontsize=10)
+            plt.colorbar(sc, ax=axes[r, col], fraction=0.046)
+    fig.suptitle(title, fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()

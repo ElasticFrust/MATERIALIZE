@@ -34,6 +34,7 @@ def main():
     ani_nu = C.nu_E_theta(ani_ref, THETA)[0]
 
     rec = {}                        # (topo,N) -> dict(base, iso, ani)  nu(theta) arrays
+    reps = []
     Nplot = C.SIZES[-1]
     for topo, label, _ in C.TOPOS:
         for N in C.SIZES:
@@ -49,6 +50,10 @@ def main():
             C.apply_k_to_geo(geo2, r_ani['k'])
             ani = C.nu_E_theta(C.sim_region_C6(geo2, None), THETA)[0]
             rec[(topo, N)] = dict(base=base, iso=iso, ani=ani)
+            if N == Nplot and topo in ('aniso_str', 'aniso_shr'):
+                reps.append((f'{label} → ISO', geo, r_iso['k'], C.sim_per_triangle_C6(geo)))
+            if N == Nplot and topo == 'regular':
+                reps.append((f'{label} → ANISO', geo2, r_ani['k'], C.sim_per_triangle_C6(geo2)))
             print(f"  {topo:12s} N={N} | base nu range=[{base.min():+.2f},{base.max():+.2f}] "
                   f"iso-designed range=[{iso.min():+.2f},{iso.max():+.2f}] "
                   f"ani err(max|dnu|)={np.abs(ani - ani_nu).max():.3f}", flush=True)
@@ -87,6 +92,12 @@ def main():
     p = os.path.join(d, f'{CASE}.png')
     plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
     print('saved', p)
+
+    if reps:
+        C.design_detail_figure(os.path.join(d, f'{CASE}_detail.png'), reps,
+                               f'{CASE}: designed networks (isotropized / anisotropized, largest size) — '
+                               f'rigidity k, local ν, local E')
+        print('saved', os.path.join(d, f'{CASE}_detail.png'))
 
 
 if __name__ == '__main__':
