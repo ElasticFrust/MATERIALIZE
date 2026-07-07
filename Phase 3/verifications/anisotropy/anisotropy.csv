@@ -1,0 +1,11 @@
+topology,half_size,isotropize_max_dnu(theta),anisotropize_max_dnu(theta)
+regular,8,0.0000,0.0068
+regular,12,0.0000,0.0178
+aniso_str,8,0.3735,0.0000
+aniso_str,12,0.3736,0.0000
+aniso_shr,8,0.0127,0.0094
+aniso_shr,12,0.0316,0.0157
+disorder_lo,8,0.0069,0.0039
+disorder_lo,12,0.0069,0.0090
+disorder_hi,8,0.0077,0.0204
+disorder_hi,12,0.0073,0.0088

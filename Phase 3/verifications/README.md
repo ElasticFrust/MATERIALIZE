@@ -2,8 +2,11 @@
 
 Each case **designs** k with the inverse designer (`../inverse_design.py`), then **independently
 simulates** the designed network (PBC relaxation → physical per-triangle tensor) and checks it
-does as prescribed. Every case runs a matrix of **topologies × sizes**, and saves its figure +
-`results.npz` in its own folder.
+does as prescribed. Every case runs a matrix of **topologies × sizes**, and saves in its own folder:
+a **`<case>.csv`** table (printed too) plus four kinds of figure — **`_summary.png`** (all
+topologies overlaid, sim vs solver vs target), **`_bytopo.png`** (per-topology small multiples),
+**`_detail.png`** (5-topology grid: designed rigidity k · local ν · local E, filled triangles, target
+region marked in lime), and one **`<case>_<topology>.png`** detail file per topology.
 
 Run a case:
 ```
@@ -18,11 +21,12 @@ python "Phase 3/verifications/<case>/design_and_verify.py"
 - **Topologies (periodic):** `regular` (φ=ψ=1) · `aniso_str` (ψ=0.6, compressed rows) ·
   `aniso_shr` (φ=1.5, sheared) · `disorder_lo` (η=0.20) · `disorder_hi` (η=0.35). See
   `topologies_overview.png` (real geometry — the anisotropy is visible).
-- **Sizes:** `SIZES = [8, 12]` (square half-size) → ~600 / ~1300 triangles (both adjoint path).
+- **Sizes:** `SIZES = [8, 12]` (square half-size) → ~600 / ~1300–2200 triangles (both adjoint path).
 - **Plots:** REAL geometry in a SQUARE axes frame + periodic-box outline (`draw_network` with line
-  color/width ∝ k; `local_scalar_field` → local ν/E maps; `square_frame`/`draw_box`). Each case also
-  saves a `<case>_detail.png`: designed rigidity network + local ν map + local E map per
-  representative design.
+  color/width ∝ k; `local_field_smooth` + `fill_local_map` → local ν/E as **filled triangles**;
+  `square_frame`/`draw_box`; `mark_region` outlines the target region in lime). The detail figures
+  (`design_detail_figure` grid + `design_detail_per_topology` files) show, per design, the designed
+  rigidity network alongside its local ν and local E maps.
 - **Independent simulation:** `sim_per_triangle_C6` relaxes the designed network once and returns
   the physical per-triangle tensors; `region_phys_C6` averages any region; `nu_E_theta` gives the
   directional ν(θ)/E(θ); `solver_region_nuE` is the solver's own prediction (plotted beside the sim
@@ -61,4 +65,5 @@ python "Phase 3/verifications/<case>/design_and_verify.py"
   lattice (a physical limit on how much stretch rigidity can offset); and conversely **induces** a
   prescribed anisotropic ν(θ) on **every** topology (all curves overlay the anisotropic target).
 
-_(See each case's PNG for the quantitative result and its `results.npz` for the raw numbers.)_
+_(See each case's `_summary.png`/`_bytopo.png`/`_detail.png` for the result and its `<case>.csv` for
+the raw numbers.)_

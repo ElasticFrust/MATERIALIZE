@@ -20,7 +20,7 @@ Verification strength (be explicit in plots):
 import os, sys
 import numpy as np
 import torch
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay, cKDTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 P3 = os.path.dirname(HERE)
@@ -113,6 +113,7 @@ def _periodic_delaunay(pts, Lx, Ly):
     canon = simp_t % n; sft = shift_of[simp_t]
     p0, p1, p2 = tiled[simp_t[:, 0]], tiled[simp_t[:, 1]], tiled[simp_t[:, 2]]
     centroids = (p0 + p1 + p2) / 3.0                     # TRUE centroids (image-correct, in the box)
+    tri_verts = np.stack([p0, p1, p2], 1)               # (nt,3,2) image-correct vertices (for fills)
     edge_vecs = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
     l2 = (edge_vecs ** 2).sum(2)
     areas = 0.5 * np.abs(edge_vecs[:, 0, 0] * edge_vecs[:, 1, 1]
@@ -134,7 +135,7 @@ def _periodic_delaunay(pts, Lx, Ly):
                 bond_u=np.array([b[0] for b in bonds], np.int64),
                 bond_v=np.array([b[1] for b in bonds], np.int64),
                 bond_R=np.array([b[2] for b in bonds], float),
-                tri_bond=tri_bond, areas=areas, centroids=centroids,
+                tri_bond=tri_bond, areas=areas, centroids=centroids, tri_verts=tri_verts,
                 BL1=np.array([Lx, 0.0]), BL2=np.array([0.0, Ly]))
 
 
@@ -208,6 +209,55 @@ def draw_network(ax, geo, k_bond, cmap='viridis', lw_scale=3.0, box=True):
         draw_box(ax, geo)
     square_frame(ax, geo)
     return lc
+
+
+def local_field_smooth(geo, C6_per, quantity='nu', k=18):
+    """Per-triangle local ν or E, each triangle = physical homogenisation of its k nearest
+    neighbours (smooth field for FILLED-triangle maps). Returns (nt,) values."""
+    cen = geo['centroids']
+    kk = min(k, len(cen))
+    _, idx = cKDTree(cen).query(cen, k=kk)
+    if kk == 1:
+        idx = idx[:, None]
+    C6m = C6_per[idx].mean(1)                                    # (nt,6) neighbourhood mean
+    fac = 8.0 * kk / geo['areas'][idx].sum(1)                    # per-triangle physical factor
+    C = C6m * fac[:, None]
+    nu = (C[:, 2]*C[:, 3] - C[:, 1]*C[:, 4]) / (C[:, 0]*C[:, 3] - C[:, 1]**2)
+    E = (C[:, 2]**2*C[:, 3] - 2*C[:, 1]*C[:, 2]*C[:, 4] + C[:, 1]**2*C[:, 5]
+         + C[:, 0]*(C[:, 4]**2 - C[:, 3]*C[:, 5])) / (C[:, 1]**2 - C[:, 0]*C[:, 3])
+    return nu if quantity == 'nu' else E
+
+
+def fill_local_map(ax, geo, val, cmap='RdBu_r', sym=False, vlim=None):
+    """FILLED per-triangle map (colored triangle interiors, image-correct) in a square frame."""
+    from matplotlib.collections import PolyCollection
+    pc = PolyCollection(list(geo['tri_verts']), array=np.asarray(val), cmap=cmap, edgecolors='none')
+    if sym:
+        v = vlim if vlim is not None else np.nanpercentile(np.abs(val), 97)
+        pc.set_clim(-v, v)
+    ax.add_collection(pc)
+    square_frame(ax, geo)
+    return pc
+
+
+def mark_region(ax, region):
+    """Outline a target region: {'kind':'circle','center':(x,y),'radius':r} or
+    {'kind':'vlines','xs':[...]}"""
+    if not region:
+        return
+    import matplotlib.pyplot as plt
+    if region['kind'] == 'circle':
+        ax.add_patch(plt.Circle(region['center'], region['radius'], facecolor='none',
+                                edgecolor='lime', lw=2.0, zorder=6))
+    elif region['kind'] == 'vlines':
+        for x in region['xs']:
+            ax.axvline(x, color='lime', lw=1.0, ls='--', zorder=6)
+
+
+def write_csv(path, header, rows):
+    import csv
+    with open(path, 'w', newline='') as f:
+        w = csv.writer(f); w.writerow(header); w.writerows(rows)
 
 
 def local_scalar_field(geo, C6_per, quantity='nu', ncell=None):
@@ -286,13 +336,17 @@ def sim_region_nuE(geo, region=None):
     return c6_nuE(sim_region_C6(geo, region))
 
 
+def solver_region_C6(prob, k_bond, region=None):
+    """The FORWARD SOLVER's physical 6-vector for the designed k over a region."""
+    with torch.no_grad():
+        out = prob.forward(k_bond, physical_units=True)
+        return prob.region_tensor(out['per_triangle'], region).numpy()
+
+
 def solver_region_nuE(prob, k_bond, region=None):
     """The FORWARD SOLVER's own prediction (physical) for the designed k over a region — plot
     alongside the simulation to show the solver's prediction is itself confirmed."""
-    with torch.no_grad():
-        out = prob.forward(k_bond, physical_units=True)
-        C6 = prob.region_tensor(out['per_triangle'], region).numpy()
-    return c6_nuE(C6)
+    return c6_nuE(solver_region_C6(prob, k_bond, region))
 
 
 # ---- directional response nu(theta), E(theta) (for the anisotropy case) ----------------------
@@ -344,29 +398,44 @@ def savedir(case):
     return d
 
 
+def _detail_row(axr, name, geo, kb, C6, region, show_titles):
+    """One row: [ rigidity network | filled local ν | filled local E ], target region marked."""
+    import matplotlib.pyplot as plt
+    lc = draw_network(axr[0], geo, kb, cmap='viridis')
+    plt.colorbar(lc, ax=axr[0], fraction=0.046, label='k')
+    axr[0].set_ylabel(name, fontsize=9)
+    nu = local_field_smooth(geo, C6, 'nu')
+    pnu = fill_local_map(axr[1], geo, nu, cmap='RdBu_r', sym=True)
+    draw_box(axr[1], geo); mark_region(axr[1], region); plt.colorbar(pnu, ax=axr[1], fraction=0.046)
+    E = local_field_smooth(geo, C6, 'E')
+    pE = fill_local_map(axr[2], geo, E, cmap='viridis')
+    draw_box(axr[2], geo); mark_region(axr[2], region); plt.colorbar(pE, ax=axr[2], fraction=0.046)
+    if show_titles:
+        axr[0].set_title('designed rigidity k (width∝k)', fontsize=10)
+        axr[1].set_title('local ν (lime = target region)', fontsize=10)
+        axr[2].set_title('local E', fontsize=10)
+
+
 def design_detail_figure(path, entries, title):
-    """entries: list of (name, geo, k_bond, C6_per). One row per design, three panels in REAL
-    geometry / square frame: [ designed rigidity network | local ν map | local E map ]."""
+    """5-row grid. entries: list of (name, geo, k_bond, C6_per, region)."""
     import matplotlib.pyplot as plt
     n = len(entries)
-    fig, axes = plt.subplots(n, 3, figsize=(13.5, 4.3 * n), squeeze=False)
-    for r, (name, geo, kb, C6) in enumerate(entries):
-        lc = draw_network(axes[r, 0], geo, kb, cmap='viridis')
-        plt.colorbar(lc, ax=axes[r, 0], fraction=0.046, label='k')
-        axes[r, 0].set_ylabel(name, fontsize=9)
-        axes[r, 0].set_title('designed rigidity k (width∝k)' if r == 0 else '', fontsize=10)
-        for col, (q, cmap, ttl) in enumerate([('nu', 'RdBu_r', 'local ν'),
-                                              ('E', 'viridis', 'local E')], start=1):
-            cen, val = local_scalar_field(geo, C6, q)
-            g = ~np.isnan(val)
-            kw = {}
-            if q == 'nu' and g.any():
-                vlim = np.nanpercentile(np.abs(val[g]), 95)
-                kw = dict(vmin=-vlim, vmax=vlim)
-            sc = axes[r, col].scatter(cen[g, 0], cen[g, 1], c=val[g], cmap=cmap, s=9, **kw)
-            draw_box(axes[r, col], geo); square_frame(axes[r, col], geo)
-            axes[r, col].set_title(ttl if r == 0 else '', fontsize=10)
-            plt.colorbar(sc, ax=axes[r, col], fraction=0.046)
+    fig, axes = plt.subplots(n, 3, figsize=(13.5, 4.1 * n), squeeze=False)
+    for r, e in enumerate(entries):
+        _detail_row(axes[r], *e, show_titles=(r == 0))
     fig.suptitle(title, fontsize=12)
     plt.tight_layout(rect=[0, 0, 1, 0.97])
     plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()
+
+
+def design_detail_per_topology(directory, prefix, entries, title_fmt):
+    """One file per entry (topology): [ rigidity | local ν | local E ]."""
+    import matplotlib.pyplot as plt
+    for (name, geo, kb, C6, region) in entries:
+        fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.6))
+        _detail_row(axes, name, geo, kb, C6, region, show_titles=True)
+        fig.suptitle(title_fmt.format(name=name), fontsize=12)
+        plt.tight_layout(rect=[0, 0, 1, 0.94])
+        safe = name.split('(')[0].strip().replace(' ', '_').replace('→', 'to')
+        p = os.path.join(directory, f'{prefix}_{safe}.png')
+        plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
