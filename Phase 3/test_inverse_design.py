@@ -128,10 +128,10 @@ def test_constrain_isotropic():
         nu = c6_to_nu_theta(C6, ANG).detach().numpy()
         return float(np.ptp(nu)), float(nu.mean())
 
-    # ish scalar leaves the patch anisotropic; exact flat ν(θ) makes it isotropic at −0.2
-    ish = optimize(prob, [Objective('nu', -0.2, region=patch)], mode='k', n_iter=140, verbose=False)
+    # legacy single-direction 'nu_dir' leaves the patch anisotropic; scalar 'nu' (=isotropic) fixes it
+    ish = optimize(prob, [Objective('nu_dir', -0.2, region=patch)], mode='k', n_iter=140, verbose=False)
     sp_ish, _ = nu_spread(ish['k'])
-    ex = optimize(prob, constrain(region=patch, nu=-0.2), mode='k', n_iter=160, verbose=False)
+    ex = optimize(prob, [Objective('nu', -0.2, region=patch)], mode='k', n_iter=160, verbose=False)
     sp, mn = nu_spread(ex['k'])
     assert sp < 0.05 and abs(mn + 0.2) < 0.03 and sp < sp_ish, \
         f"exact flat ν spread {sp:.3f} mean {mn:.3f} (ish spread {sp_ish:.3f})"

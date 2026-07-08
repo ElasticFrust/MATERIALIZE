@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import _common as C
 
 TARGETS = [0.30, 0.15, 0.00, -0.15, -0.30, -0.45, -0.60]
-DETAIL_TOPOS = ['regular', 'aniso_str', 'disorder_hi']      # per-topo detail across ALL targets
+DETAIL_TOPOS = C.TOPO_IDS                                    # per-topo detail across ALL targets, EVERY topology
 CASE, REG = 'auxetic_sweep', 0.003
 
 

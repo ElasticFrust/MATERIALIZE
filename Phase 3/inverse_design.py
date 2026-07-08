@@ -115,24 +115,31 @@ class Objective:
     """One design target over a region.
 
     region : 1-D int array of triangle indices, or None = whole network (global).
-    kind   : 'nu' | 'E' | 'tensor' | 'nu_theta' | 'E_theta'.
-    target : float (nu/E), (6,) array (tensor), or ν/E-values over `thetas` ('nu_theta'/'E_theta').
+    kind   :
+      'nu' | 'E'          — a SCALAR target meaning ISOTROPIC ν / E, i.e. that value in EVERY
+                            direction (ν(θ)/E(θ) held flat). This is the default meaning of "ν=v".
+      'nu_dir' | 'E_dir'  — the legacy single-direction scalar (one contraction of the tensor);
+                            constrains only one orientation, so the tensor can still be anisotropic.
+      'tensor'            — the full physical 6-vector.
+      'nu_theta'|'E_theta'— a directional profile over `thetas`.
+      'isotropy'          — force direction-independence (level free).
+    target : float (nu/E/nu_dir/E_dir), (6,) array (tensor), or profile over `thetas`.
     thetas : angle grid for the directional kinds (default ANG = linspace(0,π,37)); a scalar target
              broadcasts to a flat (isotropic) profile.
     weight : scalar weight in the total loss.
     """
     def __init__(self, kind, target=None, region=None, weight=1.0, thetas=None):
-        assert kind in ('nu', 'E', 'tensor', 'nu_theta', 'E_theta', 'isotropy')
+        assert kind in ('nu', 'E', 'nu_dir', 'E_dir', 'tensor', 'nu_theta', 'E_theta', 'isotropy')
         self.kind = kind
         self.region = None if region is None else np.asarray(region, dtype=np.int64)
         self.weight = float(weight)
-        if kind in ('nu_theta', 'E_theta'):
+        if kind in ('nu', 'E', 'nu_theta', 'E_theta'):           # scalar nu/E -> flat (isotropic) profile
             self.thetas = ANG if thetas is None else np.asarray(thetas, dtype=float)
             self.target = torch.as_tensor(np.array(np.broadcast_to(target, self.thetas.shape),
                                                    dtype=float), dtype=torch.float64)
         elif kind == 'tensor':
             self.target = torch.as_tensor(target, dtype=torch.float64)
-        else:
+        else:                                                    # nu_dir, E_dir, isotropy
             self.target = target
 
 
@@ -168,9 +175,9 @@ def constrain(region=None, weight=1.0, *, nu=None, E=None, isotropic=False, tens
     if E_theta is not None:
         objs.append(Objective('E_theta', E_theta, region, weight, thetas=thetas))
     if nu_scalar is not None:
-        objs.append(Objective('nu', nu_scalar, region, weight))
+        objs.append(Objective('nu_dir', nu_scalar, region, weight))
     if E_scalar is not None:
-        objs.append(Objective('E', E_scalar, region, weight))
+        objs.append(Objective('E_dir', E_scalar, region, weight))
     if not objs:
         raise ValueError("constrain: specify at least one quantity (nu, E, isotropic, tensor, ...)")
     return objs
@@ -259,18 +266,18 @@ def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
     total = torch.zeros((), dtype=torch.float64)
     for ob in objectives:
         C6 = prob.region_tensor(per, ob.region)
-        if ob.kind == 'nu':
-            nu, _ = c6_to_nuE(C6)
-            total = total + ob.weight * (nu - ob.target) ** 2
-        elif ob.kind == 'E':
-            _, E = c6_to_nuE(C6)
-            total = total + ob.weight * (E - ob.target) ** 2
-        elif ob.kind == 'nu_theta':
+        if ob.kind in ('nu', 'nu_theta'):                                # isotropic (scalar) or profile
             nth = c6_to_nu_theta(C6, ob.thetas)
             total = total + ob.weight * ((nth - ob.target) ** 2).mean()
-        elif ob.kind == 'E_theta':
+        elif ob.kind in ('E', 'E_theta'):
             eth = c6_to_E_theta(C6, ob.thetas)
             total = total + ob.weight * ((eth - ob.target) ** 2).mean()
+        elif ob.kind == 'nu_dir':                                        # legacy single-direction scalar
+            nu, _ = c6_to_nuE(C6)
+            total = total + ob.weight * (nu - ob.target) ** 2
+        elif ob.kind == 'E_dir':
+            _, E = c6_to_nuE(C6)
+            total = total + ob.weight * (E - ob.target) ** 2
         elif ob.kind == 'isotropy':                                      # penalise the anisotropic part
             total = total + ob.weight * _anisotropy(C6)
         else:                                                            # 'tensor'
@@ -341,18 +348,20 @@ def validate(prob, k_bond, l0_bond, objectives):
             C6 = prob.region_tensor(per, ob.region)
             nu, E = c6_to_nuE(C6)
             reg = 'global' if ob.region is None else f'{len(ob.region)} tri'
-            if ob.kind == 'nu':
-                report.append(dict(kind='nu', region=reg, target=ob.target, achieved=float(nu),
-                                   err=abs(float(nu) - ob.target)))
-            elif ob.kind == 'E':
-                report.append(dict(kind='E', region=reg, target=ob.target, achieved=float(E),
-                                   err=abs(float(E) - ob.target)))
-            elif ob.kind in ('nu_theta', 'E_theta'):
-                fn = c6_to_nu_theta if ob.kind == 'nu_theta' else c6_to_E_theta
-                got = fn(C6, ob.thetas).numpy()
-                report.append(dict(kind=ob.kind, region=reg, thetas=ob.thetas,
-                                   target=ob.target.numpy(), achieved=got,
-                                   err=float(np.abs(got - ob.target.numpy()).max())))
+            if ob.kind in ('nu', 'E', 'nu_theta', 'E_theta'):
+                fn = c6_to_nu_theta if ob.kind in ('nu', 'nu_theta') else c6_to_E_theta
+                got = fn(C6, ob.thetas).numpy(); tgt = ob.target.numpy()
+                if ob.kind in ('nu', 'E'):                       # isotropic scalar: report mean + spread
+                    report.append(dict(kind=ob.kind, region=reg, target=float(tgt.flat[0]),
+                                       achieved=float(got.mean()), spread=float(np.ptp(got)),
+                                       err=float(np.abs(got - tgt).max())))
+                else:                                            # directional profile
+                    report.append(dict(kind=ob.kind, region=reg, thetas=ob.thetas, target=tgt,
+                                       achieved=got, err=float(np.abs(got - tgt).max())))
+            elif ob.kind in ('nu_dir', 'E_dir'):                 # legacy single-direction scalar
+                val = float(nu) if ob.kind == 'nu_dir' else float(E)
+                report.append(dict(kind=ob.kind, region=reg, target=ob.target, achieved=val,
+                                   err=abs(val - ob.target)))
             elif ob.kind == 'isotropy':
                 a = float(_anisotropy(C6))
                 report.append(dict(kind='isotropy', region=reg, target=0.0, achieved=a, err=a ** 0.5))
