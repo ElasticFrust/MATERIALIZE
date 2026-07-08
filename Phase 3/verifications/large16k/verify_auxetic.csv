@@ -1,0 +1,9 @@
+case,topology,nu_tensor,nu_stretch_x,nu_stretch_y
+iso,regular,-0.496,-0.474,-0.479
+iso,disorder_hi,-0.497,-0.474,-0.393
+aniso,regular,+0.212,+0.859,+0.210
+aniso,disorder_hi,+0.210,+0.914,+0.208
+indep,regular,+0.135,+0.234,+0.133
+indep,disorder_hi,+0.135,+0.241,+0.135
+patch,regular,+0.180,+0.176,+0.173
+patch,disorder_hi,+0.177,+0.175,+0.173
