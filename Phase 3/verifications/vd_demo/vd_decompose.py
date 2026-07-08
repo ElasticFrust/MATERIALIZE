@@ -9,6 +9,12 @@ between them):
 The VD k is computed from the DISORDERED bond lengths (a=5) and then applied to BOTH geometries.
 Homogenised ν/E from the physical PBC simulation (ground truth). This isolates whether "VD on a
 regular lattice" is auxetic (rigidity alone) or whether the disordered geometry is required.
+
+CORRECTION: the numbers below are at a=5 ONLY (regular+VD -> +0.02), which wrongly suggested the
+disordered geometry is REQUIRED. It is NOT — a=5 is simply below threshold. Sweeping the contrast
+(vd_alpha_sweep.py) shows regular+VD becomes auxetic at strong contrast (nu<0 for a>~12-18). So
+rigidity contrast alone on a regular lattice IS auxetic given enough contrast; the disordered
+geometry only lowers the contrast threshold.
 """
 import os, sys
 import numpy as np

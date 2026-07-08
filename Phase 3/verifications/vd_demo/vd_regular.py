@@ -6,6 +6,11 @@ and k = 1 + tanh(a·(|R|−1)) (a=5) is put on the UNCHANGED regular lattice. We
 the local ν and local E.
 
 Outputs (kept): vd_regular.png  [VD rigidity k | local ν | local E]  and  vd_regular.npz (network).
+
+CORRECTION: at a=5 the regular-lattice VD is only mildly ν-reducing (this file, nu=+0.10) — but that
+is because a=5 is BELOW threshold. Sweeping the contrast (vd_alpha_sweep.py) shows the regular
+lattice DOES become auxetic at strong contrast (nu crosses 0 near a~12-18, reaching ~-0.2..-0.27 at
+a=30). So rigidity contrast alone on a regular lattice is auxetic given enough contrast.
 """
 import os, sys
 import numpy as np
