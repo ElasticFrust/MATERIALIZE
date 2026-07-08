@@ -3,7 +3,7 @@
 Working notes, June 2026. Notation follows **Grossman & Boudaoud, PRR 2026
 (arXiv:2309.07844)** and the companion `derivation_edge_compatibility.pdf`; new symbols are
 introduced only where the paper has none, and are flagged as such. Implemented and verified in
-`breakdown/test_intrinsic_metric.py` (with `test_mean_isolation.py`, `test_curvature_operator.py`).
+`verification_tools/test_intrinsic_metric.py` (with `test_mean_isolation.py`, `test_curvature_operator.py`).
 
 The aim of this note is to state **exactly** which energy is minimised, which constraints are
 enforced, and how this differs from G&B — entirely in the metric (incompatible-elasticity)
@@ -139,9 +139,18 @@ $$
 = \begin{pmatrix} -A\\ 0\\ 0\\ 0\end{pmatrix},
 \qquad \delta g(s) = W(s)\,\Delta g .
 $$
-The homogenised tensor is then the area-weighted average (G&B / `_compute_actual_elastic_tensor`)
-$$C_{\mathrm{eff}} = \frac{1}{\sum_s S_s}\sum_s S_s\,(\mathbb 1+W(s))^{\!\top} A(s)\,(\mathbb 1+W(s)),$$
-from which `ν, E` follow.
+The homogenised tensor is the **UNWEIGHTED** mean of the per-triangle actual tensors
+$$C_{\mathrm{eff}} = \frac{1}{N}\sum_s (\mathbb 1+W(s))^{\!\top} A(s)\,(\mathbb 1+W(s)),$$
+from which `ν, E` follow. **Correction (post-fix, supersedes the June draft):** the final average is
+*unweighted*, **not** area-weighted. `A(s)` carries no area prefactor, so the total energy is an
+unweighted **sum** and its `Δg`-Hessian is the unweighted mean; this is the true physical
+(energy = virial) effective tensor, and it matches the *physical* PBC simulation. An area weight in
+the final average (the G&B convention originally written here) biases `ν`/`E` on disordered or
+anisotropic meshes and over-states auxeticity. The weight `S_s` is retained **only** where it is
+correct — the normalisation constraint `Σ_s S_s δg=0` of §3.3 — never in the homogenisation.
+`physical_units=True` additionally rescales `C_eff → C_eff · 8N/Σ_s S_s` to physical stress units
+(`ν` is scale-invariant, unaffected). Implemented at `forward_solver_torch.py::forward`
+(`C = actual.mean(dim=0)`), verified against the virial/energy ground truth in `verification_tools/`.
 
 ---
 
@@ -195,6 +204,14 @@ the over-compliant ≈1.4× overshoot.
 ---
 
 ## 8. Numerical verification (`test_intrinsic_metric.py`)
+
+> **Convention note:** the homogenised `ν, E` figures in the second table below were computed with
+> the *area-weighted* homogenisation of the original June draft. The shipped solver now uses the
+> **unweighted** physical mean (§5 correction), so its `ν, E` values differ numerically (they match
+> the *physical*/virial simulation instead of the metric one) — but the conclusion is unchanged and
+> weighting-independent: the accuracy lives in the per-triangle response `W` (first table, reproduced
+> to 3–4 digits), and the same weighting is applied to solver and simulation alike. See
+> `verification_tools/` and `Phase 2/SOLVER_GUIDE.md` for the current physical-units numbers.
 
 **Per-triangle `δg` vs the PBC simulation (stored `N=40`):**
 
