@@ -1,0 +1,5 @@
+topology,region,nu_intrinsic_tensor,nu_coarse_edgestretch,nu_isolated
+regular,R_E stiff,+0.243,-0.080,-0.049
+regular,R_nu aux,-0.299,+0.280,+0.191
+disorder_hi,R_E stiff,+0.187,+0.017,+0.041
+disorder_hi,R_nu aux,-0.299,+0.353,+0.224
