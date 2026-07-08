@@ -1,0 +1,47 @@
+regime,topology,setting,metric1,metric2
+isotropize,aniso_str,+0.80,+0.847,0.818
+isotropize,aniso_str,+0.50,+0.451,0.373
+isotropize,aniso_str,+0.33,+0.292,0.235
+isotropize,aniso_str,+0.00,+0.006,0.013
+isotropize,aniso_str,-0.20,-0.101,0.066
+isotropize,aniso_str,-0.50,-0.391,0.114
+isotropize,aniso_str,-0.80,-0.782,0.030
+isotropize,aniso_shr,+0.80,+0.754,0.148
+isotropize,aniso_shr,+0.50,+0.502,0.001
+isotropize,aniso_shr,+0.33,+0.334,0.005
+isotropize,aniso_shr,+0.00,+0.002,0.001
+isotropize,aniso_shr,-0.20,-0.197,0.001
+isotropize,aniso_shr,-0.50,-0.497,0.004
+isotropize,aniso_shr,-0.80,+0.208,2.228
+isotropize,disorder_hi,+0.80,+0.773,0.188
+isotropize,disorder_hi,+0.50,+0.501,0.001
+isotropize,disorder_hi,+0.33,+0.334,0.000
+isotropize,disorder_hi,+0.00,+0.001,0.000
+isotropize,disorder_hi,-0.20,-0.198,0.000
+isotropize,disorder_hi,-0.50,-0.499,0.001
+isotropize,disorder_hi,-0.80,-0.799,0.002
+isotropize,regular,+0.80,+0.716,0.240
+isotropize,regular,+0.50,+0.480,0.100
+isotropize,regular,+0.33,+0.333,0.000
+isotropize,regular,+0.00,+0.002,0.000
+isotropize,regular,-0.20,-0.198,0.001
+isotropize,regular,-0.50,-0.499,0.001
+isotropize,regular,-0.80,-0.798,0.001
+isotropize,disorder_lo,+0.80,+0.775,0.187
+isotropize,disorder_lo,+0.50,+0.501,0.001
+isotropize,disorder_lo,+0.33,+0.333,0.000
+isotropize,disorder_lo,+0.00,+0.001,0.000
+isotropize,disorder_lo,-0.20,-0.199,0.000
+isotropize,disorder_lo,-0.50,-0.498,0.001
+isotropize,disorder_lo,-0.80,-0.142,1.031
+anisotropic,regular,aniso_tensor,0.006,
+anisotropic,aniso_str,aniso_tensor,0.000,
+anisotropic,aniso_shr,aniso_tensor,0.009,
+anisotropic,disorder_lo,aniso_tensor,0.006,
+anisotropic,disorder_hi,aniso_tensor,0.003,
+independent,regular:nu-directional / E-flat,wflat=1.0,0.470,
+independent,regular:nu-directional / E-flat,wflat=4.0,0.130,
+independent,regular:nu-directional / E-flat,wflat=10.0,0.051,
+independent,regular:E-directional / nu-flat,wflat=1.0,0.215,
+independent,regular:E-directional / nu-flat,wflat=4.0,0.155,
+independent,regular:E-directional / nu-flat,wflat=10.0,0.132,
