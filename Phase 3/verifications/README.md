@@ -78,5 +78,24 @@ shaped regions (`region_shape`) and multi-region marking (`mark_region`).
     reverse only partly succeeds — strong ν-anisotropy generically forces E-anisotropy (a coupling
     asymmetry, not a solver limit).
 
+## Extended studies (maps, all-topology sweeps, regimes, large-N)
+Everything below **saves every designed network** to `<case>/networks/*.npz`; the map scripts *load*
+them (no re-optimising).
+- **`anisotropy/make_maps.py`** — local ν & E maps for **every** anisotropy design (per-test grids
+  `anisotropy_maps_{A,B,C}_{nu,E}.png`). The B/ν grid shows disorder_hi isotropising *uniformly* at
+  every ν0 while the crystals go patchy at the hard targets.
+- **`auxetic_patch/design_all.py` + `make_maps.py`** — all 8 patch cases (disc/square/triangle/ring
+  auxetic, normal-in-auxetic, stiff-/soft-E, decoupled) × all 5 topologies, with **per-topology**
+  (`_bytopo_<topo>.png`) and **per-case** (`_bycase_<case>.png`) local maps. Decoupled E/ν holds on
+  every topology (ν auxetic only in R_ν, E stiff only in R_E).
+- **`regimes/working_regimes.py`** — good working regimes: the **regular** lattice isotropises to any
+  ν0∈[−0.8,+0.5] (flatness ~0 → ordered *isotropic-auxetic*); a *realizable* anisotropic target is hit
+  to <0.01 on **every** topology; independent E/ν decouples cleanly in the E-directional/ν-flat
+  direction (the reverse trades off).
+- **`large16k/large_designs.py`** — the standout of each type (iso / aniso / indep / decoupled patch)
+  designed at **~16 000 triangles** on regular vs disordered, with local maps.
+- **`vd_demo/`** — the VD (virtual-distortion) rigidity study on a regular lattice (see its README):
+  rigidity contrast alone is auxetic above a contrast threshold; solver = simulation at 16k triangles.
+
 _(See each case's `_summary.png`/`_bytopo.png`/`_detail.png` for the result and its `<case>.csv` for
 the raw numbers.)_
