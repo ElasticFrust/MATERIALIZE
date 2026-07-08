@@ -192,6 +192,22 @@
       `_build_vertex_angle_constraints` (if the angle-KKT path is kept).
 - [ ] Re-run with full geometric+rigidity disorder combined; confirm radius ≈ correlation length.
 
+## Phase 3 — directional / anisotropy design (this session)
+- [ ] **Independent E and ν control needs larger systems.** `anisotropy` Test C shows E(θ) can be
+      made directional while ν(θ) stays ~flat (regular lattice), but the reverse (ν directional,
+      E flat) only partly succeeds — the two moduli cannot be *fully* decoupled on a finite unit
+      cell (one k-field, ~3·N_bond dof → the achievable (E(θ),ν(θ)) set is limited). Revisit on
+      much **larger unit cells** (more per-cell design dof) and quantify how the residual E/ν
+      coupling shrinks with N. (Best-fit-over-all-PD-tensors also bounds what any k-field can do.)
+- [x] **Diagnosed — not every ν(θ) profile is realizable.** ν(θ) is a ratio of degree-4 direction
+      polynomials of a positive-definite compliance, so an *arbitrary* target (e.g. pure 0.45·cos2θ)
+      lies **outside** the achievable manifold: every topology plateaus at the SAME design error,
+      equal to the best-fit-over-all-PD-tensors residual (`two_fold` 0.162 = regular design 0.162;
+      `dir_aux` ~0.47 everywhere), while a flat profile (isotropise) or a cubic-like cos4θ profile
+      IS realizable and hits ~0.05. **FIX for Test A:** specify anisotropy targets as the
+      ν(θ)/E(θ) of an *actual* anisotropic tensor (e.g. an affinely stretched reference lattice —
+      direction θ0 + magnitude λ), realizable by construction, instead of arbitrary harmonics.
+
 ## Roadmap — next sessions (project level)
 
 - [ ] **NEXT: return to the plan and write the next phases.** Re-hash and verify the

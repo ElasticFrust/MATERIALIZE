@@ -43,10 +43,13 @@ python "Phase 3/verifications/<case>/design_and_verify.py"
 ## Cases
 | case | what it designs | verified against sim |
 |---|---|---|
-| `auxetic_sweep` | global ν over a sweep (+0.3 … −0.6) | simulated global ν vs target; **achievable range** per topology; unstable designs flagged |
-| `auxetic_patch` | normal matrix (ν≈+0.3) with a central **auxetic patch** (ν≈−0.3) | simulated patch ν vs surroundings; spatial local-ν map |
+| `auxetic_sweep` | global ν over a sweep (+0.3 … −0.6) | simulated global ν vs target; **achievable range** per topology; unstable designs flagged; per-topology detail across **all** targets (`_alltargets_<topo>.png`) |
+| `auxetic_patch` | **local/spatial control** — G1 shape gallery (disc/square/triangle/ring), G2 contrast variety (auxetic-in-normal, normal-in-auxetic, stiff-/soft-E), G3 **decoupled** (E differs only in R_E, ν only in a different R_ν), + a regional ν(θ) isotropy check | simulated regional ν/E per region; local ν/E maps with the region marked |
 | `graded_nu` | ν varying across x (+0.3 → −0.3) | simulated ν(x) profile; spatial local-ν map |
-| `anisotropy` | directional ν(θ): **isotropize** the anisotropic bases, and **anisotropize** the isotropic ones | simulated ν(θ) vs target curves |
+| `anisotropy` | directional ν(θ)/E(θ): **A** program any ν(θ) profile · **B** isotropise a base to a chosen flat ν0∈{0.8..−0.8} · **C** independent E/ν anisotropy (one modulus flat, the other directional) | simulated ν(θ)/E(θ) vs target curves |
+
+Directional design uses the `nu_theta`/`E_theta` objectives (see `../README.md`); the harness adds
+shaped regions (`region_shape`) and multi-region marking (`mark_region`).
 
 ## Findings (summary)
 - **auxetic_sweep:** designs hit their global ν target and the *independent* simulation confirms it,
@@ -54,16 +57,26 @@ python "Phase 3/verifications/<case>/design_and_verify.py"
   the regular lattice ≈ −0.3, while the anisotropic lattices barely go auxetic. Beyond each limit the
   ν-only objective produces floppy networks that the simulation flags as **unstable** (6 cases, all at
   the extremes).
-- **auxetic_patch:** the simulated network is auxetic in the central patch and normal outside — the
-  prescribed *spatial* pattern holds under real physics across all topologies; the local-ν map shows a
-  clean auxetic disc in a positive matrix.
+- **auxetic_patch:** the prescribed *spatial* pattern holds under real physics for every region shape
+  (disc/square/triangle/ring) and position. Contrast is general — auxetic-in-normal, stiff-/soft-E, and
+  (on a base that reaches global auxetic, e.g. η=0.35) normal-in-auxetic. **Decoupled control works:** E
+  is stiffened only in R_E and ν made auxetic only in a *different* R_ν, simultaneously, with the
+  background normal in both. **Caveat surfaced by the regional ν(θ) check:** a scalar regional ν hides
+  strong angular variation — inside an auxetic patch ν(θ) is far from flat, so the patch is auxetic *on
+  average* but **not isotropically**.
 - **graded_nu:** the simulated ν(x) follows the prescribed +0.3→−0.3 left-to-right gradient for four of
   five topologies; the strongly stretched lattice saturates on the auxetic end and disordered η=0.35 is
   an outlier (its strips don't track the gradient).
-- **anisotropy:** rigidity design **cancels geometric anisotropy** — ν(θ) flattens to the isotropic
-  target 1/3 **fully** for the sheared and disordered lattices, **partially** for the strongly stretched
-  lattice (a physical limit on how much stretch rigidity can offset); and conversely **induces** a
-  prescribed anisotropic ν(θ) on **every** topology (all curves overlay the anisotropic target).
+- **anisotropy (3 tests):**
+  - **A/program:** k-design realises a prescribed ν(θ) profile; the **disordered** lattices are the most
+    designable (a 4-fold profile to max|err|≈0.05), while the regular lattice saturates on the
+    sign-flipping directional-auxetic profile.
+  - **B/isotropise:** the disordered base can be flattened to a chosen isotropic ν0 across the whole
+    range **−0.8…+0.5** (near-zero angular spread); the crystals reach the mid-range levels cleanly but
+    **fail at the extremes ±0.8**, and the strongly compressed lattice resists the high-positive levels.
+  - **C/independent E,ν:** E can be made directional while ν stays ~flat (on the regular lattice); the
+    reverse only partly succeeds — strong ν-anisotropy generically forces E-anisotropy (a coupling
+    asymmetry, not a solver limit).
 
 _(See each case's `_summary.png`/`_bytopo.png`/`_detail.png` for the result and its `<case>.csv` for
 the raw numbers.)_

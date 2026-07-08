@@ -24,12 +24,36 @@ map. Design variables are **per-bond** (shared edges get one consistent `k`).
 - `DesignProblem.periodic(N, eta, seed)` — a periodic perturbed-lattice unit cell.
 - `DesignProblem.open(tri)` — an open mesh from a scipy triangulation (`Disc_2_Cont_optimized`).
 
-**`Objective(kind, target, region=None, weight=1.0)`** — one target over a region.
-- `kind`: `'nu'` (Poisson ratio, scale-invariant), `'E'` (Young's modulus, physical units), or
-  `'tensor'` (the full physical 6-vector).
+**`Objective(kind, target, region=None, weight=1.0, thetas=None)`** — one target over a region.
+- `kind`:
+  - `'nu'` (Poisson ratio, scale-invariant), `'E'` (Young's modulus, physical units) — scalar targets;
+  - `'tensor'` — the full physical 6-vector;
+  - `'nu_theta'` / `'E_theta'` — a **directional profile** ν(θ) or E(θ) over `thetas`
+    (default `ANG = linspace(0,π,37)`). `target` may be a full profile array **or a scalar**, which
+    broadcasts to a flat (isotropic) target — so `Objective('nu_theta', 1/3)` means "isotropic ν=1/3
+    at every angle." These are autograd-safe (`c6_to_nu_theta`/`c6_to_E_theta`) and match
+    `_common.nu_E_theta` exactly.
 - `region`: `None` → whole network (**global**); an array of triangle indices → **local**.
-  Build regions with `prob.region_in_circle(center, radius)` or `prob.region_where(predicate)`.
-- Multiple objectives in one `optimize` call → **mixed** design.
+  Build regions with `prob.region_in_circle(center, radius)` or `prob.region_where(predicate)`
+  (the verifications harness adds disc/rect/ring/polygon shapes via `_common.region_shape`).
+- Multiple objectives in one `optimize` call → **mixed** design (e.g. a flat `nu_theta` **and** a
+  shaped `E_theta` → isotropic ν with directional E).
+
+**Exact vs. "ish" — `constrain(...)` and `isotropic_c6`.** A scalar `Objective('nu', v)` pins ν along
+**one orientation only**, so the region's tensor can still be strongly anisotropic (its ν(θ) can span
+>1 even while that one number reads −0.3). To fix a quantity **exactly across all directions**, use the
+`constrain` wrapper, which fixes the quantities you name and leaves the rest free:
+- `constrain(region=R, nu=v)` → ν(θ)=v at **every** angle (isotropic ν; E free) — via a flat `nu_theta`.
+- `constrain(region=R, E=v)` → isotropic E; ν free.
+- `constrain(region=R, isotropic=True)` → force the response direction-independent (level free); backed
+  by a new `Objective('isotropy')` that penalises the tensor's anisotropic part `_anisotropy(C6)`.
+- `constrain(region=R, tensor=isotropic_c6(v_nu, v_E))` → an **exact isotropic** (ν,E) material, nothing
+  free. `isotropic_c6(nu,E)` returns the isotropic 2D 6-vector.
+- legacy single-direction knobs kept as `nu_scalar`/`E_scalar`.
+
+Verified (regular lattice, central auxetic patch, measured ν(θ) *inside* the patch): `Objective('nu',
+−0.3)` → ν(θ) range **1.69** (anisotropic); `constrain(nu=−0.3)` → **0.011**; `constrain(tensor=
+isotropic_c6(−0.3,·))` → **0.001**.
 
 **`optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter, n_restarts, seed)`** — runs the
 design. `mode ∈ {'k','l0','both'}`. Returns `dict(k, l0, loss, history)`.
@@ -79,6 +103,20 @@ objs = [Objective('nu', target=+0.25, region=None,  weight=1.0),   # whole netwo
         Objective('nu', target=-0.20, region=patch, weight=2.0)]   # the patch is auxetic
 res = optimize(prob, objs, mode='k', n_iter=150)
 # validate -> global nu ≈ +0.25 AND patch nu ≈ -0.20, simultaneously
+```
+
+**Directional response ν(θ) / E(θ) — program or isotropise anisotropy:**
+```python
+import numpy as np
+from inverse_design import ANG
+prob = DesignProblem.periodic(N=20, eta=0.3, seed=0)
+# program a 2-fold Poisson profile:
+res = optimize(prob, [Objective('nu_theta', 0.2 + 0.35*np.cos(2*ANG))], mode='k', n_iter=110)
+# isotropise an anisotropic base to a chosen flat level (scalar broadcasts):
+res = optimize(prob, [Objective('nu_theta', -0.2)], mode='k', n_iter=150)
+# independent anisotropy: flat ν, directional E (mixed directional objectives):
+res = optimize(prob, [Objective('nu_theta', 0.2,               weight=4.0),
+                      Objective('E_theta', 1.0*(1+0.4*np.cos(2*ANG)), weight=1.0)], mode='k', n_iter=150)
 ```
 
 **Open mesh:**

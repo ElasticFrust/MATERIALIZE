@@ -1,9 +1,9 @@
 topology,half_size,target_nu,solver_nu,sim_nu,sim_E,stable
 regular,8,0.3,0.3003,0.3003,1.1192,True
-regular,8,0.15,0.1502,0.1514,0.6411,True
-regular,8,0.0,0.0003,0.0039,0.2874,True
+regular,8,0.15,0.1502,0.1514,0.6410,True
+regular,8,0.0,0.0001,0.0038,0.2892,True
 regular,8,-0.15,-0.1047,-0.1477,0.0323,True
-regular,8,-0.3,-0.1051,-0.0680,0.0108,True
+regular,8,-0.3,-0.2302,-0.2136,0.0430,True
 regular,8,-0.45,-0.1196,-0.1611,0.0372,True
 regular,8,-0.6,-0.0704,-0.1076,0.0269,True
 regular,12,0.3,0.3003,0.3003,1.1193,True
@@ -43,7 +43,7 @@ aniso_shr,12,-0.45,-0.4492,-0.4391,0.1770,True
 aniso_shr,12,-0.6,-0.6003,-0.5851,0.1098,True
 disorder_lo,8,0.3,0.3000,0.3001,1.0980,True
 disorder_lo,8,0.15,0.1502,0.1513,0.7981,True
-disorder_lo,8,0.0,0.0005,0.0025,0.5434,True
+disorder_lo,8,0.0,0.0004,0.0025,0.5379,True
 disorder_lo,8,-0.15,-0.1512,-0.1491,0.3527,True
 disorder_lo,8,-0.3,-0.2505,-0.2369,0.0601,True
 disorder_lo,8,-0.45,-0.1632,-0.1589,0.1479,True
@@ -56,9 +56,9 @@ disorder_lo,12,-0.3,-0.2998,-0.2966,0.1894,True
 disorder_lo,12,-0.45,-0.4501,-0.4467,0.0580,True
 disorder_lo,12,-0.6,-0.5994,-0.4437,0.0280,False
 disorder_hi,8,0.3,0.2998,0.3001,1.0600,True
-disorder_hi,8,0.15,0.1501,0.1509,0.9405,True
+disorder_hi,8,0.15,0.1502,0.1509,0.9415,True
 disorder_hi,8,0.0,0.0002,0.0015,0.7477,True
-disorder_hi,8,-0.15,-0.1500,-0.1482,0.6289,True
+disorder_hi,8,-0.15,-0.1503,-0.1485,0.6286,True
 disorder_hi,8,-0.3,-0.2854,-0.2837,0.2989,True
 disorder_hi,8,-0.45,-0.2432,-0.2417,0.3704,True
 disorder_hi,8,-0.6,-0.2755,-0.2738,0.3047,True

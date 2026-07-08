@@ -34,7 +34,8 @@ import test_cluster_VD as VD
 import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
 import physical_homog as PH
-from inverse_design import DesignProblem, Objective, optimize, validate, c6_to_nuE
+from inverse_design import (DesignProblem, Objective, optimize, validate, c6_to_nuE,
+                            c6_to_nu_theta, c6_to_E_theta, ANG, constrain, isotropic_c6)
 torch.set_default_dtype(torch.float64)
 
 # ---- topology x size matrix ------------------------------------------------------------------
@@ -241,22 +242,60 @@ def fill_local_map(ax, geo, val, cmap='RdBu_r', sym=False, vlim=None):
 
 
 def mark_region(ax, region):
-    """Outline a target region: {'kind':'circle','center':(x,y),'radius':r} or
-    {'kind':'vlines','xs':[...]}"""
+    """Outline a target region (or a LIST of them). Supported specs:
+    {'kind':'circle','center','radius'} · {'kind':'rect','center','w','h'} ·
+    {'kind':'ring','center','r_in','r_out'} · {'kind':'polygon','verts':[(x,y),...]} ·
+    {'kind':'vlines','xs':[...]}. Optional 'color' (default lime)."""
     if not region:
         return
+    if isinstance(region, (list, tuple)):
+        for r in region:
+            mark_region(ax, r)
+        return
     import matplotlib.pyplot as plt
-    if region['kind'] == 'circle':
+    col = region.get('color', 'lime'); k = region['kind']
+    if k == 'circle':
         ax.add_patch(plt.Circle(region['center'], region['radius'], facecolor='none',
-                                edgecolor='lime', lw=2.0, zorder=6))
-    elif region['kind'] == 'vlines':
+                                edgecolor=col, lw=2.0, zorder=6))
+    elif k == 'rect':
+        cx, cy = region['center']; w, h = region['w'], region['h']
+        ax.add_patch(plt.Rectangle((cx - w / 2, cy - h / 2), w, h, facecolor='none',
+                                   edgecolor=col, lw=2.0, zorder=6))
+    elif k == 'ring':
+        cx, cy = region['center']
+        for rr in (region['r_in'], region['r_out']):
+            ax.add_patch(plt.Circle((cx, cy), rr, facecolor='none', edgecolor=col, lw=2.0, zorder=6))
+    elif k == 'polygon':
+        ax.add_patch(plt.Polygon(region['verts'], closed=True, facecolor='none',
+                                 edgecolor=col, lw=2.0, zorder=6))
+    elif k == 'vlines':
         for x in region['xs']:
-            ax.axvline(x, color='lime', lw=1.0, ls='--', zorder=6)
+            ax.axvline(x, color=col, lw=1.0, ls='--', zorder=6)
+
+
+def region_shape(prob, spec):
+    """Triangle indices whose CENTROID falls in a shape spec (same schema as mark_region's shapes).
+    Returns (indices, spec) so the caller can pass `spec` straight to mark_region."""
+    c = prob.centroids; k = spec['kind']
+    if k == 'circle':
+        cen = np.asarray(spec['center']); idx = np.where(((c - cen) ** 2).sum(1) < spec['radius'] ** 2)[0]
+    elif k == 'rect':
+        cx, cy = spec['center']
+        idx = np.where((np.abs(c[:, 0] - cx) <= spec['w'] / 2) & (np.abs(c[:, 1] - cy) <= spec['h'] / 2))[0]
+    elif k == 'ring':
+        cen = np.asarray(spec['center']); r2 = ((c - cen) ** 2).sum(1)
+        idx = np.where((r2 >= spec['r_in'] ** 2) & (r2 < spec['r_out'] ** 2))[0]
+    elif k == 'polygon':
+        from matplotlib.path import Path
+        idx = np.where(Path(np.asarray(spec['verts'])).contains_points(c))[0]
+    else:
+        raise ValueError(k)
+    return idx, spec
 
 
 def write_csv(path, header, rows):
     import csv
-    with open(path, 'w', newline='') as f:
+    with open(path, 'w', newline='', encoding='utf-8') as f:
         w = csv.writer(f); w.writerow(header); w.writerows(rows)
 
 
@@ -396,6 +435,38 @@ def savedir(case):
     d = os.path.join(HERE, case)
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def networks_dir(case):
+    d = os.path.join(HERE, case, 'networks')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def save_network(path, geo, bond_k, C6_per=None, **meta):
+    """Persist a DESIGNED network so later analysis/plots can reload it (load_network) WITHOUT
+    re-running the minimizer. Stores geometry + designed per-bond k + (optional) per-triangle
+    physical tensor + metadata (topo, size, target, region, achieved...)."""
+    import json
+    k = bond_k.detach().numpy() if torch.is_tensor(bond_k) else np.asarray(bond_k)
+    np.savez_compressed(path, pts=geo['pts'], tri_verts=geo['tri_verts'], centroids=geo['centroids'],
+                        simplices=geo['simplices'], bond_u=geo['bond_u'], bond_v=geo['bond_v'],
+                        bond_R=geo['bond_R'], tri_bond=geo['tri_bond'], areas=geo['areas'],
+                        BL1=geo['BL1'], BL2=geo['BL2'], bond_k=k,
+                        C6_per=(np.asarray(C6_per) if C6_per is not None else np.zeros(0)),
+                        meta=json.dumps(meta))
+
+
+def load_network(path):
+    """Reload (geo, bond_k, C6_per, meta) written by save_network. geo has bond_k/tri_k installed,
+    so it plugs straight into draw_network / fill_local_map / region_phys_C6 / nu_E_theta."""
+    import json
+    d = np.load(path, allow_pickle=True)
+    geo = {k: d[k] for k in ['pts', 'tri_verts', 'centroids', 'simplices', 'bond_u', 'bond_v',
+                             'bond_R', 'tri_bond', 'areas', 'BL1', 'BL2']}
+    geo['bond_k'] = d['bond_k']; geo['tri_k'] = d['bond_k'][geo['tri_bond']]
+    C6 = d['C6_per']; C6 = None if C6.size == 0 else C6
+    return geo, d['bond_k'], C6, json.loads(str(d['meta']))
 
 
 def _detail_row(axr, name, geo, kb, C6, region, show_titles):

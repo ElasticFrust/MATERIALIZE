@@ -58,21 +58,122 @@ def c6_to_nuE(C):
     return nu, E
 
 
+# angle grid for directional ν(θ) targets (θ ∈ [0,π]); shared by objective + validate
+ANG = np.linspace(0.0, np.pi, 37)
+
+
+def c6_to_nuE_theta(C, thetas):
+    """Directional Poisson ratio ν(θ) AND Young's modulus E(θ) from a 6-vector (torch,
+    autograd-safe). Matches _common.nu_E_theta exactly: build the compliance 4-tensor and contract
+    with the axial (m) / transverse (n) directions."""
+    Cv = torch.stack([torch.stack([C[0], C[2], C[1]]),
+                      torch.stack([C[2], C[5], C[4]]),
+                      torch.stack([C[1], C[4], C[3]])])
+    S = torch.linalg.inv(Cv)
+    Sc = C.new_zeros((2, 2, 2, 2))
+    Sc[0, 0, 0, 0] = S[0, 0]; Sc[1, 1, 1, 1] = S[1, 1]
+    Sc[0, 0, 1, 1] = S[0, 1]; Sc[1, 1, 0, 0] = S[0, 1]
+    for i in [(0, 0, 0, 1), (0, 0, 1, 0), (0, 1, 0, 0), (1, 0, 0, 0)]:
+        Sc[i] = S[0, 2] / 2
+    for i in [(1, 1, 0, 1), (1, 1, 1, 0), (0, 1, 1, 1), (1, 0, 1, 1)]:
+        Sc[i] = S[1, 2] / 2
+    for i in [(0, 1, 0, 1), (0, 1, 1, 0), (1, 0, 0, 1), (1, 0, 1, 0)]:
+        Sc[i] = S[2, 2] / 4
+    th = torch.as_tensor(thetas, dtype=torch.float64)
+    c, s = torch.cos(th), torch.sin(th)
+    M = torch.stack([c, s], 1); Nn = torch.stack([-s, c], 1)             # (T,2) axial / transverse
+    Emm = torch.einsum('ijkl,ti,tj,tk,tl->t', Sc, M, M, M, M)
+    Emn = torch.einsum('ijkl,ti,tj,tk,tl->t', Sc, M, M, Nn, Nn)
+    return -Emn / Emm, 1.0 / Emm
+
+
+def c6_to_nu_theta(C, thetas):
+    return c6_to_nuE_theta(C, thetas)[0]
+
+
+def c6_to_E_theta(C, thetas):
+    return c6_to_nuE_theta(C, thetas)[1]
+
+
+def _anisotropy(C):
+    """Relative squared deviation of a 6-vector from the nearest ISOTROPIC tensor (0 = isotropic).
+    Voigt (V11,V12,V16,V22,V26,V66)=(C0,C2,C1,C5,C4,C3); isotropy: C0=C5, C1=C4=0, C3=(C0−C2)/2."""
+    dev = (C[0] - C[5]) ** 2 + C[1] ** 2 + C[4] ** 2 + (C[3] - (C[0] - C[2]) / 2) ** 2
+    return dev / (C[0] ** 2 + C[5] ** 2 + C[2] ** 2 + C[3] ** 2 + 1e-12)
+
+
+def isotropic_c6(nu, E):
+    """The (physical) 6-vector of an ISOTROPIC 2D material with Poisson ratio nu and modulus E
+    (plane-stress: C11=E/(1−ν²), C12=νC11·... ; C16=C26=0, C22=C11, C66=(C11−C12)/2). Use as a full
+    'tensor' target to pin an EXACT isotropic response (ν and E fixed, nothing left free)."""
+    C11 = E / (1 - nu ** 2); C12 = nu * E / (1 - nu ** 2); C66 = (C11 - C12) / 2
+    return torch.tensor([C11, 0.0, C12, C66, 0.0, C11], dtype=torch.float64)
+
+
 # --------------------------------------------------------------------------- objectives
 class Objective:
     """One design target over a region.
 
     region : 1-D int array of triangle indices, or None = whole network (global).
-    kind   : 'nu' | 'E' | 'tensor'.
-    target : float (nu/E) or (6,) array (tensor, physical units).
+    kind   : 'nu' | 'E' | 'tensor' | 'nu_theta' | 'E_theta'.
+    target : float (nu/E), (6,) array (tensor), or ν/E-values over `thetas` ('nu_theta'/'E_theta').
+    thetas : angle grid for the directional kinds (default ANG = linspace(0,π,37)); a scalar target
+             broadcasts to a flat (isotropic) profile.
     weight : scalar weight in the total loss.
     """
-    def __init__(self, kind, target, region=None, weight=1.0):
-        assert kind in ('nu', 'E', 'tensor')
+    def __init__(self, kind, target=None, region=None, weight=1.0, thetas=None):
+        assert kind in ('nu', 'E', 'tensor', 'nu_theta', 'E_theta', 'isotropy')
         self.kind = kind
         self.region = None if region is None else np.asarray(region, dtype=np.int64)
-        self.target = target if kind != 'tensor' else torch.as_tensor(target, dtype=torch.float64)
         self.weight = float(weight)
+        if kind in ('nu_theta', 'E_theta'):
+            self.thetas = ANG if thetas is None else np.asarray(thetas, dtype=float)
+            self.target = torch.as_tensor(np.array(np.broadcast_to(target, self.thetas.shape),
+                                                   dtype=float), dtype=torch.float64)
+        elif kind == 'tensor':
+            self.target = torch.as_tensor(target, dtype=torch.float64)
+        else:
+            self.target = target
+
+
+def constrain(region=None, weight=1.0, *, nu=None, E=None, isotropic=False, tensor=None,
+              nu_theta=None, E_theta=None, thetas=None, nu_scalar=None, E_scalar=None):
+    """Build a list of Objectives that fix a chosen set of quantities on `region` EXACTLY (over all
+    directions) and leave everything else FREE. Compose several regions by concatenating the lists.
+
+    EXACT (direction-complete) knobs — the recommended ones:
+      nu        : isotropic Poisson ratio — ν(θ)=nu at EVERY angle (flat ν(θ)); E left free.
+      E         : isotropic Young's modulus — E(θ)=E at every angle; ν left free.
+      isotropic : True → force the response direction-independent (penalise the anisotropic part);
+                  the level(s) stay free. Combine with nu=/E= to also fix the level(s).
+      tensor    : a full physical 6-vector (pins the entire elastic tensor). `isotropic_c6(nu,E)`
+                  builds the isotropic one → an exact isotropic (ν,E) material, nothing free.
+      nu_theta / E_theta : a full or partial directional profile over `thetas` (default ANG).
+
+    LEGACY 'ish' (single-direction) knobs — kept, but they constrain only ONE orientation so the
+    tensor can still be anisotropic:
+      nu_scalar / E_scalar : the old Objective('nu'|'E', ...).
+    """
+    objs = []
+    if tensor is not None:
+        objs.append(Objective('tensor', tensor, region, weight))
+    if isotropic:
+        objs.append(Objective('isotropy', None, region, weight))
+    if nu is not None:
+        objs.append(Objective('nu_theta', nu, region, weight, thetas=thetas))
+    if E is not None:
+        objs.append(Objective('E_theta', E, region, weight, thetas=thetas))
+    if nu_theta is not None:
+        objs.append(Objective('nu_theta', nu_theta, region, weight, thetas=thetas))
+    if E_theta is not None:
+        objs.append(Objective('E_theta', E_theta, region, weight, thetas=thetas))
+    if nu_scalar is not None:
+        objs.append(Objective('nu', nu_scalar, region, weight))
+    if E_scalar is not None:
+        objs.append(Objective('E', E_scalar, region, weight))
+    if not objs:
+        raise ValueError("constrain: specify at least one quantity (nu, E, isotropic, tensor, ...)")
+    return objs
 
 
 # --------------------------------------------------------------------------- design problem
@@ -164,6 +265,14 @@ def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
         elif ob.kind == 'E':
             _, E = c6_to_nuE(C6)
             total = total + ob.weight * (E - ob.target) ** 2
+        elif ob.kind == 'nu_theta':
+            nth = c6_to_nu_theta(C6, ob.thetas)
+            total = total + ob.weight * ((nth - ob.target) ** 2).mean()
+        elif ob.kind == 'E_theta':
+            eth = c6_to_E_theta(C6, ob.thetas)
+            total = total + ob.weight * ((eth - ob.target) ** 2).mean()
+        elif ob.kind == 'isotropy':                                      # penalise the anisotropic part
+            total = total + ob.weight * _anisotropy(C6)
         else:                                                            # 'tensor'
             total = total + ob.weight * ((C6 - ob.target) ** 2).mean()
     if reg > 0.0:                                                        # keep k near-uniform:
@@ -238,6 +347,15 @@ def validate(prob, k_bond, l0_bond, objectives):
             elif ob.kind == 'E':
                 report.append(dict(kind='E', region=reg, target=ob.target, achieved=float(E),
                                    err=abs(float(E) - ob.target)))
+            elif ob.kind in ('nu_theta', 'E_theta'):
+                fn = c6_to_nu_theta if ob.kind == 'nu_theta' else c6_to_E_theta
+                got = fn(C6, ob.thetas).numpy()
+                report.append(dict(kind=ob.kind, region=reg, thetas=ob.thetas,
+                                   target=ob.target.numpy(), achieved=got,
+                                   err=float(np.abs(got - ob.target.numpy()).max())))
+            elif ob.kind == 'isotropy':
+                a = float(_anisotropy(C6))
+                report.append(dict(kind='isotropy', region=reg, target=0.0, achieved=a, err=a ** 0.5))
             else:
                 ach = C6.numpy()
                 report.append(dict(kind='tensor', region=reg, target=ob.target.numpy(),

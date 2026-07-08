@@ -31,7 +31,7 @@ def strips(prob):
 
 
 def main():
-    d = C.savedir(CASE)
+    d = C.savedir(CASE); ndir = C.networks_dir(CASE)
     res_all = {}                    # (topo,N) -> (xc, tgt, sim, solver)
     detail = {}
     csv_rows = []
@@ -51,6 +51,9 @@ def main():
             res_all[(topo, N)] = (xc, tgt, sim, solv)
             for i in range(NSTRIP):
                 csv_rows.append((topo, N, i, f'{tgt[i]:.3f}', f'{solv[i]:.4f}', f'{sim[i]:.4f}'))
+            C.save_network(os.path.join(ndir, f'{topo}_N{N}.npz'), geo, r['k'], C6, topo=topo, N=N,
+                           strip_x=xc.tolist(), target_nu=tgt.tolist(), sim_nu=sim.tolist(),
+                           solver_nu=solv.tolist())
             print(f"  {topo:12s} N={N} | sim nu(x)=" + " ".join(f"{v:+.2f}" for v in sim), flush=True)
             if N == C.SIZES[-1]:
                 detail[topo] = (label, geo, r['k'], C6, {'kind': 'vlines', 'xs': xg[1:-1]})

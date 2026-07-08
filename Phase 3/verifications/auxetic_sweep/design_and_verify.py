@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import _common as C
 
 TARGETS = [0.30, 0.15, 0.00, -0.15, -0.30, -0.45, -0.60]
-DETAIL_TGT = -0.30
+DETAIL_TOPOS = ['regular', 'aniso_str', 'disorder_hi']      # per-topo detail across ALL targets
 CASE, REG = 'auxetic_sweep', 0.003
 
 
@@ -32,8 +32,9 @@ def is_stable(dnu, snu, sE):
 
 def main():
     d = C.savedir(CASE)
+    ndir = C.networks_dir(CASE)
     rows = []                       # (topo, label, N, target, solver, sim, simE, stable)
-    detail = {}                     # topo -> (label, geo, k, C6_per)
+    detail = {t: [] for t in DETAIL_TOPOS}      # topo -> [(name, geo, k, C6_per, None) per target]
     for topo, label, _ in C.TOPOS:
         for N in C.SIZES:
             for tgt in TARGETS:
@@ -42,13 +43,17 @@ def main():
                                  reg=REG, verbose=False)
                 dnu = C.solver_region_nuE(prob, res['k'])[0]
                 C.apply_k_to_geo(geo, res['k'])
-                snu, sE = C.sim_region_nuE(geo, None)
+                C6 = C.sim_per_triangle_C6(geo)                    # one relaxation, reused below
+                snu, sE = C.c6_nuE(C.region_phys_C6(geo, C6, None))
                 st = is_stable(dnu, snu, sE)
                 rows.append((topo, label, N, tgt, dnu, snu, sE, st))
+                C.save_network(os.path.join(ndir, f'{topo}_N{N}_nu{tgt:+.2f}.npz'), geo, res['k'], C6,
+                               topo=topo, N=N, target=float(tgt), solver_nu=float(dnu),
+                               sim_nu=float(snu), sim_E=float(sE), stable=bool(st))
                 print(f"  {topo:12s} N={N} tgt={tgt:+.2f} | solver={dnu:+.3f} sim={snu:+.3f} "
                       f"E={sE:8.3g} {'ok' if st else 'UNSTABLE'}", flush=True)
-                if N == C.SIZES[-1] and abs(tgt - DETAIL_TGT) < 1e-9:
-                    detail[topo] = (label, geo, res['k'], C.sim_per_triangle_C6(geo))
+                if N == C.SIZES[-1] and topo in DETAIL_TOPOS:      # capture EVERY target for detail
+                    detail[topo].append((f'nu*={tgt:+.2f}', geo, res['k'], C6, None))
 
     # ---- CSV + printed table ----
     C.write_csv(os.path.join(d, f'{CASE}.csv'),
@@ -105,16 +110,13 @@ def main():
     plt.savefig(os.path.join(d, f'{CASE}_bytopo.png'), dpi=150, bbox_inches='tight')
     plt.close(); print('saved', f'{CASE}_bytopo.png')
 
-    # ---- detail: all topologies (grid + per-topology), region = global (None) ----
-    entries = [(detail[t[0]][0], detail[t[0]][1], detail[t[0]][2], detail[t[0]][3], None)
-               for t in C.TOPOS if t[0] in detail]
-    if entries:
-        C.design_detail_figure(os.path.join(d, f'{CASE}_detail.png'), entries,
-                               f'{CASE}: designed networks at ν*={DETAIL_TGT} (largest size) — '
-                               f'rigidity k, local ν, local E')
-        C.design_detail_per_topology(d, CASE, entries,
-                                     f'{CASE} — {{name}} designed to global ν={DETAIL_TGT}')
-        print('saved detail grid + per-topology')
+    # ---- detail: for each detail topology, ALL targets as rows [k | local ν | local E] ----
+    for topo in DETAIL_TOPOS:
+        if detail.get(topo):
+            C.design_detail_figure(os.path.join(d, f'{CASE}_alltargets_{topo}.png'), detail[topo],
+                                   f'{CASE}: {topo} — designs across ALL global targets ν* (rows, '
+                                   f'largest size) — rigidity k, local ν, local E')
+    print('saved per-topology all-target detail')
 
 
 if __name__ == '__main__':

@@ -1,16 +1,30 @@
 """
-Case auxetic_patch (LOCAL / MIXED). For each topology x size, design k so the network is normal
-(nu~+0.3) everywhere EXCEPT a central circular patch that is auxetic (nu~-0.3). Simulate the
-designed network and check, region by region, that the patch is auxetic while the surroundings
-are not. Outputs:
-  - auxetic_patch.csv            : topology, size, outside solver/sim, patch solver/sim
-  - auxetic_patch_summary.png    : overlaid (outside nu vs patch nu), all topos; gold star = target
-  - auxetic_patch_bytopo.png     : small multiples, per-topology bars (target/solver/sim, out & patch)
-  - auxetic_patch_detail.png     : 5-topology grid [rigidity k | local nu | local E], patch marked
-  - auxetic_patch_<topology>.png : per-topology detail
+Case auxetic_patch — LOCAL / SPATIAL control of the elastic response. A region is designed to
+differ from its surroundings; the designed network is then INDEPENDENTLY simulated and checked
+region-by-region. Four studies:
 
-Regional nu is the region-averaged per-triangle physical tensor (validates the loop + the spatial
-pattern; not a fully independent sub-region modulus).
+  GROUP 1 — SHAPE GALLERY: an auxetic patch (ν≈−0.3) in a normal matrix (ν≈+0.3), for different
+            region SHAPES and positions across topologies: disc, square, triangle, ring.
+
+  GROUP 2 — CONTRAST VARIETY (same disc, regular lattice): the patch need not be auxetic, just
+            DIFFERENT — auxetic-in-normal, normal-in-auxetic (surroundings auxetic), a stiff-E
+            patch, and a soft-E patch.
+
+  GROUP 3 — DECOUPLED E / ν: E is uniform everywhere EXCEPT one region R_E, while ν is uniform
+            everywhere EXCEPT a DIFFERENT region R_ν — simultaneously. Independent spatial control
+            of the two moduli.
+
+  CHECK   — REGIONAL ISOTROPY: is ν actually isotropic inside the patch / outside? Measured as the
+            angular spread of ν(θ) from the region tensor.
+
+Regional ν/E is the region-averaged per-triangle PHYSICAL tensor (validates the design→simulate
+loop and the spatial pattern). Outputs:
+  - auxetic_patch.csv                    : group, name, region, quantity, target, sim
+  - auxetic_patch_shapes.png             : GROUP 1  [rigidity k | local ν | local E], region marked
+  - auxetic_patch_contrast.png           : GROUP 2  ditto, four contrasts
+  - auxetic_patch_decoupled.png          : GROUP 3  R_E (cyan) vs R_ν (lime) — E contrast only in R_E,
+                                           ν contrast only in R_ν
+  - auxetic_patch_regional_nutheta.png   : CHECK    ν(θ) inside vs outside a patch
 """
 import os, sys
 import numpy as np
@@ -21,94 +35,172 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import _common as C
 
-CASE, REG = 'auxetic_patch', 0.002
-NU_OUT, NU_PATCH = 0.30, -0.30
+CASE, REG, N, NITER = 'auxetic_patch', 2e-3, 10, 120
+csv_rows = []
 
 
-def regions(prob):
-    cen = prob.centroids
-    center = cen.mean(0)
-    span = cen[:, 0].max() - cen[:, 0].min()
-    radius = 0.20 * span
-    patch = prob.region_in_circle(center, radius)
-    outside = np.setdiff1d(np.arange(prob.n_tri), patch)
-    return patch, outside, center, radius
+def box(geo):
+    return float(geo['BL1'][0]), float(geo['BL2'][1])
+
+
+def run(prob, geo, objectives):
+    """Design k for the objectives, install on geo, return (k, per-triangle sim tensor)."""
+    r = C.optimize(prob, objectives, mode='k', n_iter=NITER, reg=REG, verbose=False)
+    C.apply_k_to_geo(geo, r['k'])
+    return r['k'], C.sim_per_triangle_C6(geo)
+
+
+def reg_nuE(geo, C6, idx):
+    return C.c6_nuE(C.region_phys_C6(geo, C6, idx))
+
+
+def triangle_verts(cx, cy, s):
+    return [(cx, cy + s), (cx - 0.87 * s, cy - 0.5 * s), (cx + 0.87 * s, cy - 0.5 * s)]
+
+
+def _safe(s):
+    return (s.replace(' ', '_').replace('·', '').replace('/', '_')
+             .replace('(', '').replace(')', '').replace('__', '_'))
+
+
+# ------------------------------------------------------------------ GROUP 1: shape gallery
+def group1():
+    global csv_rows
+    demos = [                                           # (name, topo, shape-spec builder(Lx,Ly))
+        ('disc @ center · regular', 'regular',
+         lambda Lx, Ly: {'kind': 'circle', 'center': (0.50 * Lx, 0.50 * Ly), 'radius': 0.18 * Lx}),
+        ('square @ upper-left · aniso_str', 'aniso_str',
+         lambda Lx, Ly: {'kind': 'rect', 'center': (0.34 * Lx, 0.66 * Ly), 'w': 0.34 * Lx, 'h': 0.34 * Ly}),
+        ('triangle @ right · disorder_lo', 'disorder_lo',
+         lambda Lx, Ly: {'kind': 'polygon', 'verts': triangle_verts(0.66 * Lx, 0.50 * Ly, 0.20 * Lx)}),
+        ('ring @ center · aniso_shr', 'aniso_shr',
+         lambda Lx, Ly: {'kind': 'ring', 'center': (0.50 * Lx, 0.50 * Ly),
+                         'r_in': 0.12 * Lx, 'r_out': 0.24 * Lx}),
+    ]
+    nd = C.networks_dir(CASE)
+    entries = []; check = None
+    for name, topo, shapefn in demos:
+        prob, geo = C.make_case(topo, N)
+        Lx, Ly = box(geo)
+        patch, spec = C.region_shape(prob, shapefn(Lx, Ly))
+        outside = np.setdiff1d(np.arange(prob.n_tri), patch)
+        k, C6 = run(prob, geo, [C.Objective('nu', 0.30, region=outside, weight=1.0),
+                                C.Objective('nu', -0.30, region=patch, weight=1.5)])
+        pin = reg_nuE(geo, C6, patch)[0]; pout = reg_nuE(geo, C6, outside)[0]
+        csv_rows += [('shapes', name, 'patch', 'nu', -0.30, f'{pin:.3f}'),
+                     ('shapes', name, 'outside', 'nu', 0.30, f'{pout:.3f}')]
+        C.save_network(os.path.join(nd, f'shape_{_safe(name)}.npz'), geo, k, C6, group='shapes',
+                       name=name, topo=topo, N=N, region=spec, patch_nu=float(pin), outside_nu=float(pout))
+        print(f"  [1] {name:34s} | patch nu={pin:+.3f} outside nu={pout:+.3f}", flush=True)
+        entries.append((name, geo, k, C6, spec))
+        if check is None:                               # regional isotropy on the first (disc) demo
+            th = C.ANG
+            check = dict(name=name, inside=C.nu_E_theta(C.region_phys_C6(geo, C6, patch), th)[0],
+                         outside=C.nu_E_theta(C.region_phys_C6(geo, C6, outside), th)[0], th=th)
+    C.design_detail_figure(os.path.join(C.savedir(CASE), f'{CASE}_shapes.png'), entries,
+                           f'{CASE} GROUP 1 — auxetic patch (ν≈−0.3) in normal matrix (ν≈+0.3): '
+                           f'shape gallery [rigidity k | local ν | local E], region in lime')
+    print('saved shapes')
+    return check
+
+
+# ------------------------------------------------------------------ GROUP 2: contrast variety
+def group2():
+    global csv_rows
+    disc = lambda Lx, Ly: {'kind': 'circle', 'center': (0.50 * Lx, 0.50 * Ly), 'radius': 0.20 * Lx}
+    contrasts = [                                       # (name, [(kind,out_target),(kind,patch_target)])
+        ('auxetic disc in normal (nu -0.3 in +0.3)', ('nu', 0.30), ('nu', -0.30)),
+        ('normal disc in auxetic (nu +0.3 in -0.3)', ('nu', -0.30), ('nu', 0.30)),
+        ('stiff-E disc in soft (E 1.6 in 0.7)',      ('E', 0.70),   ('E', 1.60)),
+        ('soft-E disc in stiff (E 0.6 in 1.4)',      ('E', 1.40),   ('E', 0.60)),
+    ]
+    nd = C.networks_dir(CASE)
+    entries = []
+    for name, (okind, otgt), (pkind, ptgt) in contrasts:
+        prob, geo = C.make_case('disorder_hi', N)       # reaches both +/-0.3 freely (auxetic matrix ok)
+        Lx, Ly = box(geo)
+        patch, spec = C.region_shape(prob, disc(Lx, Ly))
+        outside = np.setdiff1d(np.arange(prob.n_tri), patch)
+        k, C6 = run(prob, geo, [C.Objective(okind, otgt, region=outside, weight=1.0),
+                                C.Objective(pkind, ptgt, region=patch, weight=1.5)])
+        pin = reg_nuE(geo, C6, patch); pout = reg_nuE(geo, C6, outside)
+        q = 0 if pkind == 'nu' else 1
+        csv_rows += [('contrast', name, 'patch', pkind, ptgt, f'{pin[q]:.3f}'),
+                     ('contrast', name, 'outside', okind, otgt, f'{pout[q]:.3f}')]
+        C.save_network(os.path.join(nd, f'contrast_{_safe(name)}.npz'), geo, k, C6, group='contrast',
+                       name=name, topo='disorder_hi', N=N, region=spec, patch_kind=pkind,
+                       patch_val=float(pin[q]), outside_val=float(pout[q]))
+        print(f"  [2] {name:42s} | patch={pin[q]:+.3f} outside={pout[q]:+.3f}", flush=True)
+        entries.append((name, geo, k, C6, spec))
+    C.design_detail_figure(os.path.join(C.savedir(CASE), f'{CASE}_contrast.png'), entries,
+                           f'{CASE} GROUP 2 — contrast variety (patch ≠ necessarily auxetic): '
+                           f'[rigidity k | local ν | local E], region in lime')
+    print('saved contrast')
+
+
+# ------------------------------------------------------------------ GROUP 3: decoupled E / ν
+def group3():
+    global csv_rows
+    NU0, NU1, E0, E1 = 0.20, -0.30, 1.0, 1.8
+    nd = C.networks_dir(CASE)
+    entries = []
+    for topo in ['regular', 'aniso_str']:
+        prob, geo = C.make_case(topo, N)
+        Lx, Ly = box(geo)
+        RE_spec = {'kind': 'circle', 'center': (0.30 * Lx, 0.50 * Ly), 'radius': 0.16 * Lx, 'color': 'cyan'}
+        RN_spec = {'kind': 'circle', 'center': (0.70 * Lx, 0.50 * Ly), 'radius': 0.16 * Lx, 'color': 'lime'}
+        R_E, _ = C.region_shape(prob, RE_spec); R_N, _ = C.region_shape(prob, RN_spec)
+        out_E = np.setdiff1d(np.arange(prob.n_tri), R_E)
+        out_N = np.setdiff1d(np.arange(prob.n_tri), R_N)
+        objs = [C.Objective('nu', NU0, region=out_N, weight=3.0),
+                C.Objective('nu', NU1, region=R_N, weight=4.0),
+                C.Objective('E', E0, region=out_E, weight=1.0),
+                C.Objective('E', E1, region=R_E, weight=1.5)]
+        k, C6 = run(prob, geo, objs)
+        nuE_RN = reg_nuE(geo, C6, R_N); nuE_RE = reg_nuE(geo, C6, R_E)
+        nu_bg = reg_nuE(geo, C6, np.setdiff1d(out_N, R_E))[0]
+        E_bg = reg_nuE(geo, C6, np.setdiff1d(out_E, R_N))[1]
+        csv_rows += [('decoupled', topo, 'R_nu', 'nu', NU1, f'{nuE_RN[0]:.3f}'),
+                     ('decoupled', topo, 'R_E', 'E', E1, f'{nuE_RE[1]:.3f}'),
+                     ('decoupled', topo, 'background', 'nu', NU0, f'{nu_bg:.3f}'),
+                     ('decoupled', topo, 'background', 'E', E0, f'{E_bg:.3f}')]
+        C.save_network(os.path.join(nd, f'decoupled_{topo}.npz'), geo, k, C6, group='decoupled',
+                       topo=topo, N=N, region=[RE_spec, RN_spec], R_nu_nu=float(nuE_RN[0]),
+                       R_E_E=float(nuE_RE[1]), bg_nu=float(nu_bg), bg_E=float(E_bg))
+        print(f"  [3] {topo:12s} | R_nu nu={nuE_RN[0]:+.3f}(tgt{NU1}) R_E E={nuE_RE[1]:.3f}(tgt{E1}) "
+              f"| bg nu={nu_bg:+.3f} bg E={E_bg:.3f}", flush=True)
+        entries.append((f'{topo}: E-patch (cyan) + ν-patch (lime)', geo, k, C6, [RE_spec, RN_spec]))
+    C.design_detail_figure(os.path.join(C.savedir(CASE), f'{CASE}_decoupled.png'), entries,
+                           f'{CASE} GROUP 3 — DECOUPLED: E differs only in R_E (cyan), ν differs only in '
+                           f'R_ν (lime). local ν map shows contrast at lime; local E map at cyan')
+    print('saved decoupled')
 
 
 def main():
-    d = C.savedir(CASE)
-    rows = []                       # (topo,label,N, out_solv,out_sim, pat_solv,pat_sim)
-    detail = {}
-    for topo, label, _ in C.TOPOS:
-        for N in C.SIZES:
-            prob, geo = C.make_case(topo, N)
-            patch, outside, center, radius = regions(prob)
-            objs = [C.Objective('nu', NU_OUT, region=outside, weight=1.0),
-                    C.Objective('nu', NU_PATCH, region=patch, weight=1.5)]
-            res = C.optimize(prob, objs, mode='k', n_iter=120, reg=REG, verbose=False)
-            os_ = C.solver_region_nuE(prob, res['k'], outside)[0]
-            ps_ = C.solver_region_nuE(prob, res['k'], patch)[0]
-            C.apply_k_to_geo(geo, res['k'])
-            C6 = C.sim_per_triangle_C6(geo)
-            om = C.c6_nuE(C.region_phys_C6(geo, C6, outside))[0]
-            pm = C.c6_nuE(C.region_phys_C6(geo, C6, patch))[0]
-            rows.append((topo, label, N, os_, om, ps_, pm))
-            print(f"  {topo:12s} N={N} | outside solver/sim={os_:+.3f}/{om:+.3f}  "
-                  f"patch solver/sim={ps_:+.3f}/{pm:+.3f}", flush=True)
-            if N == C.SIZES[-1]:
-                detail[topo] = (label, geo, res['k'], C6,
-                                {'kind': 'circle', 'center': center, 'radius': radius})
+    check = group1()
+    group2()
+    group3()
+    C.write_csv(os.path.join(C.savedir(CASE), f'{CASE}.csv'),
+                ['group', 'name', 'region', 'quantity', 'target', 'sim'], csv_rows)
 
-    C.write_csv(os.path.join(d, f'{CASE}.csv'),
-                ['topology', 'half_size', 'out_target', 'out_solver', 'out_sim',
-                 'patch_target', 'patch_solver', 'patch_sim'],
-                [(r[0], r[2], NU_OUT, f'{r[3]:.4f}', f'{r[4]:.4f}', NU_PATCH,
-                  f'{r[5]:.4f}', f'{r[6]:.4f}') for r in rows])
-    print(f"\n{'topology':12s} {'N':>3} | {'out sim':>8} {'patch sim':>9}   (targets +0.30 / -0.30)")
-    for r in rows:
-        print(f"{r[0]:12s} {r[2]:>3} | {r[4]:>+8.3f} {r[6]:>+9.3f}")
-
-    # ---- overlaid summary: outside nu vs patch nu ----
-    fig, ax = plt.subplots(figsize=(7.5, 7))
-    ax.axvline(NU_OUT, color='gray', ls='--', lw=1); ax.axhline(NU_PATCH, color='gray', ls='--', lw=1)
-    ax.scatter([NU_OUT], [NU_PATCH], marker='*', s=320, c='gold', edgecolor='k', zorder=6, label='target')
-    for topo, label, _ in C.TOPOS:
-        for N in C.SIZES:
-            m = [r for r in rows if r[0] == topo and r[2] == N]
-            if m:
-                r = m[0]
-                ax.scatter([r[4]], [r[6]], c=C.TOPO_COLORS[topo], marker=C.SIZE_MARKERS[N], s=80,
-                           edgecolor='k', lw=0.4, zorder=4, label=label if N == C.SIZES[0] else None)
-                ax.scatter([r[3]], [r[5]], c='k', marker='+', s=40, alpha=0.6, zorder=3)
-    ax.axhline(0, color='gray', lw=0.4, ls=':')
-    ax.set_xlabel('SIMULATED outside ν  (+ = solver)'); ax.set_ylabel('SIMULATED patch ν')
-    ax.set_title(f'{CASE}: outside → +0.30, patch → −0.30 (each point = one topology×size)')
-    ax.legend(fontsize=8); ax.grid(alpha=0.3)
-    plt.tight_layout(); plt.savefig(os.path.join(d, f'{CASE}_summary.png'), dpi=150, bbox_inches='tight')
-    plt.close(); print('saved summary')
-
-    # ---- small multiples: per-topology grouped bars (target / solver / sim, out & patch) ----
-    fig, axes = plt.subplots(2, 3, figsize=(15, 9))
-    for ax, (topo, label, _) in zip(axes.ravel(), C.TOPOS):
-        r = [x for x in rows if x[0] == topo and x[2] == C.SIZES[-1]][0]
-        xs = np.arange(2); w = 0.26
-        ax.bar(xs - w, [NU_OUT, NU_PATCH], w, label='target', color='0.7')
-        ax.bar(xs, [r[3], r[5]], w, label='solver', color=C.TOPO_COLORS[topo], alpha=0.6)
-        ax.bar(xs + w, [r[4], r[6]], w, label='sim', color=C.TOPO_COLORS[topo])
-        ax.axhline(0, color='k', lw=0.5); ax.set_xticks(xs); ax.set_xticklabels(['outside', 'patch'])
-        ax.set_title(label, fontsize=10); ax.set_ylabel('ν'); ax.legend(fontsize=7); ax.grid(alpha=0.3, axis='y')
-    axes.ravel()[-1].axis('off')
-    fig.suptitle(f'{CASE}: per-topology — target vs solver vs SIMULATION (outside & patch ν)', fontsize=12)
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(os.path.join(d, f'{CASE}_bytopo.png'), dpi=150, bbox_inches='tight')
-    plt.close(); print('saved bytopo')
-
-    entries = [(*detail[t[0]][:4], detail[t[0]][4]) for t in C.TOPOS if t[0] in detail]
-    C.design_detail_figure(os.path.join(d, f'{CASE}_detail.png'), entries,
-                           f'{CASE}: designed networks (auxetic patch in a positive matrix, largest '
-                           f'size) — rigidity k, local ν (lime = patch), local E')
-    C.design_detail_per_topology(d, CASE, entries, f'{CASE} — {{name}}: auxetic patch (lime) in a positive matrix')
-    print('saved detail grid + per-topology')
+    # ---- regional isotropy check: ν(θ) inside vs outside a patch ----
+    if check:
+        fig, ax = plt.subplots(figsize=(7.5, 5.5))
+        deg = np.degrees(check['th'])
+        ax.plot(deg, check['inside'], '-o', ms=3, color='#d62728', label='inside patch')
+        ax.plot(deg, check['outside'], '-o', ms=3, color='#1f77b4', label='outside')
+        ax.axhline(check['inside'].mean(), color='#d62728', ls=':', lw=1)
+        ax.axhline(check['outside'].mean(), color='#1f77b4', ls=':', lw=1)
+        ax.set_xlabel('θ (deg)'); ax.set_ylabel('ν(θ) (simulated, region tensor)'); ax.set_xlim(0, 180)
+        ax.set_title(f'{CASE} — regional isotropy: ν(θ) in/out of "{check["name"]}"\n'
+                     f'inside spread={np.ptp(check["inside"]):.3f}, outside spread={np.ptp(check["outside"]):.3f}')
+        ax.grid(alpha=0.3); ax.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(C.savedir(CASE), f'{CASE}_regional_nutheta.png'), dpi=150,
+                    bbox_inches='tight'); plt.close()
+        print(f"regional isotropy: inside spread={np.ptp(check['inside']):.3f} "
+              f"outside spread={np.ptp(check['outside']):.3f}")
+    print('done')
 
 
 if __name__ == '__main__':

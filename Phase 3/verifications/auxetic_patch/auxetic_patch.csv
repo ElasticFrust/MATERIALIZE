@@ -1,11 +1,25 @@
-topology,half_size,out_target,out_solver,out_sim,patch_target,patch_solver,patch_sim
-regular,8,0.3,0.3001,0.3003,-0.3,-0.3000,-0.2999
-regular,12,0.3,0.3000,0.3003,-0.3,-0.3000,-0.2997
-aniso_str,8,0.3,0.2999,0.2997,-0.3,-0.2992,-0.2988
-aniso_str,12,0.3,0.3004,0.3003,-0.3,-0.2993,-0.2990
-aniso_shr,8,0.3,0.3000,0.3003,-0.3,-0.3000,-0.2997
-aniso_shr,12,0.3,0.3000,0.3003,-0.3,-0.3000,-0.2998
-disorder_lo,8,0.3,0.3000,0.3004,-0.3,-0.2999,-0.2997
-disorder_lo,12,0.3,0.3000,0.3011,-0.3,-0.3000,-0.2994
-disorder_hi,8,0.3,0.2999,0.3006,-0.3,-0.3000,-0.2986
-disorder_hi,12,0.3,0.2999,0.3004,-0.3,-0.3000,-0.2996
+group,name,region,quantity,target,sim
+shapes,disc @ center · regular,patch,nu,-0.3,-0.299
+shapes,disc @ center · regular,outside,nu,0.3,0.300
+shapes,square @ upper-left · aniso_str,patch,nu,-0.3,-0.299
+shapes,square @ upper-left · aniso_str,outside,nu,0.3,0.300
+shapes,triangle @ right · disorder_lo,patch,nu,-0.3,-0.300
+shapes,triangle @ right · disorder_lo,outside,nu,0.3,0.300
+shapes,ring @ center · aniso_shr,patch,nu,-0.3,-0.299
+shapes,ring @ center · aniso_shr,outside,nu,0.3,0.300
+contrast,auxetic disc in normal (nu -0.3 in +0.3),patch,nu,-0.3,-0.299
+contrast,auxetic disc in normal (nu -0.3 in +0.3),outside,nu,0.3,0.301
+contrast,normal disc in auxetic (nu +0.3 in -0.3),patch,nu,0.3,0.301
+contrast,normal disc in auxetic (nu +0.3 in -0.3),outside,nu,-0.3,-0.297
+contrast,stiff-E disc in soft (E 1.6 in 0.7),patch,E,1.6,1.603
+contrast,stiff-E disc in soft (E 1.6 in 0.7),outside,E,0.7,0.701
+contrast,soft-E disc in stiff (E 0.6 in 1.4),patch,E,0.6,0.600
+contrast,soft-E disc in stiff (E 0.6 in 1.4),outside,E,1.4,1.400
+decoupled,regular,R_nu,nu,-0.3,-0.300
+decoupled,regular,R_E,E,1.8,1.806
+decoupled,regular,background,nu,0.2,0.167
+decoupled,regular,background,E,1.0,0.995
+decoupled,aniso_str,R_nu,nu,-0.3,-0.299
+decoupled,aniso_str,R_E,E,1.8,1.798
+decoupled,aniso_str,background,nu,0.2,0.192
+decoupled,aniso_str,background,E,1.0,1.001
