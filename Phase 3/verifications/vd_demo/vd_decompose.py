@@ -12,9 +12,9 @@ regular lattice" is auxetic (rigidity alone) or whether the disordered geometry 
 
 CORRECTION: the numbers below are at a=5 ONLY (regular+VD -> +0.02), which wrongly suggested the
 disordered geometry is REQUIRED. It is NOT — a=5 is simply below threshold. Sweeping the contrast
-(vd_alpha_sweep.py) shows regular+VD becomes auxetic at strong contrast (nu<0 for a>~12-18). So
-rigidity contrast alone on a regular lattice IS auxetic given enough contrast; the disordered
-geometry only lowers the contrast threshold.
+(vd_alpha_sweep.py, 10-seed mean) shows regular+VD becomes auxetic at strong contrast (nu<0 for
+a>~15-21). So rigidity contrast alone on a regular lattice IS auxetic given enough contrast; the
+disordered geometry only lowers the contrast threshold.
 """
 import os, sys
 import numpy as np

@@ -8,9 +8,10 @@ the local ν and local E.
 Outputs (kept): vd_regular.png  [VD rigidity k | local ν | local E]  and  vd_regular.npz (network).
 
 CORRECTION: at a=5 the regular-lattice VD is only mildly ν-reducing (this file, nu=+0.10) — but that
-is because a=5 is BELOW threshold. Sweeping the contrast (vd_alpha_sweep.py) shows the regular
-lattice DOES become auxetic at strong contrast (nu crosses 0 near a~12-18, reaching ~-0.2..-0.27 at
-a=30). So rigidity contrast alone on a regular lattice is auxetic given enough contrast.
+is because a=5 is BELOW threshold. Sweeping the contrast (vd_alpha_sweep.py, 10-seed mean) shows the
+regular lattice DOES become auxetic at strong contrast (nu crosses 0 near a~15-21, reaching ~-0.07
+(eta=0.1) / -0.10 (eta=0.15) at a=30; large seed variance). So rigidity contrast alone on a regular
+lattice is auxetic given enough contrast; the forward solver matches the simulation there to <0.01.
 """
 import os, sys
 import numpy as np
