@@ -1,0 +1,7 @@
+topology,region,nu_tensoravg,E_tensoravg,nu_field,E_field
+regular,whole,+0.180,1.051,+0.249,0.052
+regular,R_E (stiff),+0.243,1.803,-0.029,0.037
+regular,R_nu (aux),-0.299,0.684,+0.379,0.045
+disorder_hi,whole,+0.177,1.050,+0.258,0.055
+disorder_hi,R_E (stiff),+0.187,1.803,+0.179,0.035
+disorder_hi,R_nu (aux),-0.299,0.767,+0.348,0.047
