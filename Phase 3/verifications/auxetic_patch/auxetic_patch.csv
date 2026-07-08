@@ -1,25 +1,25 @@
 group,name,region,quantity,target,sim
-shapes,disc @ center · regular,patch,nu,-0.3,-0.299
+shapes,disc @ center · regular,patch,nu,-0.3,-0.292
 shapes,disc @ center · regular,outside,nu,0.3,0.300
-shapes,square @ upper-left · aniso_str,patch,nu,-0.3,-0.299
-shapes,square @ upper-left · aniso_str,outside,nu,0.3,0.300
-shapes,triangle @ right · disorder_lo,patch,nu,-0.3,-0.300
+shapes,square @ upper-left · aniso_str,patch,nu,-0.3,-0.290
+shapes,square @ upper-left · aniso_str,outside,nu,0.3,0.216
+shapes,triangle @ right · disorder_lo,patch,nu,-0.3,-0.296
 shapes,triangle @ right · disorder_lo,outside,nu,0.3,0.300
-shapes,ring @ center · aniso_shr,patch,nu,-0.3,-0.299
-shapes,ring @ center · aniso_shr,outside,nu,0.3,0.300
-contrast,auxetic disc in normal (nu -0.3 in +0.3),patch,nu,-0.3,-0.299
+shapes,ring @ center · aniso_shr,patch,nu,-0.3,-0.294
+shapes,ring @ center · aniso_shr,outside,nu,0.3,0.302
+contrast,auxetic disc in normal (nu -0.3 in +0.3),patch,nu,-0.3,-0.297
 contrast,auxetic disc in normal (nu -0.3 in +0.3),outside,nu,0.3,0.301
-contrast,normal disc in auxetic (nu +0.3 in -0.3),patch,nu,0.3,0.301
-contrast,normal disc in auxetic (nu +0.3 in -0.3),outside,nu,-0.3,-0.297
+contrast,normal disc in auxetic (nu +0.3 in -0.3),patch,nu,0.3,0.302
+contrast,normal disc in auxetic (nu +0.3 in -0.3),outside,nu,-0.3,-0.296
 contrast,stiff-E disc in soft (E 1.6 in 0.7),patch,E,1.6,1.603
-contrast,stiff-E disc in soft (E 1.6 in 0.7),outside,E,0.7,0.701
+contrast,stiff-E disc in soft (E 1.6 in 0.7),outside,E,0.7,0.699
 contrast,soft-E disc in stiff (E 0.6 in 1.4),patch,E,0.6,0.600
-contrast,soft-E disc in stiff (E 0.6 in 1.4),outside,E,1.4,1.400
-decoupled,regular,R_nu,nu,-0.3,-0.300
-decoupled,regular,R_E,E,1.8,1.806
-decoupled,regular,background,nu,0.2,0.167
-decoupled,regular,background,E,1.0,0.995
-decoupled,aniso_str,R_nu,nu,-0.3,-0.299
-decoupled,aniso_str,R_E,E,1.8,1.798
-decoupled,aniso_str,background,nu,0.2,0.192
-decoupled,aniso_str,background,E,1.0,1.001
+contrast,soft-E disc in stiff (E 0.6 in 1.4),outside,E,1.4,1.398
+decoupled,regular,R_nu,nu,-0.3,-0.298
+decoupled,regular,R_E,E,1.8,1.804
+decoupled,regular,background,nu,0.2,0.187
+decoupled,regular,background,E,1.0,1.017
+decoupled,aniso_str,R_nu,nu,-0.3,-0.288
+decoupled,aniso_str,R_E,E,1.8,1.753
+decoupled,aniso_str,background,nu,0.2,0.243
+decoupled,aniso_str,background,E,1.0,0.615
