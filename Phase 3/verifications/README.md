@@ -96,6 +96,40 @@ them (no re-optimising).
   designed at **~16 000 triangles** on regular vs disordered, with local maps.
 - **`vd_demo/`** — the VD (virtual-distortion) rigidity study on a regular lattice (see its README):
   rigidity contrast alone is auxetic above a contrast threshold; solver = simulation at 16k triangles.
+- **`two_region/`** — does a design's prescribed behaviour survive a REAL open cut-and-stretch (clamp
+  x only on the two ends, everything else incl. clamp-y free), and does gluing two differently-behaved
+  regions together actually produce a differential mechanical response? All designs saved as `*.npz`.
+  - **`_common.glue(pieces, Lx, Ly)`** (in `../_common.py`) — the key technique: design each region as
+    its OWN independent whole-domain periodic material (no shared design variables), then retriangulate
+    the union of the regions' point clouds and transfer each region's own designed bond stiffnesses by
+    matching real endpoint positions; any brand-new interface bond (the physical seam) defaults to a
+    plain undesigned k=1. **Do not jointly optimise one connected lattice with region-scoped
+    objectives** for a multi-region design — the optimiser exploits shared interface bonds, driving
+    them to exactly k=0 (a hinge/mechanism), which showed up as a chaotic, unphysically "soft" zone
+    right at the boundary under a real stretch test even though the region-averaged ν still hit target.
+  - **`ribbon.py`** — an auxetic (ν=−0.5) and a regular (ν=+0.5) 30×30 patch glued side by side.
+    `ribbon_fields.py` adds local ν/E/√‖stress‖ maps. Local ν(x) from the actual open-stretch
+    simulation transitions smoothly from ≈−0.5 to ≈+0.5 right at the glued seam.
+  - **`inclusion_square.py`** — a 30×30 regular matrix (ν=+0.5) with a 10×10 auxetic (ν=−0.5) square
+    inclusion, glued, at three inclusion rigidities (stiff/same/soft E vs the matrix).
+    `inclusion_square_fields.py` adds local ν/E/√‖stress‖ maps. Unlike the ribbon (each region spans
+    the full specimen height), the small inclusion's embedded lateral strain stays near-zero/wrong-
+    signed under edge stretch regardless of rigidity contrast — it's mechanically dominated by the
+    much larger surrounding matrix (a composite/Eshelby-type inclusion effect), not a design failure.
+  - **`inclusion_rigidity_only.py`** — control/sanity check: matrix and inclusion both at the plain
+    ν=1/3 (no design needed — nu is scale-invariant under uniform k-rescaling), only rigidity contrast
+    (stiff ×6 / soft ×1/6). Confirms the glue+cut-stretch pipeline reproduces ordinary composite
+    behaviour with no sign anomalies: the stiff region strains less and carries more stress, the soft
+    region strains more and carries less.
+  - **`demo.py`/`response_fields.py`** — an earlier pair of two-region demos (a disorder_hi bar,
+    auxetic-vs-regular top/bottom; a circular auxetic disc in a soft matrix at two rigidities) with
+    coarse-grained strain/stress response fields, predating the `glue()` technique above.
 
 _(See each case's `_summary.png`/`_bytopo.png`/`_detail.png` for the result and its `<case>.csv` for
 the raw numbers.)_
+
+## Next up (not yet implemented)
+Target the ACTUAL per-triangle strain/stress response in the design objective (not just the derived
+ν/E scalar), plus a regularizer that prefers a homogeneous local response — see the project memory
+`phase3-strain-stress-objective-todo` for the full scope (loading mode, objective target, homogeneity
+constraint) agreed with the user; zero code has been written for it yet.
