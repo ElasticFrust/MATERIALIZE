@@ -26,6 +26,16 @@ effective tensor. (Historically an area-weighted mean was used; it biased `ν` o
 disordered/anisotropic meshes and over-stated auxeticity. The area weight is still used where it
 is correct — the compatibility normalisation `Σ_s S_s δg=0` — just not in the final average.)
 
+**One solve gives the COMPLETE tensor, direction-agnostic.** The saddle solve for `W` handles the
+3 independent 2D strain modes (e_xx, e_yy, e_xy) together, so a single `forward(...)` returns the
+**full** elastic tensor — all independent components, per-triangle and homogenised — *not* the
+response to one imagined load. From that one `C` you read off the entire directional response
+(`ν(θ)`, `E(θ)`, shear) at every angle; there is no separate solve per direction. Consequently `ν`
+and `E` are **coupled** — both are contractions of the same `C`, so they cannot be prescribed
+independently (see `../Phase 3/README.md` on realizability). Caveat: `C` is the **linear (tangent)**
+tensor about the given **reference** (geometry + `l₀`) — complete, but small-strain; it does not
+capture nonlinear large-deformation response.
+
 ---
 
 ## 2. Constructing a solver
