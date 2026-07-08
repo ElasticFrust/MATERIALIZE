@@ -140,14 +140,48 @@ def _periodic_delaunay(pts, Lx, Ly):
                 BL1=np.array([Lx, 0.0]), BL2=np.array([0.0, Ly]))
 
 
-def make_lattice(phi, psi, half=10.0, seed=0, eta=0.0):
+def _bond_kv(pts, bond_u, bond_v, bond_R, k):
+    """dict {sorted(rounded endpoint pair): k} for one piece's own designed bonds, in the frame it
+    will occupy in the combined geometry (pts already positioned/shifted there)."""
+    pA = np.asarray(pts)[bond_u]; pB = pA + np.asarray(bond_R)
+    return {tuple(sorted([tuple(a), tuple(b)])): float(kk)
+            for a, b, kk in zip(np.round(pA, 5), np.round(pB, 5), np.asarray(k))}
+
+
+def glue(pieces, Lx, Ly):
+    """Physically GLUE several INDEPENDENTLY-designed periodic patches into one combined geometry,
+    instead of jointly optimising one connected lattice (which lets the optimiser exploit shared
+    interface bonds as a zero-stiffness mechanism). Each piece is a dict with:
+      'pts_keep' - this piece's points, already positioned in the combined frame, to include in the
+                   combined point cloud (may be a subset, e.g. a matrix with a hole punched out)
+      'pts_full' - ALL of this piece's own points in the combined frame (bond_u/bond_v index into
+                   this; used only to resolve each of its bonds' real endpoint positions)
+      'bond_u','bond_v','bond_R','k' - the piece's own designed bonds/stiffnesses
+    The union of every piece's pts_keep is retriangulated (periodic Delaunay over Lx,Ly). Each new
+    bond gets the k of a matching ORIGINAL bond (same real endpoint positions, from any piece);
+    unmatched bonds (the new interface seam) default to k=1 -- a plain undesigned "glue" spring,
+    since no piece's own optimisation ever touched them. Returns (geo, glued_mask)."""
+    pts_union = np.concatenate([p['pts_keep'] for p in pieces], axis=0)
+    geo = _periodic_delaunay(pts_union, Lx, Ly)
+    kv = {}
+    for p in pieces:
+        kv.update(_bond_kv(p['pts_full'], p['bond_u'], p['bond_v'], p['bond_R'], p['k']))
+    ptsU = geo['pts']; pA = ptsU[geo['bond_u']]; pB = pA + geo['bond_R']
+    keys = [tuple(sorted([tuple(a), tuple(b)])) for a, b in zip(np.round(pA, 5), np.round(pB, 5))]
+    k_new = np.array([kv.get(key, 1.0) for key in keys])
+    geo['bond_k'] = k_new; geo['tri_k'] = k_new[geo['tri_bond']]
+    return geo, np.array([key not in kv for key in keys])
+
+
+def make_lattice(phi, psi, half=10.0, seed=0, eta=0.0, half_y=None):
     """Preferred constructor. Base vectors v1=(1,0), v2=(φ/2, ψ·√3/2) (φ=ψ=1 → regular triangular);
     lattice = all m·v1+n·v2; keep a SQUARE real-space region (|x|,|y| ≤ half) as an axis-aligned
-    PERIODIC box. Optional eta perturbs positions (disordered). Returns a geo dict (k not set)."""
+    PERIODIC box. Optional eta perturbs positions (disordered); optional half_y makes a RECTANGULAR
+    ribbon (y half-height half_y instead of half). Returns a geo dict (k not set)."""
     Nx = max(4, int(round(2 * half)))
     row_h = psi * np.sqrt(3) / 2
     Lx = float(Nx)
-    Ny = _ny_commensurate(phi, Lx, row_h)
+    Ny = _ny_commensurate(phi, 2 * half_y if half_y is not None else Lx, row_h)
     Ly = Ny * row_h
     m, n = np.meshgrid(np.arange(Nx), np.arange(Ny), indexing='ij')
     x = (m.ravel() + n.ravel() * phi / 2.0) % Nx
