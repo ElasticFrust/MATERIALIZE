@@ -1,0 +1,9 @@
+kind,topology,n_tri,global_nu,global_E
+iso,regular,16128,-0.496,0.402
+iso,disorder_hi,16128,-0.497,0.382
+aniso,regular,16128,+0.212,0.439
+aniso,disorder_hi,16128,+0.210,0.436
+indep,regular,16128,+0.135,0.775
+indep,disorder_hi,16128,+0.135,0.775
+patch,regular,16128,+0.180,1.051
+patch,disorder_hi,16128,+0.177,1.050
