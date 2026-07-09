@@ -1,7 +1,7 @@
 """
 Case strain_stress — design objectives that target the ACTUAL per-triangle strain/stress response
 (not just derived ν/E), via inverse_design.py's 'strain'/'stress' Objective kinds (see
-[[phase3-strain-stress-objective-todo]]). Three demos, all under the SAME applied uniaxial macro load
+[[phase3-strain-stress-objective-todo]]). Four demos, all under the SAME applied uniaxial macro load
 (pull along x — the "xx" unit mode, in this framework's native metric-change convention):
 
   STRESS CONCENTRATOR : a sub-region designed to carry AMPLIFIED σ_xx relative to the background
@@ -22,12 +22,18 @@ Case strain_stress — design objectives that target the ACTUAL per-triangle str
                         design verification, an actual OPEN-boundary cut-and-stretch test (matching
                         two_region/ribbon.py's convention) checks the real physical pull — distinct
                         from the other two demos, which only check the periodic homogenised response.
+  CONCENTRIC RINGS      : a stress "bullseye" -- three contiguous concentric regions (center disc,
+                        mid ring, outer ring) SIMULTANEOUSLY designed for alternating-sign σ_xx
+                        (+A / -A / +A), one 'stress' objective per ring in a single joint optimize()
+                        call. Run at two magnitudes (A=0.35 "regular", A=1.0 "large") on both a
+                        regular and a disorder_hi topology (4 designs total).
 
 The first two designs are checked TWO independent ways: (a) validate()'s own differentiable-path
 readback (self-consistency of the optimiser's own forward pass), and (b) INDEPENDENTLY via
 _common.unit_mode_response's non-autograd NumPy PBC simulation (physical_homog.relax) — a genuinely
-separate code path from the solver's own forward(), not just re-running it. Outputs:
-strain_stress.csv, strain_stress_{stress,strain,bulge_design,bulge_stretch}.png, saved networks.
+separate code path from the solver's own forward(), not just re-running it. The rings demo is checked
+the same two ways, per ring. Outputs: strain_stress.csv, rings.csv,
+strain_stress_{stress,strain,bulge_design,bulge_stretch,rings_*}.png, saved networks.
 """
 import os, sys
 import numpy as np
@@ -168,11 +174,14 @@ def coarse2d(geo, val, nwt, ncell=16):
     return out
 
 
-def plot_bulge(geo, u, nwt, spec, path, scale=2.0):
+def plot_bulge(geo, u, nwt, spec, path, scale=2.0, applied_label=None):
     """Deformed shape under the ACTUAL open x-stretch (not the periodic homogenised check), coloured
     by COARSE-GRAINED lateral strain eyy (raw per-triangle eyy makes the plot look folded/wrinkled --
     see coarse2d) -- the ribbon.py/dir_aux_ribbon 'bulge' tell: positive eyy = local lateral
-    expansion. Region outline drawn at its (undeformed) design position for reference."""
+    expansion. Region outline drawn at its (undeformed) design position for reference.
+    `applied_label` overrides the default 'deform x{scale}' title phrase -- use it when `u` itself
+    already carries a large applied strain (see run_strain_bulge's *_large call) so `scale` can stay
+    at 1 and the title doesn't misleadingly say the plot is visually exaggerated."""
     _, eyy = strain_field(geo, u)
     eyy_c = coarse2d(geo, eyy, nwt)
     tv = np.asarray(geo['tri_verts'])[nwt]; sx = np.asarray(geo['simplices'])[nwt]
@@ -186,7 +195,8 @@ def plot_bulge(geo, u, nwt, spec, path, scale=2.0):
     C.mark_region(ax, spec)
     ax.set_xlim(-mg, Lx + mg); ax.set_ylim(-mg, Ly + mg); ax.set_aspect('equal')
     ax.set_xticks([]); ax.set_yticks([])
-    ax.set_title(f'Actual open x-stretch (deform ×{scale:.0f}, coarse-grained) — colour = lateral '
+    label = applied_label if applied_label is not None else f'deform ×{scale:.0f}, coarse-grained'
+    ax.set_title(f'Actual open x-stretch ({label}) — colour = lateral '
                  'strain εyy [red = expands]\nOff-centre strain-bulge rectangle (lime, top) — '
                  'clean asymmetric lateral bulge?', fontsize=11)
     plt.tight_layout()
@@ -232,6 +242,91 @@ def run_strain_bulge(csv_rows):
     u, nwt = C.open_stretch(geo, axis=0, regularize=True)
     plot_bulge(geo, u, nwt, spec, os.path.join(C.savedir(CASE), 'strain_stress_bulge_stretch.png'))
 
+    # LARGE applied strain: open_stretch solves ONE linear spring-truss problem per its own docstring
+    # ("linear -> any other stretch is this scaled"), so the large-strain response is exactly u
+    # rescaled -- no new solve needed. BIG_STRAIN is the applied engineering strain along x (the base
+    # open_stretch call above applies only ~1/Lx, a few percent).
+    BIG_STRAIN = 0.30
+    eps0 = 1.0 / Lx                                        # engineering strain at the base unit-disp BC
+    u_big = u * (BIG_STRAIN / eps0)
+    plot_bulge(geo, u_big, nwt, spec, os.path.join(C.savedir(CASE), 'strain_stress_bulge_stretch_large.png'),
+              scale=1.0, applied_label=f'applied engineering strain ~{BIG_STRAIN:.0%} along x, '
+              'linear extrapolation, undeformed plot scale')
+
+
+def plot_rings(geo, specs, sig_ind_full, achieved_rows, magnitude, topo, path):
+    """Local sigma_xx map (diverging colormap, so the alternating sign is directly visible -- unlike
+    a magnitude map, which would hide it) + per-ring target/achieved bar chart."""
+    fig, (a0, a1) = plt.subplots(1, 2, figsize=(14, 5.8))
+    sxx = sig_ind_full[:, 0]
+    pc = C.fill_local_map(a0, geo, sxx, cmap='RdBu_r', sym=True, vlim=magnitude * 1.3)
+    C.draw_box(a0, geo)
+    for s in specs:
+        C.mark_region(a0, s)
+    plt.colorbar(pc, ax=a0, fraction=0.046)
+    a0.set_title(f'local σ_xx ({topo}, alternating-sign rings)', fontsize=11)
+
+    names = [row[0] for row in achieved_rows]; x = np.arange(len(names)); w = 0.25
+    tgt = [row[1][0] for row in achieved_rows]
+    ach_d = [row[2][0] for row in achieved_rows]
+    ach_i = [row[3][0] for row in achieved_rows]
+    a1.bar(x - w, tgt, w, label='target', color='#2c3e50')
+    a1.bar(x, ach_d, w, label='achieved (diff-path)', color='#1f77b4')
+    a1.bar(x + w, ach_i, w, label='achieved (INDEPENDENT sim)', color='#d62728')
+    a1.axhline(0, color='k', lw=.5)
+    a1.set_xticks(x); a1.set_xticklabels(names)
+    a1.set_ylabel('σ_xx'); a1.legend(fontsize=8); a1.grid(alpha=.3, axis='y')
+    a1.set_title('per-ring target vs achieved', fontsize=11)
+    fig.suptitle(f'{CASE} — CONCENTRIC RINGS bullseye ({topo}, magnitude={magnitude:+.2f}): '
+                 f'alternating-sign σ_xx (pull along x)', fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.94])
+    plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()
+    print(f'saved {os.path.basename(path)}')
+
+
+def run_concentric_rings(csv_rows, topo, magnitude, tag):
+    """Alternating-sign concentric-ring sigma_xx pattern (a stress 'bullseye'): center disc +A,
+    middle ring -A, outer ring +A, same pull-along-x load as the other demos. Called for both
+    'regular' (A~0.35) and 'large' (A~1.0) magnitude levels, on both regular and disorder_hi
+    topologies -- 4 designs total, each with 3 SIMULTANEOUS stress objectives (one per ring)."""
+    prob, geo = C.make_case(topo, N)
+    Lx, Ly = C.box(geo)
+    cx, cy = 0.5 * Lx, 0.5 * Ly
+    ring_defs = [
+        ('center', {'kind': 'circle', 'center': (cx, cy), 'radius': 0.12 * Lx, 'color': 'lime'}, magnitude),
+        ('ring1', {'kind': 'ring', 'center': (cx, cy), 'r_in': 0.12 * Lx, 'r_out': 0.22 * Lx, 'color': 'cyan'},
+        -magnitude),
+        ('ring2', {'kind': 'ring', 'center': (cx, cy), 'r_in': 0.22 * Lx, 'r_out': 0.32 * Lx, 'color': 'orange'},
+        magnitude),
+    ]
+    regions = []; objs = []
+    for name, spec, sxx in ring_defs:
+        idx, _ = C.region_shape(prob, spec)
+        regions.append((name, spec, idx))
+        objs.append(C.Objective('stress', target=torch.tensor([sxx, 0.0, 0.0]), region=idx, load=LOAD,
+                                weight=1.0))
+    r = C.optimize(prob, objs, mode='k', n_iter=NITER, reg=REG, verbose=False)
+    C.apply_k_to_geo(geo, r['k'])
+    rep = C.validate(prob, r['k'], None, objs)
+
+    _, sig_ind_full = independent_check(geo)
+    print(f"  [rings {tag}] topo={topo} magnitude={magnitude:+.2f}", flush=True)
+    achieved_rows = []
+    for (name, spec, idx), ob_rep in zip(regions, rep):
+        sig_ind_region = sig_ind_full[idx].mean(0)
+        err_ind = float(np.abs(sig_ind_region - ob_rep['target']).max())
+        print(f"    {name:8s} target sigma_xx={ob_rep['target'][0]:+.3f}  achieved(diff-path)={ob_rep['achieved']}  "
+              f"achieved(INDEPENDENT sim)={sig_ind_region}  err_ind={err_ind:.4f}", flush=True)
+        csv_rows.append((tag, name, *ob_rep['target'], *ob_rep['achieved'], *sig_ind_region,
+                         f'{ob_rep["err"]:.4f}', f'{err_ind:.4f}'))
+        achieved_rows.append((name, ob_rep['target'], ob_rep['achieved'], sig_ind_region))
+
+    C6 = C.sim_per_triangle_C6(geo)
+    C.save_network(os.path.join(C.savedir(CASE), f'rings_{tag}.npz'), geo, r['k'], C6,
+                   regions=[s for _, s, _ in ring_defs], magnitude=float(magnitude))
+    plot_rings(geo, [s for _, s, _ in ring_defs], sig_ind_full, achieved_rows, magnitude, topo,
+              os.path.join(C.savedir(CASE), f'strain_stress_rings_{tag}.png'))
+
 
 def main():
     csv_rows = []
@@ -243,6 +338,16 @@ def main():
                  'achieved_diffpath_xx', 'achieved_diffpath_xy', 'achieved_diffpath_yy',
                  'achieved_independent_xx', 'achieved_independent_xy', 'achieved_independent_yy',
                  'err_diffpath', 'err_independent'], csv_rows)
+
+    rings_rows = []
+    for topo in ('regular', 'disorder_hi'):
+        for magnitude, mtag in ((0.35, 'regular'), (1.0, 'large')):
+            run_concentric_rings(rings_rows, topo, magnitude, f'{topo}_{mtag}')
+    C.write_csv(os.path.join(C.savedir(CASE), 'rings.csv'),
+                ['tag', 'ring', 'target_xx', 'target_xy', 'target_yy',
+                 'achieved_diffpath_xx', 'achieved_diffpath_xy', 'achieved_diffpath_yy',
+                 'achieved_independent_xx', 'achieved_independent_xy', 'achieved_independent_yy',
+                 'err_diffpath', 'err_independent'], rings_rows)
     print('done')
 
 

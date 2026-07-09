@@ -128,8 +128,38 @@ them (no re-optimising).
 _(See each case's `_summary.png`/`_bytopo.png`/`_detail.png` for the result and its `<case>.csv` for
 the raw numbers.)_
 
-## Next up (not yet implemented)
-Target the ACTUAL per-triangle strain/stress response in the design objective (not just the derived
-ν/E scalar), plus a regularizer that prefers a homogeneous local response — see the project memory
-`phase3-strain-stress-objective-todo` for the full scope (loading mode, objective target, homogeneity
-constraint) agreed with the user; zero code has been written for it yet.
+## `strain_stress/` — designing the ACTUAL per-triangle response, not just derived ν/E
+`inverse_design.py` gained two new `Objective` kinds, `'strain'` and `'stress'`, that fit the actual
+per-triangle metric-change response (vec3=[xx,xy,yy]) under an explicit applied macro load, plus an
+opt-in `homogeneity` penalty (within-region response variance) for any kind. Both reuse the existing
+differentiable `forward()` outputs (`bare`, `W`) — no solver change — via the new
+`per_triangle_strain_stress(bare, W, load)` helper. The convention (Voigt basis, the `(I+W)@load`
+strain-concentration formula, no extra factor-of-2 on shear) was pinned *empirically*: a unit test
+checks it against `_common.unit_mode_response`'s independent non-autograd NumPy PBC simulation.
+Whole-cell mean strain is degenerate (it always equals the applied load exactly, since the
+fluctuation field has zero cell-mean) — `'strain'` objectives only make sense on a sub-region;
+`'stress'` is designable everywhere.
+
+`strain_stress/design_and_verify.py` has four demos, all under the same uniaxial pull-along-x load:
+- **stress concentrator** — a patch designed to carry amplified σ_xx.
+- **strain shield** — a (different) patch designed for near-zero local strain (rigid inclusion).
+- **strain bulge** — a rectangle hugging the TOP edge of a regular-topology cell, designed for a
+  strong positive local eyy; verified against a real open-boundary cut-and-stretch test (not just the
+  periodic homogenised response). A `'stress'`-only version of this was tried first and gave a mixed,
+  non-bulging deformation under the real stretch — stress constrains magnitude, not the *sign* of
+  local strain, so a direct `'strain'` target was needed to reliably pick out "expands".
+- **concentric rings** — a stress "bullseye": three contiguous rings jointly designed for
+  alternating-sign σ_xx (+A/−A/+A) in one optimize() call, at two magnitudes (0.35, 1.0) on both a
+  regular and a disorder_hi topology (4 designs).
+
+All designs are checked two independent ways per the convention above (differentiable-path readback
++ `_common.unit_mode_response`'s separate NumPy simulation). Outputs: `strain_stress.csv`,
+`rings.csv`, `strain_stress_*.png`, saved networks.
+
+## Homogeneity regularizer
+`Objective(..., homogeneity=w)` adds `w * var(local_field[region])` to the loss for any `nu`/`E`/
+`strain`/`stress` kind — the loss-level analogue of the `glue()` workaround above: it discourages the
+optimizer from hitting a region-mean target via a few floppy (k→0) hinge triangles instead of a
+uniform response. `test_inverse_design.py::test_homogeneity_regularizer` confirms lower within-region
+variance with the penalty on, at comparable achieved error, using the codebase's own `n_restarts`
+robustness mechanism against LBFGS run-to-run nondeterminism.
