@@ -37,7 +37,8 @@ import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
 import physical_homog as PH
 from inverse_design import (DesignProblem, Objective, optimize, validate, c6_to_nuE,
-                            c6_to_nu_theta, c6_to_E_theta, ANG, constrain, isotropic_c6)
+                            c6_to_nu_theta, c6_to_E_theta, ANG, constrain, isotropic_c6,
+                            per_triangle_strain_stress, region_mean_vec3)
 torch.set_default_dtype(torch.float64)
 
 # ---- topology x size matrix ------------------------------------------------------------------

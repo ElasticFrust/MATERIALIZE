@@ -51,10 +51,11 @@ def _inv_softplus(k):
 
 def c6_to_nuE(C):
     """ν, E from a 6-component elastic tensor, using the SAME formula the solver's forward uses
-    (so a global-region objective matches out['poisson']/out['young'] exactly). Torch, autograd-safe."""
-    nu = (C[2] * C[3] - C[1] * C[4]) / (C[0] * C[3] - C[1] ** 2)
-    E = (C[2] ** 2 * C[3] - 2 * C[1] * C[2] * C[4] + C[1] ** 2 * C[5]
-         + C[0] * (C[4] ** 2 - C[3] * C[5])) / (C[1] ** 2 - C[0] * C[3])
+    (so a global-region objective matches out['poisson']/out['young'] exactly). Torch, autograd-safe.
+    C may be (6,) (one tensor) or (...,6) (batched, e.g. per-triangle) -- indexed on the last axis."""
+    nu = (C[..., 2] * C[..., 3] - C[..., 1] * C[..., 4]) / (C[..., 0] * C[..., 3] - C[..., 1] ** 2)
+    E = (C[..., 2] ** 2 * C[..., 3] - 2 * C[..., 1] * C[..., 2] * C[..., 4] + C[..., 1] ** 2 * C[..., 5]
+         + C[..., 0] * (C[..., 4] ** 2 - C[..., 3] * C[..., 5])) / (C[..., 1] ** 2 - C[..., 0] * C[..., 3])
     return nu, E
 
 
@@ -95,6 +96,49 @@ def c6_to_E_theta(C, thetas):
     return c6_to_nuE_theta(C, thetas)[1]
 
 
+def per_triangle_strain_stress(bare, W, load_dg):
+    """Per-triangle ACTUAL local response under an applied macroscopic metric-change load, from one
+    solver forward() call. Differentiable end to end (autograd-connected through bare/W to k_bond).
+
+    This framework's native 'strain' is the metric change Delta_g = F.T@F - I (see module docstring
+    / the pbc_dg_analysis.py convention note), not linearised engineering strain -- so `load_dg` and
+    the returned fields are exact metric-change vec3 components [xx, xy, yy], matching
+    physical_homog.Fk / _common._Dgt precisely (verified equal to _common.unit_mode_response in
+    test_inverse_design.py).
+
+    bare    : (N,5) per-triangle bare tensor A=[xxxx,xxxy,xxyy,xyyy,yyyy] (out['bare']).
+    W       : (N,9) per-triangle strain-concentration, reshaped to (N,3,3); W3[loc,k] =
+              d(local Delta_g)_loc / d(macro Delta_g)_k in the vec3=[xx,xy,yy] basis (out['W']).
+    load_dg : (3,) applied macro Delta_g, vec3 = [dg_xx, dg_xy, dg_yy].
+
+    Returns (strain_local, stress_local), each (N,3) vec3=[xx,xy,yy].
+    """
+    W3 = W.reshape(-1, 3, 3)
+    load = torch.as_tensor(load_dg, dtype=bare.dtype, device=bare.device)
+    strain_local = load + torch.einsum('nij,j->ni', W3, load)          # (I + W) @ load
+    a0, a1, a2, a3, a4 = (bare[:, i] for i in range(5))
+    gxx, gxy, gyy = strain_local[:, 0], strain_local[:, 1], strain_local[:, 2]
+    stress_local = torch.stack([
+        a0 * gxx + 2 * a1 * gxy + a2 * gyy,
+        a1 * gxx + 2 * a2 * gxy + a3 * gyy,
+        a2 * gxx + 2 * a3 * gxy + a4 * gyy,
+    ], dim=1)
+    return strain_local, stress_local
+
+
+def _region_rows(field, region):
+    """field[region] (or field itself if region is None) -- the per-triangle rows within a region,
+    for any per-triangle field (strain/stress vec3, or a per-triangle nu/E column)."""
+    return field if region is None else field[torch.as_tensor(region, dtype=torch.long)]
+
+
+def region_mean_vec3(field, region):
+    """Region-mean of a per-triangle (N,3) strain/stress vec3 field -- plain mean, no physical
+    rescaling (unlike DesignProblem.region_tensor's 8N/A factor, which is specific to converting the
+    per-triangle elastic tensor C6 to physical units; strain/stress here are already physical)."""
+    return _region_rows(field, region).mean(0)
+
+
 def _anisotropy(C):
     """Relative squared deviation of a 6-vector from the nearest ISOTROPIC tensor (0 = isotropic).
     Voigt (V11,V12,V16,V22,V26,V66)=(C0,C2,C1,C5,C4,C3); isotropy: C0=C5, C1=C4=0, C3=(C0−C2)/2."""
@@ -123,21 +167,50 @@ class Objective:
       'tensor'            — the full physical 6-vector.
       'nu_theta'|'E_theta'— a directional profile over `thetas`.
       'isotropy'          — force direction-independence (level free).
-    target : float (nu/E/nu_dir/E_dir), (6,) array (tensor), or profile over `thetas`.
+      'strain' | 'stress' — the ACTUAL per-triangle metric-change response (vec3=[xx,xy,yy], this
+                            framework's native strain — see `per_triangle_strain_stress`) under an
+                            applied macro load `load` (required for these two kinds; a (3,) vec3
+                            Delta_g, e.g. from `physical_homog.Fk`/`_common._Dgt`). `target` is
+                            either a (3,) vec3 (region-MEAN response) or a (len(region),3) array
+                            (per-triangle field target). NOTE: region-mean STRAIN over the WHOLE
+                            cell (region=None) is degenerate — it equals `load` exactly, since the
+                            fluctuation has zero cell-mean — so a 'strain' objective is only
+                            meaningful on a sub-region or as a per-triangle field target. 'stress'
+                            has no such degeneracy and is designable globally too.
+    target : float (nu/E/nu_dir/E_dir), (6,) array (tensor), (3,)/(len(region),3) array
+             (strain/stress), or profile over `thetas`.
+    load   : (3,) applied macro Delta_g vec3=[xx,xy,yy] — REQUIRED for 'strain'/'stress', unused
+             otherwise.
     thetas : angle grid for the directional kinds (default ANG = linspace(0,π,37)); a scalar target
              broadcasts to a flat (isotropic) profile.
     weight : scalar weight in the total loss.
+    homogeneity : >0 adds a penalty on the VARIANCE of the per-triangle local response WITHIN this
+             objective's region (not just the region-mean's deviation from target) — discourages the
+             optimiser from satisfying the mean via a few floppy (k→0) hinge triangles while the rest
+             of the region is untouched (the loss-level analogue of the geometry-level `glue()`
+             workaround — see [[glue-not-joint-design]]). Only supported for kind in
+             ('nu','E','strain','stress'); 0.0 (off) for any other kind.
     """
-    def __init__(self, kind, target=None, region=None, weight=1.0, thetas=None):
-        assert kind in ('nu', 'E', 'nu_dir', 'E_dir', 'tensor', 'nu_theta', 'E_theta', 'isotropy')
+    def __init__(self, kind, target=None, region=None, weight=1.0, thetas=None, load=None,
+                homogeneity=0.0):
+        assert kind in ('nu', 'E', 'nu_dir', 'E_dir', 'tensor', 'nu_theta', 'E_theta', 'isotropy',
+                        'strain', 'stress')
+        if homogeneity:
+            assert kind in ('nu', 'E', 'strain', 'stress'), \
+                f"homogeneity is not supported for kind={kind!r}"
         self.kind = kind
         self.region = None if region is None else np.asarray(region, dtype=np.int64)
         self.weight = float(weight)
+        self.homogeneity = float(homogeneity)
         if kind in ('nu', 'E', 'nu_theta', 'E_theta'):           # scalar nu/E -> flat (isotropic) profile
             self.thetas = ANG if thetas is None else np.asarray(thetas, dtype=float)
             self.target = torch.as_tensor(np.array(np.broadcast_to(target, self.thetas.shape),
                                                    dtype=float), dtype=torch.float64)
         elif kind == 'tensor':
+            self.target = torch.as_tensor(target, dtype=torch.float64)
+        elif kind in ('strain', 'stress'):
+            assert load is not None, f"Objective(kind={kind!r}) requires `load` (macro Delta_g vec3)"
+            self.load = torch.as_tensor(load, dtype=torch.float64)
             self.target = torch.as_tensor(target, dtype=torch.float64)
         else:                                                    # nu_dir, E_dir, isotropy
             self.target = target
@@ -262,16 +335,30 @@ def _params_to_kl(raw, prob, mode):
 
 def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
     out = prob.forward(k_bond, l0_bond, physical_units=True)
-    per = out['per_triangle']
+    per, bare, W = out['per_triangle'], out['bare'], out['W']
     total = torch.zeros((), dtype=torch.float64)
     for ob in objectives:
+        if ob.kind in ('strain', 'stress'):                              # actual local response
+            strain_local, stress_local = per_triangle_strain_stress(bare, W, ob.load)
+            field_region = _region_rows(strain_local if ob.kind == 'strain' else stress_local, ob.region)
+            response = field_region if ob.target.dim() == 2 else field_region.mean(0)  # per-tri or mean
+            total = total + ob.weight * ((response - ob.target) ** 2).mean()
+            if ob.homogeneity:
+                total = total + ob.homogeneity * field_region.var(0).sum()
+            continue
         C6 = prob.region_tensor(per, ob.region)
         if ob.kind in ('nu', 'nu_theta'):                                # isotropic (scalar) or profile
             nth = c6_to_nu_theta(C6, ob.thetas)
             total = total + ob.weight * ((nth - ob.target) ** 2).mean()
+            if ob.kind == 'nu' and ob.homogeneity:
+                nu_pertri, _ = c6_to_nuE(per)
+                total = total + ob.homogeneity * _region_rows(nu_pertri, ob.region).var()
         elif ob.kind in ('E', 'E_theta'):
             eth = c6_to_E_theta(C6, ob.thetas)
             total = total + ob.weight * ((eth - ob.target) ** 2).mean()
+            if ob.kind == 'E' and ob.homogeneity:
+                _, E_pertri = c6_to_nuE(per)
+                total = total + ob.homogeneity * _region_rows(E_pertri, ob.region).var()
         elif ob.kind == 'nu_dir':                                        # legacy single-direction scalar
             nu, _ = c6_to_nuE(C6)
             total = total + ob.weight * (nu - ob.target) ** 2
@@ -342,19 +429,39 @@ def validate(prob, k_bond, l0_bond, objectives):
     """Re-evaluate each objective at the designed params; return achieved vs target."""
     with torch.no_grad():
         out = prob.forward(k_bond, l0_bond, physical_units=True)
-        per = out['per_triangle']
+        per, bare, W = out['per_triangle'], out['bare'], out['W']
         report = []
         for ob in objectives:
+            reg = 'global' if ob.region is None else f'{len(ob.region)} tri'
+            if ob.kind in ('strain', 'stress'):                          # actual local response
+                strain_local, stress_local = per_triangle_strain_stress(bare, W, ob.load)
+                field_region = _region_rows(strain_local if ob.kind == 'strain' else stress_local,
+                                            ob.region)
+                if ob.target.dim() == 2:                                 # per-triangle field target
+                    ach = field_region.numpy()
+                else:                                                    # region-mean target
+                    ach = field_region.mean(0).numpy()
+                tgt = ob.target.numpy()
+                rec = dict(kind=ob.kind, region=reg, load=ob.load.numpy(), target=tgt,
+                          achieved=ach, err=float(np.abs(ach - tgt).max()))
+                if ob.homogeneity:                                       # within-region spread (not err)
+                    rec['homogeneity_spread'] = float(field_region.var(0).sum())
+                report.append(rec)
+                continue
             C6 = prob.region_tensor(per, ob.region)
             nu, E = c6_to_nuE(C6)
-            reg = 'global' if ob.region is None else f'{len(ob.region)} tri'
             if ob.kind in ('nu', 'E', 'nu_theta', 'E_theta'):
                 fn = c6_to_nu_theta if ob.kind in ('nu', 'nu_theta') else c6_to_E_theta
                 got = fn(C6, ob.thetas).numpy(); tgt = ob.target.numpy()
                 if ob.kind in ('nu', 'E'):                       # isotropic scalar: report mean + spread
-                    report.append(dict(kind=ob.kind, region=reg, target=float(tgt.flat[0]),
-                                       achieved=float(got.mean()), spread=float(np.ptp(got)),
-                                       err=float(np.abs(got - tgt).max())))
+                    rec = dict(kind=ob.kind, region=reg, target=float(tgt.flat[0]),
+                              achieved=float(got.mean()), spread=float(np.ptp(got)),
+                              err=float(np.abs(got - tgt).max()))
+                    if ob.homogeneity:                            # WITHIN-region per-triangle spread
+                        nu_pertri, E_pertri = c6_to_nuE(per)
+                        pertri = nu_pertri if ob.kind == 'nu' else E_pertri
+                        rec['homogeneity_spread'] = float(_region_rows(pertri, ob.region).var())
+                    report.append(rec)
                 else:                                            # directional profile
                     report.append(dict(kind=ob.kind, region=reg, thetas=ob.thetas, target=tgt,
                                        achieved=got, err=float(np.abs(got - tgt).max())))
