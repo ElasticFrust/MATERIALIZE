@@ -1,0 +1,7 @@
+topology,sub_region,n_triangles,embedded_nu_theta0,solo_nu_theta0
+ordered,full_center,5632,2.7964,-1.1936
+ordered,near_interface,2432,1.6089,-1.1936
+ordered,deep_bulk,3200,4.7218,-1.1936
+disordered,full_center,5637,0.7863,-0.4199
+disordered,near_interface,2543,0.5000,-0.4199
+disordered,deep_bulk,3094,1.2453,-0.4199
