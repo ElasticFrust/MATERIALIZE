@@ -7,8 +7,6 @@ strain & stress and check the auxetic region's lateral response (ε_yy same sign
 """
 import os, sys
 import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -22,47 +20,6 @@ import test_cluster_Ceff as CE
 import test_cluster_rigidity as TR
 
 TOPOS = ['regular', 'disorder_hi']
-DELTA = 1.0                        # boundary stretch (linear ⇒ relative)
-
-
-def open_truss(geo):
-    """Keep only non-wrapping bonds/triangles; return (nw_bond mask, nw_tri mask, edge_vecs)."""
-    pts = np.asarray(geo['pts']); bu, bv, bR = geo['bond_u'], geo['bond_v'], np.asarray(geo['bond_R'])
-    exp = pts[bv] - pts[bu]
-    nwb = np.abs(bR - exp).max(1) < 1e-6                       # non-wrapping bonds
-    nwt = nwb[geo['tri_bond']].all(1)                         # triangles with all edges non-wrapping
-    tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
-    geo['edge_vecs'] = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    geo['actual_len2'] = (geo['edge_vecs'] ** 2).sum(2)
-    geo['simplices'] = np.asarray(geo['simplices'])
-    return nwb, nwt
-
-
-def assemble_open_K(geo, nwb):
-    pts = np.asarray(geo['pts']); n = len(pts)
-    a = geo['bond_u'][nwb]; b = geo['bond_v'][nwb]; R = np.asarray(geo['bond_R'])[nwb]
-    L = np.sqrt((R ** 2).sum(1)); nx, ny = R[:, 0] / L, R[:, 1] / L; kap = np.asarray(geo['bond_k'])[nwb]
-    bxx, bxy, byy = kap * nx * nx, kap * nx * ny, kap * ny * ny
-    a0, a1, b0, b1 = 2 * a, 2 * a + 1, 2 * b, 2 * b + 1
-    r = np.concatenate([a0, a0, a1, a1, b0, b0, b1, b1, a0, a0, a1, a1, b0, b0, b1, b1])
-    c = np.concatenate([a0, a1, a0, a1, b0, b1, b0, b1, b0, b1, b0, b1, a0, a1, a0, a1])
-    v = np.concatenate([bxx, bxy, bxy, byy, bxx, bxy, bxy, byy,
-                        -bxx, -bxy, -bxy, -byy, -bxx, -bxy, -bxy, -byy])
-    return sp.coo_matrix((v, (r, c)), shape=(2 * n, 2 * n)).tocsr()
-
-
-def solve_stretch(geo, nwb):
-    pts = np.asarray(geo['pts']); n = len(pts); Lx = float(geo['BL1'][0])
-    K = assemble_open_K(geo, nwb)
-    margin = 1.3
-    left = np.where(pts[:, 0] < margin)[0]; right = np.where(pts[:, 0] > Lx - margin)[0]
-    fix = np.concatenate([2 * left, 2 * right]); uf = np.concatenate([np.zeros(len(left)),
-                                                                      DELTA * np.ones(len(right))])
-    u = np.zeros(2 * n); u[fix] = uf
-    free = np.setdiff1d(np.arange(2 * n), fix)
-    rhs = -(K[free][:, fix] @ uf)
-    u[free] = spla.spsolve(K[free][:, free].tocsc(), rhs)
-    return u.reshape(n, 2)
 
 
 def stress(bare, eps):
@@ -82,8 +39,7 @@ def main():
     fig, axes = plt.subplots(len(TOPOS), 2, figsize=(13, 6.2 * len(TOPOS)), squeeze=False)
     for r, topo in enumerate(TOPOS):
         geo, k, C6, meta = C.load_network(os.path.join(HERE, 'networks', f'patch__{topo}.npz'))
-        nwb, nwt = open_truss(geo)
-        u = solve_stretch(geo, nwb)
+        u, nwt = C.open_stretch(geo, axis=0)
         eps = CE.tri_metric_change(geo['edge_vecs'], geo['simplices'], np.eye(2), u)  # (N,2,2)
         sig = stress(TR.bare_tensor(geo), eps)
         cen = np.asarray(geo['centroids']); RE, RN = meta['region']

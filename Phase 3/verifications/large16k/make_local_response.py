@@ -18,37 +18,8 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import physical_homog as PH
-import test_cluster_rigidity as TR
-import test_cluster_Ceff as CE
 
 TOPOS = ['regular', 'disorder_hi']
-
-
-def augment(geo):
-    tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
-    geo['edge_vecs'] = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    geo['actual_len2'] = (geo['edge_vecs'] ** 2).sum(2)
-    geo['simplices'] = np.asarray(geo['simplices'])
-    return geo
-
-
-def mode_fields(geo):
-    """Per-triangle strain ε_k and stress σ_k (2x2) for the 3 unit macro modes, from the simulation."""
-    ev, sx = geo['edge_vecs'], geo['simplices']
-    u = PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), TR.assemble_K_faff)
-    eps = [CE.tri_metric_change(ev, sx, PH.Fk[k], u[k]) / PH.DELTA for k in range(3)]
-    bare = TR.bare_tensor(geo)
-    A0, A1, A2, A3, A4 = (bare[:, i] for i in range(5))
-    sig = []
-    for e in eps:
-        exx, eyy, exy = e[:, 0, 0], e[:, 1, 1], e[:, 0, 1]
-        s = np.zeros_like(e)
-        s[:, 0, 0] = A0 * exx + 2 * A1 * exy + A2 * eyy
-        s[:, 0, 1] = s[:, 1, 0] = A1 * exx + 2 * A2 * exy + A3 * eyy
-        s[:, 1, 1] = A2 * exx + 2 * A3 * exy + A4 * eyy
-        sig.append(s)
-    return eps, sig
 
 
 def field_nuE(eps, sig, areas, idx):
@@ -70,20 +41,18 @@ def main():
     fig, ax = plt.subplots(1, 2, figsize=(12, 5))
     for col, topo in enumerate(TOPOS):
         geo, k, C6, meta = C.load_network(os.path.join(HERE, 'networks', f'patch__{topo}.npz'))
-        augment(geo); areas = np.asarray(geo['areas']); cen = np.asarray(geo['centroids'])
+        areas = np.asarray(geo['areas']); cen = np.asarray(geo['centroids'])
         RE, RN = meta['region']
         regions = {'whole': np.arange(len(areas)),
                    'R_E (stiff)': np.where(((cen - RE['center']) ** 2).sum(1) < RE['radius'] ** 2)[0],
                    'R_nu (aux)': np.where(((cen - RN['center']) ** 2).sum(1) < RN['radius'] ** 2)[0]}
-        eps, sig = mode_fields(geo)
+        eps, sig = C.unit_mode_response(geo)
 
-        def magf(t):
-            return np.sqrt(t[:, 0, 0] ** 2 + 2 * t[:, 0, 1] ** 2 + t[:, 1, 1] ** 2)
         FORC = [('dilation', (1, 1, 0)), ('pure shear', (1, -1, 0)), ('simple shear', (0, 0, 2))]
         for fname, (c0, c1, c2) in FORC:                          # mean |strain|,|stress| per region
             e = c0 * eps[0] + c1 * eps[1] + c2 * eps[2]
             s = c0 * sig[0] + c1 * sig[1] + c2 * sig[2]
-            me, ms = magf(e), magf(s)
+            me, ms = C.tensor_mag(e), C.tensor_mag(s)
             for name, idx in regions.items():
                 print(f"  [{topo:11s} {fname:12s} {name:11s}] <|strain|>={me[idx].mean():.3f} "
                       f"<|stress|>={ms[idx].mean():.4f}", flush=True)

@@ -4,20 +4,19 @@ Perturbed periodic lattice (eta fixed); bond rigidity k = 1 + tanh(a*(|R|-1)) (a
 a>0 stiffer where stretched, a<0 stiffer where compressed; |a|~10 -> near-binary k in {0,2}).
 Homogenised nu and E for the cluster forward solver (code) and single-site MF vs PBC sim.
 """
-import os, sys
+import os
 import numpy as np
 import scipy.sparse.linalg as spla
 import torch
-import matplotlib
-matplotlib.use('Agg')
+import _bootstrap
 import matplotlib.pyplot as plt
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
 import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
 import test_cluster_Ceff_rigidity as RG
 torch.set_default_dtype(torch.float64)
+
+HERE = _bootstrap.HERE
 
 N = 14
 CONTRASTS = [-10, -5, 0, 5, 10]

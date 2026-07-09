@@ -15,7 +15,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import demo as D
 import response_fields as RF
 
 
@@ -25,7 +24,7 @@ def main():
     _, nu_v = C.local_scalar_field(geo, C6, quantity='nu')
     _, E_v = C.local_scalar_field(geo, C6, quantity='E')
 
-    u, nwt = D.cut_stretch(geo, axis=0)
+    u, nwt = C.open_stretch(geo, axis=0, regularize=True)
     _, _, smag = RF.fields(geo, u)
     sscaled = np.sqrt(smag)
 

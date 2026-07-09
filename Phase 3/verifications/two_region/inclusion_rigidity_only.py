@@ -19,7 +19,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import demo as D
 import ribbon as RB                      # reuse strain()
 import response_fields as RF             # reuse coarse()
 
@@ -47,30 +46,12 @@ def main():
     for r, (tag, kscale) in enumerate(CASES):
         geoI, kI, ni, Ei = build_uniform(HALF_I, kscale)
         print(f"  case {tag}: inclusion k={kscale:.3f}  nu={ni:+.3f} (expect +0.333) E={Ei:.3f}", flush=True)
-        Lxi, Lyi = float(geoI['BL1'][0]), float(geoI['BL2'][1])
-        ptsI = np.asarray(geoI['pts']) + [cx - Lxi / 2, cy - Lyi / 2]
-
-        ptsM = np.asarray(geoM['pts'])
-        hole = (np.abs(ptsM[:, 0] - cx) < Lxi / 2) & (np.abs(ptsM[:, 1] - cy) < Lyi / 2)
-        ptsM_keep = ptsM[~hole]
-
-        pieces = [dict(pts_keep=ptsM_keep, pts_full=ptsM, bond_u=geoM['bond_u'], bond_v=geoM['bond_v'],
-                       bond_R=geoM['bond_R'], k=kM),
-                  dict(pts_keep=ptsI, pts_full=ptsI, bond_u=geoI['bond_u'], bond_v=geoI['bond_v'],
-                       bond_R=geoI['bond_R'], k=kI)]
-        geo, glued = C.glue(pieces, Lx, Ly)
-        spec = {'kind': 'rect', 'center': (float(cx), float(cy)), 'w': Lxi, 'h': Lyi, 'color': 'lime'}
-        print(f"    GLUED: {glued.sum()} default/interface bonds ({glued.mean()*100:.1f}%)", flush=True)
-
-        C6 = C.sim_per_triangle_C6(geo); cen = np.asarray(geo['centroids'])
-        disc, _ = C.region_shape(C.DesignProblem.from_geo(geo), spec)
-        out = np.setdiff1d(np.arange(len(cen)), disc)
-        nd, Ed = C.c6_nuE(C.region_phys_C6(geo, C6, disc)); no, Eo = C.c6_nuE(C.region_phys_C6(geo, C6, out))
-        print(f"    after gluing: disc nu={nd:+.3f} E={Ed:.2f}   matrix nu={no:+.3f} E={Eo:.2f}", flush=True)
+        geo, glued, spec, C6, disc, out, nd, Ed, no, Eo, u, nwt = C.glue_square_hole(
+            geoM, kM, geoI, kI, Lx, Ly, cx, cy)
+        cen = np.asarray(geo['centroids'])
         C.save_network(os.path.join(HERE, f'inclusion_rigidity_{tag}.npz'), geo, geo['bond_k'], C6,
                        region=spec, disc=disc.tolist())
 
-        u, nwt = D.cut_stretch(geo, axis=0)
         exx, eyy, smag = RF.fields(geo, u)
         exxC = RF.coarse(geo, exx, nwt, ncell=24); smagC = RF.coarse(geo, smag, nwt, ncell=24)
         e_in = np.nanmean(exxC[nwt & np.isin(np.arange(len(cen)), disc)])

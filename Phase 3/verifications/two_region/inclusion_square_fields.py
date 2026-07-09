@@ -1,10 +1,11 @@
 """
-Local field maps for the glued matrix+inclusion designs (loaded from the saved inclusion_sq_*.npz,
-no re-optimising): the DESIGNED intrinsic local Poisson ratio and Young's modulus (per-triangle, from
-the relaxation already used to verify each design), and the local stress magnitude ||sigma|| actually
-measured under the open x-stretch (sqrt-scaled -- stress spans orders of magnitude at the floppy/soft
-auxetic bonds, sqrt compresses that range so the map isn't dominated by outliers). One row per
-rigidity case (stiff / same / soft), one column per field, each with its own colorbar.
+Follow-up to inclusion_square.py: local field maps for the glued matrix+inclusion designs it saved
+(loaded from inclusion_sq_*.npz, no re-optimising): the DESIGNED intrinsic local Poisson ratio and
+Young's modulus (per-triangle, from the relaxation already used to verify each design), and the
+local stress magnitude ||sigma|| actually measured under the open x-stretch (sqrt-scaled -- stress
+spans orders of magnitude at the floppy/soft auxetic bonds, sqrt compresses that range so the map
+isn't dominated by outliers). One row per rigidity case (stiff / same / soft), one column per field,
+each with its own colorbar.
 """
 import os, sys
 import numpy as np
@@ -16,7 +17,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import demo as D
 import response_fields as RF
 
 CASES = ['stiff', 'same', 'soft']
@@ -30,7 +30,7 @@ def main():
         _, nu_v = C.local_scalar_field(geo, C6, quantity='nu')
         _, E_v = C.local_scalar_field(geo, C6, quantity='E')
 
-        u, nwt = D.cut_stretch(geo, axis=0)
+        u, nwt = C.open_stretch(geo, axis=0, regularize=True)
         _, _, smag = RF.fields(geo, u)
         sscaled = np.sqrt(smag)
 

@@ -52,16 +52,13 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import torch
-import matplotlib
-matplotlib.use('Agg')
+import _bootstrap
 import matplotlib.pyplot as plt
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.join(HERE, '..')
-sys.path.insert(0, os.path.join(ROOT, 'Phase 2'))
 import forward_solver_torch as fst  # noqa: E402
 
 torch.set_default_dtype(torch.float64)
+HERE = _bootstrap.HERE
 
 # ── Configuration ───────────────────────────────────────────────────────────
 N          = 40                                   # N x N lattice -> 2N^2 triangles

@@ -16,37 +16,12 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import physical_homog as PH
-import test_cluster_rigidity as TR
-import test_cluster_Ceff as CE
 
 TOPOS = ['regular', 'disorder_hi']
 NCELL = 22
 FORCINGS = [('isotropic dilation', (1.0, 1.0, 0.0)),
             ('pure shear (deviatoric)', (1.0, -1.0, 0.0)),
             ('simple/longitudinal shear', (0.0, 0.0, 2.0))]
-
-
-def augment(geo):
-    tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
-    geo['edge_vecs'] = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    geo['actual_len2'] = (geo['edge_vecs'] ** 2).sum(2)
-    geo['simplices'] = np.asarray(geo['simplices']); return geo
-
-
-def mode_fields(geo):
-    ev, sx = geo['edge_vecs'], geo['simplices']
-    u = PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), TR.assemble_K_faff)
-    eps = [CE.tri_metric_change(ev, sx, PH.Fk[k], u[k]) / PH.DELTA for k in range(3)]
-    bare = TR.bare_tensor(geo); A0, A1, A2, A3, A4 = (bare[:, i] for i in range(5))
-    sig = []
-    for e in eps:
-        exx, eyy, exy = e[:, 0, 0], e[:, 1, 1], e[:, 0, 1]; s = np.zeros_like(e)
-        s[:, 0, 0] = A0 * exx + 2 * A1 * exy + A2 * eyy
-        s[:, 0, 1] = s[:, 1, 0] = A1 * exx + 2 * A2 * exy + A3 * eyy
-        s[:, 1, 1] = A2 * exx + 2 * A3 * exy + A4 * eyy
-        sig.append(s)
-    return eps, sig
 
 
 def coarse(geo, tens):
@@ -61,15 +36,11 @@ def coarse(geo, tens):
     return out
 
 
-def mag(t):
-    return np.sqrt(t[:, 0, 0] ** 2 + 2 * t[:, 0, 1] ** 2 + t[:, 1, 1] ** 2)
-
-
 def main():
     data = {}
     for topo in TOPOS:
         geo, k, C6, meta = C.load_network(os.path.join(HERE, 'networks', f'patch__{topo}.npz'))
-        augment(geo); eps, sig = mode_fields(geo)
+        eps, sig = C.unit_mode_response(geo)
         data[topo] = (geo, meta.get('region'), eps, sig)
 
     fig, axes = plt.subplots(len(FORCINGS), 4, figsize=(20, 5.6 * len(FORCINGS)), squeeze=False)
@@ -78,7 +49,7 @@ def main():
             geo, region, eps, sig = data[topo]
             e = coarse(geo, c0 * eps[0] + c1 * eps[1] + c2 * eps[2])
             s = coarse(geo, c0 * sig[0] + c1 * sig[1] + c2 * sig[2])
-            me, ms = mag(e), mag(s)
+            me, ms = C.tensor_mag(e), C.tensor_mag(s)
             pe = C.fill_local_map(axes[r, 2 * j], geo, me, cmap='magma')
             pe.set_clim(0, np.nanpercentile(me, 99)); C.draw_box(axes[r, 2 * j], geo)
             C.mark_region(axes[r, 2 * j], region); plt.colorbar(pe, ax=axes[r, 2 * j], fraction=0.046)

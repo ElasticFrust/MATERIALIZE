@@ -3,20 +3,19 @@ ny / E vs rigidity contrast: cluster forward solver vs single-site MF vs simulat
 Regular lattice (eta=0), random binary bond rigidities k in {1, 1/ratio}. Homogenised
 nu and E via the same C=(I+W)^T A (I+W) pipeline, W from MF / cluster(d) / full relax.
 """
-import os, sys
+import os
 import numpy as np
 import scipy.sparse.linalg as spla
 import torch
-import matplotlib
-matplotlib.use('Agg')
+import _bootstrap
 import matplotlib.pyplot as plt
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
 import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
 import forward_solver_torch as fst
 torch.set_default_dtype(torch.float64)
+
+HERE = _bootstrap.HERE
 
 N = 16
 RATIOS = [1.0, 2.0, 3.0, 5.0, 10.0, 30.0, 100.0]

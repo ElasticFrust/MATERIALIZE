@@ -6,8 +6,6 @@ inclusion. Loaded from the saved networks (bar.npz, inclusion_{stiff,same}.npz).
 """
 import os, sys
 import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -25,32 +23,10 @@ DESIGNS = [('bar', 'BAR: top auxetic / bottom regular'),
            ('inclusion_same', 'SAME-rigidity auxetic disc')]
 
 
-def nwb_of(geo):
-    pts = np.asarray(geo['pts'])
-    return np.abs(np.asarray(geo['bond_R']) - (pts[geo['bond_v']] - pts[geo['bond_u']])).max(1) < 1e-6
-
-
-def Kmat(npts, a, b, R, kap):
-    L = np.sqrt((R ** 2).sum(1)); nx, ny = R[:, 0] / L, R[:, 1] / L
-    bxx, bxy, byy = kap * nx * nx, kap * nx * ny, kap * ny * ny
-    a0, a1, b0, b1 = 2 * a, 2 * a + 1, 2 * b, 2 * b + 1
-    r = np.concatenate([a0, a0, a1, a1, b0, b0, b1, b1, a0, a0, a1, a1, b0, b0, b1, b1])
-    c = np.concatenate([a0, a1, a0, a1, b0, b1, b0, b1, b0, b1, b0, b1, a0, a1, a0, a1])
-    v = np.concatenate([bxx, bxy, bxy, byy, bxx, bxy, bxy, byy,
-                        -bxx, -bxy, -bxy, -byy, -bxx, -bxy, -bxy, -byy])
-    return sp.coo_matrix((v, (r, c)), shape=(2 * npts, 2 * npts)).tocsr()
-
-
 def cut_stretch(geo):
-    nwb = nwb_of(geo); pts = np.asarray(geo['pts']); n = len(pts); m = 1.3
-    nwt = nwb[geo['tri_bond']].all(1)
-    K = Kmat(n, geo['bond_u'][nwb], geo['bond_v'][nwb], np.asarray(geo['bond_R'])[nwb],
-             np.asarray(geo['bond_k'])[nwb]) + 1e-3 * sp.identity(2 * n)
-    lo = np.where(pts[:, 0] < pts[:, 0].min() + m)[0]; hi = np.where(pts[:, 0] > pts[:, 0].max() - m)[0]
-    fix = np.concatenate([2 * lo, 2 * hi]); uf = np.concatenate([np.zeros(len(lo)), np.ones(len(hi))])
-    u = np.zeros(2 * n); u[fix] = uf; free = np.setdiff1d(np.arange(2 * n), fix)
-    u[free] = spla.spsolve(K[free][:, free].tocsc(), -(K[free][:, fix] @ uf))
-    return u.reshape(n, 2), nwt
+    """Open cut-and-stretch along x, regularized (matches two_region/demo.py, which produced the
+    networks this module reloads and plots)."""
+    return C.open_stretch(geo, axis=0, regularize=True)
 
 
 def fields(geo, u):

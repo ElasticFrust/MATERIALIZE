@@ -12,7 +12,6 @@ import os, sys
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -25,10 +24,6 @@ E0, EAMP = 1.0, 0.40
 csv = []
 
 
-def box(geo):
-    return float(geo['BL1'][0]), float(geo['BL2'][1])
-
-
 def objs_for(kind, prob, geo):
     """Return (objectives, regions_to_mark, focus_field)."""
     if kind == 'iso':
@@ -39,7 +34,7 @@ def objs_for(kind, prob, geo):
         return [C.Objective('nu_theta', 0.20, weight=10.0),
                 C.Objective('E_theta', E0 * (1 + EAMP * np.cos(2 * TH)), weight=1.0)], None, 'E'
     if kind == 'patch':
-        Lx, Ly = box(geo)
+        Lx, Ly = C.box(geo)
         RE = {'kind': 'circle', 'center': (0.30 * Lx, 0.5 * Ly), 'radius': 0.14 * Lx, 'color': 'cyan'}
         RN = {'kind': 'circle', 'center': (0.70 * Lx, 0.5 * Ly), 'radius': 0.14 * Lx, 'color': 'lime'}
         R_E, _ = C.region_shape(prob, RE); R_N, _ = C.region_shape(prob, RN)
@@ -64,21 +59,15 @@ def run(kind, topo, nd):
 
 
 def maps_figure(kind, nd):
-    fig, axes = plt.subplots(2, len(TOPOS), figsize=(3.2 * len(TOPOS), 6.4), squeeze=False)
-    for col, topo in enumerate(TOPOS):
+    entries = []
+    for topo in TOPOS:
         geo, k, C6, meta = C.load_network(os.path.join(nd, f'{kind}__{topo}.npz'))
-        reg = meta.get('region')
-        nu = C.local_field_smooth(geo, C6, 'nu')
-        pnu = C.fill_local_map(axes[0, col], geo, nu, cmap='RdBu_r', sym=True, vlim=0.6)
-        C.draw_box(axes[0, col], geo); C.mark_region(axes[0, col], reg)
-        axes[0, col].set_title(f"{topo}  (global ν={meta['global_nu']:+.3f})", fontsize=9)
-        E = C.local_field_smooth(geo, C6, 'E'); pE = C.fill_local_map(axes[1, col], geo, E, cmap='viridis')
-        pE.set_clim(0, np.nanpercentile(E, 97)); C.draw_box(axes[1, col], geo); C.mark_region(axes[1, col], reg)
-        axes[1, col].set_title(f"global E={meta['global_E']:.3f}", fontsize=9)
-    axes[0, 0].set_ylabel('local ν'); axes[1, 0].set_ylabel('local E')
-    fig.suptitle(f'LARGE 16k-triangle design — {kind} (regular vs disordered)', fontsize=12)
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(os.path.join(HERE, f'large16k_{kind}.png'), dpi=140, bbox_inches='tight'); plt.close()
+        t0 = f"{topo}  (global ν={meta['global_nu']:+.3f})"
+        t1 = f"global E={meta['global_E']:.3f}"
+        entries.append((t0, t1, geo, C6, meta.get('region')))
+    C.nuE_row_grid(os.path.join(HERE, f'large16k_{kind}.png'),
+                   f'LARGE 16k-triangle design — {kind} (regular vs disordered)', entries,
+                   figsize=(3.2, 6.4))
     print('saved map', kind)
 
 

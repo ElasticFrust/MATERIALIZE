@@ -17,7 +17,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import demo as D                              # reuse Kmat / nwb_of / cut_stretch
 import response_fields as RF                  # reuse coarse-graining
 import test_cluster_Ceff as CE
 
@@ -78,7 +77,7 @@ def main():
           flush=True)
     C.save_network(os.path.join(HERE, 'ribbon.npz'), geo, geo['bond_k'], C6, mid=float(mid))
 
-    u, nwt = D.cut_stretch(geo, axis=0)        # clamp x only on left/right; all else (incl. clamp y) free
+    u, nwt = C.open_stretch(geo, axis=0, regularize=True)  # clamp x only on left/right; all else free
     exx_raw, eyy_raw = strain(geo, u)
     exx, eyy = RF.coarse(geo, exx_raw, nwt, ncell=24), RF.coarse(geo, eyy_raw, nwt, ncell=24)
     el = np.nanmean(eyy[nwt & (cen[:, 0] < mid)]); er = np.nanmean(eyy[nwt & (cen[:, 0] >= mid)])

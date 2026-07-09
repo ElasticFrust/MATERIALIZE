@@ -39,10 +39,6 @@ CASE, REG, N, NITER = 'auxetic_patch', 2e-3, 10, 120
 csv_rows = []
 
 
-def box(geo):
-    return float(geo['BL1'][0]), float(geo['BL2'][1])
-
-
 def run(prob, geo, objectives):
     """Design k for the objectives, install on geo, return (k, per-triangle sim tensor)."""
     r = C.optimize(prob, objectives, mode='k', n_iter=NITER, reg=REG, verbose=False)
@@ -52,10 +48,6 @@ def run(prob, geo, objectives):
 
 def reg_nuE(geo, C6, idx):
     return C.c6_nuE(C.region_phys_C6(geo, C6, idx))
-
-
-def triangle_verts(cx, cy, s):
-    return [(cx, cy + s), (cx - 0.87 * s, cy - 0.5 * s), (cx + 0.87 * s, cy - 0.5 * s)]
 
 
 def _safe(s):
@@ -72,7 +64,7 @@ def group1():
         ('square @ upper-left · aniso_str', 'aniso_str',
          lambda Lx, Ly: {'kind': 'rect', 'center': (0.34 * Lx, 0.66 * Ly), 'w': 0.34 * Lx, 'h': 0.34 * Ly}),
         ('triangle @ right · disorder_lo', 'disorder_lo',
-         lambda Lx, Ly: {'kind': 'polygon', 'verts': triangle_verts(0.66 * Lx, 0.50 * Ly, 0.20 * Lx)}),
+         lambda Lx, Ly: {'kind': 'polygon', 'verts': C.triangle_verts(0.66 * Lx, 0.50 * Ly, 0.20 * Lx)}),
         ('ring @ center · aniso_shr', 'aniso_shr',
          lambda Lx, Ly: {'kind': 'ring', 'center': (0.50 * Lx, 0.50 * Ly),
                          'r_in': 0.12 * Lx, 'r_out': 0.24 * Lx}),
@@ -81,7 +73,7 @@ def group1():
     entries = []; check = None
     for name, topo, shapefn in demos:
         prob, geo = C.make_case(topo, N)
-        Lx, Ly = box(geo)
+        Lx, Ly = C.box(geo)
         patch, spec = C.region_shape(prob, shapefn(Lx, Ly))
         outside = np.setdiff1d(np.arange(prob.n_tri), patch)
         k, C6 = run(prob, geo, [C.Objective('nu', 0.30, region=outside, weight=1.0),
@@ -118,7 +110,7 @@ def group2():
     entries = []
     for name, (okind, otgt), (pkind, ptgt) in contrasts:
         prob, geo = C.make_case('disorder_hi', N)       # reaches both +/-0.3 freely (auxetic matrix ok)
-        Lx, Ly = box(geo)
+        Lx, Ly = C.box(geo)
         patch, spec = C.region_shape(prob, disc(Lx, Ly))
         outside = np.setdiff1d(np.arange(prob.n_tri), patch)
         k, C6 = run(prob, geo, [C.Objective(okind, otgt, region=outside, weight=1.0),
@@ -141,22 +133,12 @@ def group2():
 # ------------------------------------------------------------------ GROUP 3: decoupled E / ν
 def group3():
     global csv_rows
-    NU0, NU1, E0, E1 = 0.20, -0.30, 1.0, 1.8
+    NU0, NU1, E0, E1 = 0.20, -0.30, 1.0, 1.8         # must match C.decoupled_ENu_design's recipe
     nd = C.networks_dir(CASE)
     entries = []
     for topo in ['regular', 'aniso_str']:
         prob, geo = C.make_case(topo, N)
-        Lx, Ly = box(geo)
-        RE_spec = {'kind': 'circle', 'center': (0.30 * Lx, 0.50 * Ly), 'radius': 0.16 * Lx, 'color': 'cyan'}
-        RN_spec = {'kind': 'circle', 'center': (0.70 * Lx, 0.50 * Ly), 'radius': 0.16 * Lx, 'color': 'lime'}
-        R_E, _ = C.region_shape(prob, RE_spec); R_N, _ = C.region_shape(prob, RN_spec)
-        out_E = np.setdiff1d(np.arange(prob.n_tri), R_E)
-        out_N = np.setdiff1d(np.arange(prob.n_tri), R_N)
-        objs = [C.Objective('nu', NU0, region=out_N, weight=3.0),
-                C.Objective('nu', NU1, region=R_N, weight=4.0),
-                C.Objective('E', E0, region=out_E, weight=1.0),
-                C.Objective('E', E1, region=R_E, weight=1.5)]
-        k, C6 = run(prob, geo, objs)
+        k, C6, RE_spec, RN_spec, R_E, R_N, out_E, out_N = C.decoupled_ENu_design(prob, geo, NITER, REG)
         nuE_RN = reg_nuE(geo, C6, R_N); nuE_RE = reg_nuE(geo, C6, R_E)
         nu_bg = reg_nuE(geo, C6, np.setdiff1d(out_N, R_E))[0]
         E_bg = reg_nuE(geo, C6, np.setdiff1d(out_E, R_N))[1]

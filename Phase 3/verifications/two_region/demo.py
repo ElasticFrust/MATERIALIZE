@@ -11,8 +11,6 @@ All targets are isotropic scalars ('nu'/'E'). Networks saved.
 """
 import os, sys
 import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -25,33 +23,10 @@ import _common as C
 N, NITER, REG = 14, 150, 1e-4
 
 
-def nwb_of(geo):
-    pts = np.asarray(geo['pts'])
-    return np.abs(np.asarray(geo['bond_R']) - (pts[geo['bond_v']] - pts[geo['bond_u']])).max(1) < 1e-6
-
-
-def Kmat(npts, a, b, R, kap):
-    L = np.sqrt((R ** 2).sum(1)); nx, ny = R[:, 0] / L, R[:, 1] / L
-    bxx, bxy, byy = kap * nx * nx, kap * nx * ny, kap * ny * ny
-    a0, a1, b0, b1 = 2 * a, 2 * a + 1, 2 * b, 2 * b + 1
-    r = np.concatenate([a0, a0, a1, a1, b0, b0, b1, b1, a0, a0, a1, a1, b0, b0, b1, b1])
-    c = np.concatenate([a0, a1, a0, a1, b0, b1, b0, b1, b0, b1, b0, b1, a0, a1, a0, a1])
-    v = np.concatenate([bxx, bxy, bxy, byy, bxx, bxy, bxy, byy,
-                        -bxx, -bxy, -bxy, -byy, -bxx, -bxy, -bxy, -byy])
-    return sp.coo_matrix((v, (r, c)), shape=(2 * npts, 2 * npts)).tocsr()
-
-
 def cut_stretch(geo, axis):
-    nwb = nwb_of(geo); pts = np.asarray(geo['pts']); n = len(pts); m = 1.3
-    nwt = nwb[geo['tri_bond']].all(1)
-    K = Kmat(n, geo['bond_u'][nwb], geo['bond_v'][nwb], np.asarray(geo['bond_R'])[nwb],
-             np.asarray(geo['bond_k'])[nwb])
-    K = K + 1e-3 * sp.identity(2 * n)                                   # pin floppy/dangling nodes
-    lo = np.where(pts[:, axis] < pts[:, axis].min() + m)[0]; hi = np.where(pts[:, axis] > pts[:, axis].max() - m)[0]
-    fix = np.concatenate([2 * lo + axis, 2 * hi + axis]); uf = np.concatenate([np.zeros(len(lo)), np.ones(len(hi))])
-    u = np.zeros(2 * n); u[fix] = uf; free = np.setdiff1d(np.arange(2 * n), fix)
-    u[free] = spla.spsolve(K[free][:, free].tocsc(), -(K[free][:, fix] @ uf))
-    return u.reshape(n, 2), nwt
+    """Open cut-and-stretch, regularized (this module pins floppy/dangling nodes so the deformed-
+    shape plots stay well-behaved even for under-constrained disordered lattices)."""
+    return C.open_stretch(geo, axis=axis, regularize=True)
 
 
 def draw_deformed(ax, geo, u, nwt, facecolors, scale, title):

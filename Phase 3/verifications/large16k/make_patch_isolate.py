@@ -9,7 +9,6 @@ Compared to the intrinsic homogenised-tensor ν (Method A). Auxetic ⇒ ν<0.
 """
 import os, sys
 import numpy as np
-import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import matplotlib
 matplotlib.use('Agg')
@@ -25,26 +24,6 @@ import test_cluster_rigidity as TR
 
 TOPOS = ['regular', 'disorder_hi']
 NCELL = 22
-
-
-def edges_meta(geo):
-    tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
-    geo['edge_vecs'] = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    geo['simplices'] = np.asarray(geo['simplices'])
-    pts = np.asarray(geo['pts'])
-    nwb = np.abs(np.asarray(geo['bond_R']) - (pts[geo['bond_v']] - pts[geo['bond_u']])).max(1) < 1e-6
-    return nwb
-
-
-def assemble_K(npts, a, b, R, kap):
-    L = np.sqrt((R ** 2).sum(1)); nx, ny = R[:, 0] / L, R[:, 1] / L
-    bxx, bxy, byy = kap * nx * nx, kap * nx * ny, kap * ny * ny
-    a0, a1, b0, b1 = 2 * a, 2 * a + 1, 2 * b, 2 * b + 1
-    r = np.concatenate([a0, a0, a1, a1, b0, b0, b1, b1, a0, a0, a1, a1, b0, b0, b1, b1])
-    c = np.concatenate([a0, a1, a0, a1, b0, b1, b0, b1, b0, b1, b0, b1, a0, a1, a0, a1])
-    v = np.concatenate([bxx, bxy, bxy, byy, bxx, bxy, bxy, byy,
-                        -bxx, -bxy, -bxy, -byy, -bxx, -bxy, -bxy, -byy])
-    return sp.coo_matrix((v, (r, c)), shape=(2 * npts, 2 * npts)).tocsr()
 
 
 def stretch_x(pts, K, margin):
@@ -84,7 +63,7 @@ def isolate_nu(geo, spec, nwb):
     remap = -np.ones(len(geo['pts']), int); remap[nodes] = np.arange(len(nodes))
     pts = np.asarray(geo['pts'])[nodes]
     a = remap[bu[bsel]]; b = remap[bv[bsel]]; R = np.asarray(geo['bond_R'])[bsel]; kap = np.asarray(geo['bond_k'])[bsel]
-    K = assemble_K(len(nodes), a, b, R, kap)
+    K = C.spring_K(len(nodes), a, b, R, kap)
     u, W, left, right = stretch_x(pts, K, margin=1.3)
     exx = 1.0 / W; eyy = poisson_from_edges(pts, u)
     return -eyy / exx, len(tri)
@@ -94,11 +73,9 @@ def main():
     rows = []
     for topo in TOPOS:
         geo, k, C6, meta = C.load_network(os.path.join(HERE, 'networks', f'patch__{topo}.npz'))
-        nwb = edges_meta(geo); RE, RN = meta['region']
+        nwb, _ = C.nonwrap_mask(geo); RE, RN = meta['region']
         # full-sheet edge stretch -> coarse regional nu
-        a = geo['bond_u'][nwb]; b = geo['bond_v'][nwb]
-        K = assemble_K(len(geo['pts']), a, b, np.asarray(geo['bond_R'])[nwb], np.asarray(geo['bond_k'])[nwb])
-        u, W, _, _ = stretch_x(np.asarray(geo['pts']), K, margin=1.3)
+        u, _ = C.open_stretch(geo, axis=0)
         eps = CE.tri_metric_change(geo['edge_vecs'], geo['simplices'], np.eye(2), u)
         epsC = coarse(geo, eps); cen = np.asarray(geo['centroids'])
         for name, spec in [('R_E stiff', RE), ('R_nu aux', RN)]:

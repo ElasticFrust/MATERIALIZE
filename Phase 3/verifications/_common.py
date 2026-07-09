@@ -20,6 +20,8 @@ Verification strength (be explicit in plots):
 import os, sys
 import numpy as np
 import torch
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
 from scipy.spatial import Delaunay, cKDTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -327,6 +329,17 @@ def region_shape(prob, spec):
     return idx, spec
 
 
+def box(geo):
+    """(Lx, Ly) -- the box edge lengths (BL1 along x, BL2 along y) as plain floats."""
+    return float(geo['BL1'][0]), float(geo['BL2'][1])
+
+
+def triangle_verts(cx, cy, s):
+    """3 vertices of an upward-pointing equilateral-ish triangle of 'radius' s centered at (cx,cy),
+    for a 'polygon' region_shape/mark_region spec."""
+    return [(cx, cy + s), (cx - 0.87 * s, cy - 0.5 * s), (cx + 0.87 * s, cy - 0.5 * s)]
+
+
 def write_csv(path, header, rows):
     import csv
     with open(path, 'w', newline='', encoding='utf-8') as f:
@@ -407,6 +420,144 @@ def c6_nuE(C6):
 
 def sim_region_nuE(geo, region=None):
     return c6_nuE(sim_region_C6(geo, region))
+
+
+def decoupled_ENu_design(prob, geo, n_iter, reg):
+    """Design k so E differs only in a region R_E (cyan, target 1.8 vs background 1.0) and nu differs
+    only in a DIFFERENT region R_nu (lime, target -0.30 vs background 0.20) -- independent spatial
+    control of the two moduli. This is the 'auxetic_patch decoupled' recipe shared by
+    design_and_verify.py's group3() and design_all.py's run_decoupled(). Installs k on geo (via
+    apply_k_to_geo) and returns (k, C6_per, RE_spec, RN_spec, R_E_idx, R_N_idx, out_E_idx, out_N_idx)."""
+    Lx, Ly = box(geo)
+    RE = {'kind': 'circle', 'center': (0.30 * Lx, 0.50 * Ly), 'radius': 0.16 * Lx, 'color': 'cyan'}
+    RN = {'kind': 'circle', 'center': (0.70 * Lx, 0.50 * Ly), 'radius': 0.16 * Lx, 'color': 'lime'}
+    R_E, _ = region_shape(prob, RE); R_N, _ = region_shape(prob, RN)
+    out_E = np.setdiff1d(np.arange(prob.n_tri), R_E); out_N = np.setdiff1d(np.arange(prob.n_tri), R_N)
+    objs = [Objective('nu', 0.20, region=out_N, weight=3.0), Objective('nu', -0.30, region=R_N, weight=4.0),
+            Objective('E', 1.0, region=out_E, weight=1.0), Objective('E', 1.8, region=R_E, weight=1.5)]
+    r = optimize(prob, objs, mode='k', n_iter=n_iter, reg=reg, verbose=False)
+    apply_k_to_geo(geo, r['k']); C6 = sim_per_triangle_C6(geo)
+    return r['k'], C6, RE, RN, R_E, R_N, out_E, out_N
+
+
+# ---- OPEN-boundary ground truth (periodic-vs-open counterpart to sim_per_triangle_C6 above) ---
+def nonwrap_mask(geo):
+    """Bonds/triangles that don't cross the periodic boundary (their real endpoint separation
+    matches the stored bond vector) -- what's left after literally cutting geo open."""
+    pts = np.asarray(geo['pts'])
+    nwb = np.abs(np.asarray(geo['bond_R']) - (pts[geo['bond_v']] - pts[geo['bond_u']])).max(1) < 1e-6
+    nwt = nwb[geo['tri_bond']].all(1)
+    return nwb, nwt
+
+
+def spring_K(npts, a, b, R, kap):
+    """Assemble the (2*npts, 2*npts) axial-spring stiffness matrix for bonds (a,b) with rest
+    vectors R and stiffness kap (each bond only resists stretch along its own direction)."""
+    L = np.sqrt((R ** 2).sum(1)); nx, ny = R[:, 0] / L, R[:, 1] / L
+    bxx, bxy, byy = kap * nx * nx, kap * nx * ny, kap * ny * ny
+    a0, a1, b0, b1 = 2 * a, 2 * a + 1, 2 * b, 2 * b + 1
+    r = np.concatenate([a0, a0, a1, a1, b0, b0, b1, b1, a0, a0, a1, a1, b0, b0, b1, b1])
+    c = np.concatenate([a0, a1, a0, a1, b0, b1, b0, b1, b0, b1, b0, b1, a0, a1, a0, a1])
+    v = np.concatenate([bxx, bxy, bxy, byy, bxx, bxy, bxy, byy,
+                        -bxx, -bxy, -bxy, -byy, -bxx, -bxy, -bxy, -byy])
+    return sp.coo_matrix((v, (r, c)), shape=(2 * npts, 2 * npts)).tocsr()
+
+
+def open_stretch(geo, axis=0, regularize=False, margin=1.3):
+    """Cut geo's periodic network into an OPEN sheet and solve a displacement-controlled uniaxial
+    stretch: clamp the min-`axis` boundary to 0 and the max-`axis` boundary to 1 (linear -> any
+    other stretch is this scaled), free everywhere else, relax as a linear spring truss. Returns
+    (u, nwt) -- nodal displacement field (n,2) and the non-wrapping triangle mask (the open domain
+    to actually plot/measure over; wrapping triangles were cut and are not physically meaningful).
+    `regularize=True` adds a small (1e-3) identity term to pin floppy/dangling nodes -- off by
+    default to match the majority of call sites; turn on for networks with under-constrained bonds."""
+    nwb, nwt = nonwrap_mask(geo)
+    pts = np.asarray(geo['pts']); n = len(pts)
+    K = spring_K(n, geo['bond_u'][nwb], geo['bond_v'][nwb],
+                  np.asarray(geo['bond_R'])[nwb], np.asarray(geo['bond_k'])[nwb])
+    if regularize:
+        K = K + 1e-3 * sp.identity(2 * n)
+    lo = np.where(pts[:, axis] < pts[:, axis].min() + margin)[0]
+    hi = np.where(pts[:, axis] > pts[:, axis].max() - margin)[0]
+    fix = np.concatenate([2 * lo + axis, 2 * hi + axis])
+    uf = np.concatenate([np.zeros(len(lo)), np.ones(len(hi))])
+    u = np.zeros(2 * n); u[fix] = uf
+    free = np.setdiff1d(np.arange(2 * n), fix)
+    u[free] = spla.spsolve(K[free][:, free].tocsc(), -(K[free][:, fix] @ uf))
+    return u.reshape(n, 2), nwt
+
+
+def open_stretch_nu(geo, axis=0, regularize=False, margin=1.3):
+    """nu from an open cut-and-stretch: axial strain from the clamped-boundary gauge (lo/hi mean
+    coordinates), lateral strain from the mean displacement of the free top/bottom (or left/right,
+    whichever is perpendicular to `axis`) edges. Returns (nu, u, nwt)."""
+    u, nwt = open_stretch(geo, axis=axis, regularize=regularize, margin=margin)
+    pts = np.asarray(geo['pts'])
+    lo = np.where(pts[:, axis] < pts[:, axis].min() + margin)[0]
+    hi = np.where(pts[:, axis] > pts[:, axis].max() - margin)[0]
+    e_ax = 1.0 / (pts[hi, axis].mean() - pts[lo, axis].mean())
+    lat = 1 - axis
+    t = pts[:, lat] > pts[:, lat].max() - margin; b = pts[:, lat] < pts[:, lat].min() + margin
+    e_lat = (u[t, lat].mean() - u[b, lat].mean()) / (pts[t, lat].mean() - pts[b, lat].mean())
+    return -e_lat / e_ax, u, nwt
+
+
+def glue_square_hole(geoM, kM, geoI, kI, Lx, Ly, cx, cy):
+    """Punch a hole matching geoI's own box out of geoM's centre (at (cx,cy)) and glue() the two
+    independently-built patches into one geometry, then open-cut-and-stretch it along x (regularized,
+    matching two_region/demo.py's cut_stretch). The 'matrix with a square inclusion' recipe shared by
+    two_region/inclusion_square.py and inclusion_rigidity_only.py. Returns (geo, glued_mask, spec,
+    C6_per, disc_idx, out_idx, nu_disc, E_disc, nu_matrix, E_matrix, u, nwt); spec is the 'rect'
+    region_shape/mark_region spec for the inclusion's footprint."""
+    Lxi, Lyi = float(geoI['BL1'][0]), float(geoI['BL2'][1])
+    ptsI = np.asarray(geoI['pts']) + [cx - Lxi / 2, cy - Lyi / 2]
+    ptsM = np.asarray(geoM['pts'])
+    hole = (np.abs(ptsM[:, 0] - cx) < Lxi / 2) & (np.abs(ptsM[:, 1] - cy) < Lyi / 2)
+    ptsM_keep = ptsM[~hole]
+    pieces = [dict(pts_keep=ptsM_keep, pts_full=ptsM, bond_u=geoM['bond_u'], bond_v=geoM['bond_v'],
+                   bond_R=geoM['bond_R'], k=kM),
+              dict(pts_keep=ptsI, pts_full=ptsI, bond_u=geoI['bond_u'], bond_v=geoI['bond_v'],
+                   bond_R=geoI['bond_R'], k=kI)]
+    geo, glued = glue(pieces, Lx, Ly)
+    spec = {'kind': 'rect', 'center': (float(cx), float(cy)), 'w': Lxi, 'h': Lyi, 'color': 'lime'}
+    print(f"    GLUED: {glued.sum()} default/interface bonds ({glued.mean()*100:.1f}%)", flush=True)
+    C6 = sim_per_triangle_C6(geo); cen = np.asarray(geo['centroids'])
+    disc, _ = region_shape(DesignProblem.from_geo(geo), spec)
+    out = np.setdiff1d(np.arange(len(cen)), disc)
+    nd, Ed = c6_nuE(region_phys_C6(geo, C6, disc)); no, Eo = c6_nuE(region_phys_C6(geo, C6, out))
+    print(f"    after gluing: disc nu={nd:+.3f} E={Ed:.2f}   matrix nu={no:+.3f} E={Eo:.2f}", flush=True)
+    u, nwt = open_stretch(geo, axis=0, regularize=True)
+    return geo, glued, spec, C6, disc, out, nd, Ed, no, Eo, u, nwt
+
+
+def bare_stress(bare, eps):
+    """Voigt stress sigma = A:eps from the per-triangle bare-tensor 5-vector
+    A=[xxxx,xxxy,xxyy,xyyy,yyyy] (full-symmetric 4-tensor, e.g. from TR.bare_tensor)."""
+    A0, A1, A2, A3, A4 = (bare[:, i] for i in range(5))
+    exx, eyy, exy = eps[:, 0, 0], eps[:, 1, 1], eps[:, 0, 1]
+    s = np.zeros_like(eps)
+    s[:, 0, 0] = A0 * exx + 2 * A1 * exy + A2 * eyy
+    s[:, 0, 1] = s[:, 1, 0] = A1 * exx + 2 * A2 * exy + A3 * eyy
+    s[:, 1, 1] = A2 * exx + 2 * A3 * exy + A4 * eyy
+    return s
+
+
+def tensor_mag(t):
+    """||t|| for a per-triangle symmetric 2x2 tensor field, treating off-diagonal twice (Voigt norm)."""
+    return np.sqrt(t[:, 0, 0] ** 2 + 2 * t[:, 0, 1] ** 2 + t[:, 1, 1] ** 2)
+
+
+def unit_mode_response(geo):
+    """Per-triangle strain eps_k and stress sig_k (each a length-3 list of (nt,2,2) arrays) for the
+    3 unit macro-strain modes (xx, yy, xy), from a real PBC relaxation (physical_homog.relax) -- the
+    ACTUAL simulated response, not the homogenised tensor. Any macro forcing (c0,c1,c2) is
+    c0*eps[0]+c1*eps[1]+c2*eps[2] (and the same combination of sig, by linearity of bare_stress)."""
+    ev, sx = geo['edge_vecs'], geo['simplices']
+    u = PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), TR.assemble_K_faff)
+    eps = [CE.tri_metric_change(ev, sx, PH.Fk[k], u[k]) / PH.DELTA for k in range(3)]
+    bare = TR.bare_tensor(geo)
+    sig = [bare_stress(bare, e) for e in eps]
+    return eps, sig
 
 
 def solver_region_C6(prob, k_bond, region=None):
@@ -493,12 +644,17 @@ def save_network(path, geo, bond_k, C6_per=None, **meta):
 
 def load_network(path):
     """Reload (geo, bond_k, C6_per, meta) written by save_network. geo has bond_k/tri_k installed,
-    so it plugs straight into draw_network / fill_local_map / region_phys_C6 / nu_E_theta."""
+    plus edge_vecs/actual_len2 rebuilt from tri_verts (needed by tri_metric_change/bare_tensor and
+    the open_stretch* family) -- so it plugs straight into draw_network / fill_local_map /
+    region_phys_C6 / nu_E_theta / open_stretch_nu with no extra per-caller reconstruction."""
     import json
     d = np.load(path, allow_pickle=True)
     geo = {k: d[k] for k in ['pts', 'tri_verts', 'centroids', 'simplices', 'bond_u', 'bond_v',
                              'bond_R', 'tri_bond', 'areas', 'BL1', 'BL2']}
     geo['bond_k'] = d['bond_k']; geo['tri_k'] = d['bond_k'][geo['tri_bond']]
+    tv = geo['tri_verts']; p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
+    geo['edge_vecs'] = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
+    geo['actual_len2'] = (geo['edge_vecs'] ** 2).sum(2)
     C6 = d['C6_per']; C6 = None if C6.size == 0 else C6
     return geo, d['bond_k'], C6, json.loads(str(d['meta']))
 
@@ -544,3 +700,27 @@ def design_detail_per_topology(directory, prefix, entries, title_fmt):
         safe = name.split('(')[0].strip().replace(' ', '_').replace('→', 'to')
         p = os.path.join(directory, f'{prefix}_{safe}.png')
         plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
+
+
+def nuE_row_grid(path, title, entries, figsize=(3.0, 6.2)):
+    """2-row grid of local ν (top, RdBu_r, sym vlim=0.6, region marked) / E (bottom, viridis, clipped
+    to the 97th percentile, region marked) maps, one column per entry -- the "one case/kind across
+    several topologies" layout. entries: list of (col_title, col_title_row2_or_None, geo, C6_per,
+    region). figsize is (per-column width, height)."""
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(2, len(entries), figsize=(figsize[0] * len(entries), figsize[1]), squeeze=False)
+    for col, (t0, t1, geo, C6, region) in enumerate(entries):
+        nu = local_field_smooth(geo, C6, 'nu')
+        fill_local_map(axes[0, col], geo, nu, cmap='RdBu_r', sym=True, vlim=0.6)
+        draw_box(axes[0, col], geo); mark_region(axes[0, col], region)
+        axes[0, col].set_title(t0, fontsize=9)
+        E = local_field_smooth(geo, C6, 'E')
+        pE = fill_local_map(axes[1, col], geo, E, cmap='viridis')
+        pE.set_clim(0, np.nanpercentile(E, 97))
+        draw_box(axes[1, col], geo); mark_region(axes[1, col], region)
+        if t1:
+            axes[1, col].set_title(t1, fontsize=9)
+    axes[0, 0].set_ylabel('local ν', fontsize=10); axes[1, 0].set_ylabel('local E', fontsize=10)
+    fig.suptitle(title, fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(path, dpi=140, bbox_inches='tight'); plt.close()
