@@ -1,39 +1,60 @@
 """
 Case strain_stress — design objectives that target the ACTUAL per-triangle strain/stress response
 (not just derived ν/E), via inverse_design.py's 'strain'/'stress' Objective kinds (see
-[[phase3-strain-stress-objective-todo]]). Four demos, all under the SAME applied uniaxial macro load
-(pull along x — the "xx" unit mode, in this framework's native metric-change convention):
+[[phase3-strain-stress-objective-todo]]). Four demos:
 
-  STRESS CONCENTRATOR : a sub-region designed to carry AMPLIFIED σ_xx relative to the background
-                        matrix (a stress-concentrating stiff patch).
-  STRAIN SHIELD        : a (different) sub-region designed to have NEAR-ZERO local strain under the
-                        same load (a rigid, strain-shielded inclusion). Strain objectives only make
-                        sense on a sub-region — whole-cell strain is degenerate (see the Objective
-                        docstring in inverse_design.py: region-mean strain over the WHOLE cell equals
-                        the applied load exactly).
-  STRAIN BULGE         : a large rectangle offset toward the TOP of a REGULAR-topology patch (not
-                        centred, not disordered) designed for a strongly POSITIVE local eyy (lateral
-                        expansion) under the same load. A 'stress'-shielded (low sigma_xx) version of
-                        this was tried first and DID produce a strong top-only asymmetry under the
-                        real stretch test, but the deformation pattern came out mixed (mostly
-                        contracting, not a clean bulge) — stress only constrains magnitude, not the
-                        SIGN of the local strain, so it doesn't reliably pick out "expands". A direct
-                        'strain' target pins the deformation itself. On top of the usual periodic
-                        design verification, an actual OPEN-boundary cut-and-stretch test (matching
-                        two_region/ribbon.py's convention) checks the real physical pull — distinct
-                        from the other two demos, which only check the periodic homogenised response.
-  CONCENTRIC RINGS      : a stress "bullseye" -- three contiguous concentric regions (center disc,
-                        mid ring, outer ring) SIMULTANEOUSLY designed for alternating-sign σ_xx
-                        (+A / -A / +A), one 'stress' objective per ring in a single joint optimize()
-                        call. Run at two magnitudes (A=0.35 "regular", A=1.0 "large") on both a
-                        regular and a disorder_hi topology (4 designs total).
+  STRESS CONCENTRATOR : (uniaxial x-pull) a sub-region designed to carry AMPLIFIED σ_xx relative to
+                        the background matrix (a stress-concentrating stiff patch).
+  STRAIN SHIELD        : (uniaxial x-pull) a (different) sub-region designed to have NEAR-ZERO local
+                        strain under the same load (a rigid, strain-shielded inclusion). Strain
+                        objectives only make sense on a sub-region — whole-cell strain is degenerate
+                        (see the Objective docstring in inverse_design.py: region-mean strain over
+                        the WHOLE cell equals the applied load exactly).
+  STRAIN BULGE         : (uniaxial x-pull) a large rectangle offset toward the TOP of a
+                        REGULAR-topology patch (not centred, not disordered) designed for a strongly
+                        POSITIVE local eyy (lateral expansion) under the same load, while the
+                        BACKGROUND outside the patch is jointly designed to a flat ν=0 (not just left
+                        at the regular lattice's natural ν=1/3) -- so the bulge reads as a clean local
+                        feature against an explicitly flat surround. A 'stress'-shielded (low
+                        sigma_xx) version of the patch objective was tried first and DID produce a
+                        strong top-only asymmetry under the real stretch test, but the deformation
+                        pattern came out mixed (mostly contracting, not a clean bulge) — stress only
+                        constrains magnitude, not the SIGN of the local strain, so it doesn't
+                        reliably pick out "expands". A direct 'strain' target pins the deformation
+                        itself. On top of the usual periodic design verification, an actual
+                        OPEN-boundary cut-and-stretch test (matching two_region/ribbon.py's
+                        convention) checks the real physical pull, at both the small reference strain
+                        and a large (~30%) extrapolated strain (open_stretch is one LINEAR solve, so
+                        this is an exact rescaling, not a new solve).
+  CONCENTRIC RINGS      : (ISOTROPIC stretch, not uniaxial) a stress "bullseye" -- three contiguous
+                        concentric regions (center disc, mid ring, outer ring) SIMULTANEOUSLY
+                        designed for alternating-sign mean stress p=(σ_xx+σ_yy)/2 (+A / -A / +A), one
+                        'stress' objective per ring in a single joint optimize() call, under an
+                        ISOTROPIC (equi-biaxial) applied load matching the rings' own rotational
+                        symmetry. A uniaxial pull-along-x load was tried FIRST and the middle ring
+                        (sandwiched between two same-sign neighbours) failed with magnitude/disorder;
+                        switching to the isotropic load does NOT fix this -- it makes the middle ring
+                        WORSE, including outright numerical blow-up of the independent check at high
+                        magnitude+disorder. The reason is physical, not a symmetry mismatch: under a
+                        globally imposed AREAL (dilational) strain, a passive stable sub-region's mean
+                        stress must have the SAME sign as the imposed dilation (negative mean stress
+                        under positive global dilation needs a locally negative bulk modulus, which is
+                        thermodynamically forbidden for a stable linear-elastic material). The
+                        optimizer can only fake it with a near-mechanism (many bonds -> 0), which is
+                        why the independent nonlinear relaxation becomes ill-conditioned instead of
+                        merely inaccurate. (By contrast the uniaxial sigma_xx case is NOT similarly
+                        forbidden -- Poisson/anisotropic redistribution genuinely can flip its sign in
+                        a sub-region -- which is why it "merely" underachieved rather than diverging.)
+                        Run at two magnitudes (A=0.35 "regular", A=1.0 "large") on both a regular and
+                        a disorder_hi topology (4 designs total); kept as a documented negative result.
 
 The first two designs are checked TWO independent ways: (a) validate()'s own differentiable-path
 readback (self-consistency of the optimiser's own forward pass), and (b) INDEPENDENTLY via
 _common.unit_mode_response's non-autograd NumPy PBC simulation (physical_homog.relax) — a genuinely
-separate code path from the solver's own forward(), not just re-running it. The rings demo is checked
-the same two ways, per ring. Outputs: strain_stress.csv, rings.csv,
-strain_stress_{stress,strain,bulge_design,bulge_stretch,rings_*}.png, saved networks.
+separate code path from the solver's own forward(), not just re-running it. The bulge's background ν
+and the rings demo are checked the same two ways. Outputs: strain_stress.csv, rings.csv,
+strain_stress_{stress,strain,bulge_design,bulge_nu,bulge_stretch,bulge_stretch_large,rings_*}.png,
+saved networks.
 """
 import os, sys
 import numpy as np
@@ -56,6 +77,13 @@ TOPO = 'disorder_hi'
 _Dgt0 = C.PH.Fk[0].T @ C.PH.Fk[0] - np.eye(2)
 LOAD = C.CE.vec3(_Dgt0) / C.PH.DELTA
 
+# Isotropic (equi-biaxial) load for the CONCENTRIC RINGS demo -- xx unit mode + yy unit mode. By
+# linearity of the underlying elastic solve (see unit_mode_response's docstring), this is exactly
+# the response to a pure dilation, with no preferred x/y direction -- matching the ring pattern's
+# own rotational symmetry, unlike a uniaxial pull.
+_Dgt1 = C.PH.Fk[1].T @ C.PH.Fk[1] - np.eye(2)
+LOAD_ISO = LOAD + C.CE.vec3(_Dgt1) / C.PH.DELTA
+
 
 def independent_check(geo):
     """Non-autograd ground truth for the SAME xx unit mode, via _common.unit_mode_response -- a
@@ -63,6 +91,13 @@ def independent_check(geo):
     (eps_vec3, sig_vec3), each (nt,3)."""
     eps_ref, sig_ref = C.unit_mode_response(geo)
     return C.CE.vec3(eps_ref[0]), C.CE.vec3(sig_ref[0])
+
+
+def independent_check_iso(geo):
+    """Non-autograd ground truth for the isotropic (xx+yy) load -- same linearity argument as
+    LOAD_ISO, applied to the simulated per-mode fields instead of the applied Delta_g."""
+    eps_ref, sig_ref = C.unit_mode_response(geo)
+    return C.CE.vec3(eps_ref[0] + eps_ref[1]), C.CE.vec3(sig_ref[0] + sig_ref[1])
 
 
 def mag3(v):
@@ -90,6 +125,21 @@ def plot_demo(geo, patch, spec, field_full, target, achieved_diff, achieved_ind,
     a1.legend(fontsize=8); a1.grid(alpha=.3, axis='y')
     fig.suptitle(title, fontsize=13)
     plt.tight_layout(rect=[0, 0, 1, 0.94])
+    plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()
+    print(f'saved {os.path.basename(path)}')
+
+
+def plot_bulge_nu(geo, C6_per, spec, achieved_nu_ind, path):
+    """Local nu map -- confirms the background (outside the patch) reads as flat nu~0, not just
+    'whatever the regular lattice naturally gives' (nu=1/3)."""
+    nu_local = C.local_field_smooth(geo, C6_per, quantity='nu')
+    fig, ax = plt.subplots(figsize=(7.5, 7))
+    pc = C.fill_local_map(ax, geo, nu_local, cmap='RdBu_r', sym=True, vlim=0.5)
+    C.draw_box(ax, geo); C.mark_region(ax, spec)
+    plt.colorbar(pc, ax=ax, fraction=0.046)
+    ax.set_title(f'{CASE} — local ν (background designed to ν=0; patch keeps its strong strain '
+                 f'response)\nbackground achieved ν (INDEPENDENT sim) = {achieved_nu_ind:+.3f}', fontsize=11)
+    plt.tight_layout()
     plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()
     print(f'saved {os.path.basename(path)}')
 
@@ -209,34 +259,42 @@ def run_strain_bulge(csv_rows):
     top-only asymmetry under the real stretch test, but the local deformation pattern came out mixed
     (mostly contracting, not a clean bulge) -- stress only constrains magnitude, not the SIGN of the
     local strain. A direct 'strain' target (strongly positive eyy = local lateral expansion) pins the
-    deformation itself, so it reliably produces a clean visible bulge instead of an emergent one."""
+    deformation itself, so it reliably produces a clean visible bulge instead of an emergent one.
+    The BACKGROUND (everything outside the patch) is jointly designed to nu=0 everywhere, so the
+    bulge reads as a genuinely local feature against an explicitly flat surround -- not just
+    'whatever the regular lattice naturally gives' (nu=1/3 undesigned)."""
     prob, geo = C.make_case('regular', N)
     Lx, Ly = C.box(geo)
     spec = {'kind': 'rect', 'center': (0.5 * Lx, 0.91 * Ly), 'w': 0.5 * Lx, 'h': 0.16 * Ly, 'color': 'lime'}
     patch, _ = C.region_shape(prob, spec)
     out = np.setdiff1d(np.arange(prob.n_tri), patch)
     target = torch.tensor([0.3, 0.0, 2.5])                          # strong local LATERAL EXPANSION
-    objs = [C.Objective('strain', target=target, region=patch, load=LOAD, weight=1.0)]
+    objs = [C.Objective('strain', target=target, region=patch, load=LOAD, weight=1.0),
+            C.Objective('nu', target=0.0, region=out, weight=1.0)]   # background: flat nu=0
     r = C.optimize(prob, objs, mode='k', n_iter=NITER, reg=REG, verbose=False)
     C.apply_k_to_geo(geo, r['k'])
-    rep = C.validate(prob, r['k'], None, objs)[0]
+    rep_strain, rep_nu = C.validate(prob, r['k'], None, objs)
 
+    C6 = C.sim_per_triangle_C6(geo)                                  # ONE relaxation, reused below
+    nu_ind_out, _ = C.c6_nuE(C.region_phys_C6(geo, C6, out))         # INDEPENDENT background check
     eps_ind_full, _ = independent_check(geo)
-    eps_ind_patch = eps_ind_full[patch].mean(0); eps_ind_out = eps_ind_full[out].mean(0)
+    eps_ind_patch = eps_ind_full[patch].mean(0)
     err_ind = float(np.abs(eps_ind_patch - target.numpy()).max())
-    print(f"  [bulge] target={target.numpy()}  achieved(diff-path)={rep['achieved']} err={rep['err']:.4f}  "
-          f"achieved(INDEPENDENT sim)={eps_ind_patch} err={err_ind:.4f}  "
-          f"(background outside patch: {eps_ind_out})", flush=True)
-    csv_rows.append(('strain_bulge', *target.numpy(), *rep['achieved'], *eps_ind_patch,
-                     f'{rep["err"]:.4f}', f'{err_ind:.4f}'))
+    print(f"  [bulge] target={target.numpy()}  achieved(diff-path)={rep_strain['achieved']} "
+          f"err={rep_strain['err']:.4f}  achieved(INDEPENDENT sim)={eps_ind_patch} err={err_ind:.4f}  "
+          f"| background nu=0: achieved(diff-path)={rep_nu['achieved']:+.3f} "
+          f"achieved(INDEPENDENT sim)={nu_ind_out:+.3f}", flush=True)
+    csv_rows.append(('strain_bulge', *target.numpy(), *rep_strain['achieved'], *eps_ind_patch,
+                     f'{rep_strain["err"]:.4f}', f'{err_ind:.4f}'))
 
-    C6 = C.sim_per_triangle_C6(geo)
     C.save_network(os.path.join(C.savedir(CASE), 'strain_bulge.npz'), geo, r['k'], C6,
-                   region=spec, target=target.numpy().tolist())
-    plot_demo(geo, patch, spec, eps_ind_full, target.numpy(), rep['achieved'], eps_ind_patch, 'epsilon',
+                   region=spec, target=target.numpy().tolist(),
+                   background_nu_target=0.0, background_nu_achieved_independent=float(nu_ind_out))
+    plot_demo(geo, patch, spec, eps_ind_full, target.numpy(), rep_strain['achieved'], eps_ind_patch, 'epsilon',
              os.path.join(C.savedir(CASE), 'strain_stress_bulge_design.png'),
              f'{CASE} — STRAIN BULGE (regular topology, off-centre rectangle): designed strong lateral '
-             f'expansion in the patch (pull along x)')
+             f'expansion in the patch (pull along x), flat background ν=0')
+    plot_bulge_nu(geo, C6, spec, nu_ind_out, os.path.join(C.savedir(CASE), 'strain_stress_bulge_nu.png'))
 
     # the actual physical pull test: open-boundary cut-and-stretch, not the periodic homogenised check
     u, nwt = C.open_stretch(geo, axis=0, regularize=True)
@@ -255,40 +313,47 @@ def run_strain_bulge(csv_rows):
 
 
 def plot_rings(geo, specs, sig_ind_full, achieved_rows, magnitude, topo, path):
-    """Local sigma_xx map (diverging colormap, so the alternating sign is directly visible -- unlike
-    a magnitude map, which would hide it) + per-ring target/achieved bar chart."""
+    """Local MEAN stress p=(sigma_xx+sigma_yy)/2 map (diverging colormap, so the alternating sign is
+    directly visible) + per-ring target/achieved bar chart. Mean stress, not sigma_xx alone, is the
+    right field to show here: under the isotropic load and isotropic (sigma_xx=sigma_yy) targets,
+    p is exactly the designed quantity."""
     fig, (a0, a1) = plt.subplots(1, 2, figsize=(14, 5.8))
-    sxx = sig_ind_full[:, 0]
-    pc = C.fill_local_map(a0, geo, sxx, cmap='RdBu_r', sym=True, vlim=magnitude * 1.3)
+    p = 0.5 * (sig_ind_full[:, 0] + sig_ind_full[:, 2])
+    pc = C.fill_local_map(a0, geo, p, cmap='RdBu_r', sym=True, vlim=magnitude * 1.3)
     C.draw_box(a0, geo)
     for s in specs:
         C.mark_region(a0, s)
     plt.colorbar(pc, ax=a0, fraction=0.046)
-    a0.set_title(f'local σ_xx ({topo}, alternating-sign rings)', fontsize=11)
+    a0.set_title(f'local mean stress p=(σ_xx+σ_yy)/2 ({topo}, alternating-sign rings)', fontsize=11)
 
     names = [row[0] for row in achieved_rows]; x = np.arange(len(names)); w = 0.25
     tgt = [row[1][0] for row in achieved_rows]
-    ach_d = [row[2][0] for row in achieved_rows]
-    ach_i = [row[3][0] for row in achieved_rows]
+    ach_d = [0.5 * (row[2][0] + row[2][2]) for row in achieved_rows]
+    ach_i = [0.5 * (row[3][0] + row[3][2]) for row in achieved_rows]
     a1.bar(x - w, tgt, w, label='target', color='#2c3e50')
     a1.bar(x, ach_d, w, label='achieved (diff-path)', color='#1f77b4')
     a1.bar(x + w, ach_i, w, label='achieved (INDEPENDENT sim)', color='#d62728')
     a1.axhline(0, color='k', lw=.5)
     a1.set_xticks(x); a1.set_xticklabels(names)
-    a1.set_ylabel('σ_xx'); a1.legend(fontsize=8); a1.grid(alpha=.3, axis='y')
+    a1.set_ylabel('p = (σ_xx+σ_yy)/2'); a1.legend(fontsize=8); a1.grid(alpha=.3, axis='y')
     a1.set_title('per-ring target vs achieved', fontsize=11)
     fig.suptitle(f'{CASE} — CONCENTRIC RINGS bullseye ({topo}, magnitude={magnitude:+.2f}): '
-                 f'alternating-sign σ_xx (pull along x)', fontsize=12)
+                 f'alternating-sign mean stress (isotropic stretch)', fontsize=12)
     plt.tight_layout(rect=[0, 0, 1, 0.94])
     plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()
     print(f'saved {os.path.basename(path)}')
 
 
 def run_concentric_rings(csv_rows, topo, magnitude, tag):
-    """Alternating-sign concentric-ring sigma_xx pattern (a stress 'bullseye'): center disc +A,
-    middle ring -A, outer ring +A, same pull-along-x load as the other demos. Called for both
-    'regular' (A~0.35) and 'large' (A~1.0) magnitude levels, on both regular and disorder_hi
-    topologies -- 4 designs total, each with 3 SIMULTANEOUS stress objectives (one per ring)."""
+    """Alternating-sign concentric-ring MEAN-STRESS pattern (a stress 'bullseye'): center disc +A,
+    middle ring -A, outer ring +A, under an ISOTROPIC (equi-biaxial) stretch load -- not the
+    uniaxial pull the other demos use. A uniaxial load has no rotational symmetry, which fights a
+    rotationally-symmetric ring target (the middle ring, sandwiched between two same-sign
+    neighbours, could not reach its target under uniaxial load -- see the earlier failed attempt).
+    Under the isotropic load, targeting isotropic stress (sigma_xx=sigma_yy=A) matches the pattern's
+    own symmetry. Called for both 'regular' (A~0.35) and 'large' (A~1.0) magnitude levels, on both
+    regular and disorder_hi topologies -- 4 designs total, each with 3 SIMULTANEOUS stress
+    objectives (one per ring)."""
     prob, geo = C.make_case(topo, N)
     Lx, Ly = C.box(geo)
     cx, cy = 0.5 * Lx, 0.5 * Ly
@@ -300,22 +365,22 @@ def run_concentric_rings(csv_rows, topo, magnitude, tag):
         magnitude),
     ]
     regions = []; objs = []
-    for name, spec, sxx in ring_defs:
+    for name, spec, s in ring_defs:
         idx, _ = C.region_shape(prob, spec)
         regions.append((name, spec, idx))
-        objs.append(C.Objective('stress', target=torch.tensor([sxx, 0.0, 0.0]), region=idx, load=LOAD,
+        objs.append(C.Objective('stress', target=torch.tensor([s, 0.0, s]), region=idx, load=LOAD_ISO,
                                 weight=1.0))
     r = C.optimize(prob, objs, mode='k', n_iter=NITER, reg=REG, verbose=False)
     C.apply_k_to_geo(geo, r['k'])
     rep = C.validate(prob, r['k'], None, objs)
 
-    _, sig_ind_full = independent_check(geo)
+    _, sig_ind_full = independent_check_iso(geo)
     print(f"  [rings {tag}] topo={topo} magnitude={magnitude:+.2f}", flush=True)
     achieved_rows = []
     for (name, spec, idx), ob_rep in zip(regions, rep):
         sig_ind_region = sig_ind_full[idx].mean(0)
         err_ind = float(np.abs(sig_ind_region - ob_rep['target']).max())
-        print(f"    {name:8s} target sigma_xx={ob_rep['target'][0]:+.3f}  achieved(diff-path)={ob_rep['achieved']}  "
+        print(f"    {name:8s} target p={ob_rep['target'][0]:+.3f} (isotropic)  achieved(diff-path)={ob_rep['achieved']}  "
               f"achieved(INDEPENDENT sim)={sig_ind_region}  err_ind={err_ind:.4f}", flush=True)
         csv_rows.append((tag, name, *ob_rep['target'], *ob_rep['achieved'], *sig_ind_region,
                          f'{ob_rep["err"]:.4f}', f'{err_ind:.4f}'))

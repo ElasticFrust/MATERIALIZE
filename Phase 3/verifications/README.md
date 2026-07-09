@@ -140,17 +140,31 @@ Whole-cell mean strain is degenerate (it always equals the applied load exactly,
 fluctuation field has zero cell-mean) — `'strain'` objectives only make sense on a sub-region;
 `'stress'` is designable everywhere.
 
-`strain_stress/design_and_verify.py` has four demos, all under the same uniaxial pull-along-x load:
-- **stress concentrator** — a patch designed to carry amplified σ_xx.
-- **strain shield** — a (different) patch designed for near-zero local strain (rigid inclusion).
-- **strain bulge** — a rectangle hugging the TOP edge of a regular-topology cell, designed for a
-  strong positive local eyy; verified against a real open-boundary cut-and-stretch test (not just the
-  periodic homogenised response). A `'stress'`-only version of this was tried first and gave a mixed,
-  non-bulging deformation under the real stretch — stress constrains magnitude, not the *sign* of
-  local strain, so a direct `'strain'` target was needed to reliably pick out "expands".
-- **concentric rings** — a stress "bullseye": three contiguous rings jointly designed for
-  alternating-sign σ_xx (+A/−A/+A) in one optimize() call, at two magnitudes (0.35, 1.0) on both a
-  regular and a disorder_hi topology (4 designs).
+`strain_stress/design_and_verify.py` has four demos:
+- **stress concentrator** (uniaxial pull) — a patch designed to carry amplified σ_xx.
+- **strain shield** (uniaxial pull) — a (different) patch designed for near-zero local strain (rigid
+  inclusion).
+- **strain bulge** (uniaxial pull) — a rectangle hugging the TOP edge of a regular-topology cell,
+  designed for a strong positive local eyy, while the BACKGROUND outside the patch is *jointly*
+  designed to ν=0 (region-mean, not just left at the regular lattice's natural ν=1/3) so the bulge
+  reads as a clean local feature against a flat surround; verified against a real open-boundary
+  cut-and-stretch test at both the small reference strain and an extrapolated ~30% large strain
+  (`open_stretch` is one linear solve, so the large-strain view is an exact rescaling, not a re-solve).
+  A `'stress'`-only version of the patch objective was tried first and gave a mixed, non-bulging
+  deformation under the real stretch — stress constrains magnitude, not the *sign* of local strain,
+  so a direct `'strain'` target was needed to reliably pick out "expands".
+- **concentric rings** (isotropic stretch) — a stress "bullseye": three contiguous rings jointly
+  designed for alternating-sign mean stress p=(σ_xx+σ_yy)/2 (+A/−A/+A) in one optimize() call, at two
+  magnitudes (0.35, 1.0) on both a regular and a disorder_hi topology (4 designs). **Negative
+  result, kept documented rather than hidden:** tried first under a uniaxial pull (middle ring, sand-
+  wiched between two same-sign neighbours, underachieved and went wrong-sign as magnitude/disorder
+  grew); switching to an isotropic load — matching the rings' own rotational symmetry — does NOT fix
+  it and is actually worse (outright numerical blow-up of the independent check at high
+  magnitude+disorder). The reason is physical: under an imposed global dilation, a passive *stable*
+  sub-region's mean stress must share the sign of the imposed dilation (the opposite requires a
+  locally negative bulk modulus, forbidden for a stable linear-elastic material) — the optimizer can
+  only fake it with a near-mechanism (a large fraction of bonds driven to ~0), which is exactly why
+  the independent nonlinear relaxation becomes ill-conditioned rather than merely inaccurate.
 
 All designs are checked two independent ways per the convention above (differentiable-path readback
 + `_common.unit_mode_response`'s separate NumPy simulation). Outputs: `strain_stress.csv`,
