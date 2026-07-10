@@ -266,6 +266,42 @@ def local_field_smooth(geo, C6_per, quantity='nu', k=18):
     return nu if quantity == 'nu' else E
 
 
+def local_nuE_angleavg(geo, C6_per, k=18):
+    """Per-triangle ANGLE-AVERAGED Poisson ratio ⟨ν(θ)⟩ and Young's modulus ⟨E(θ)⟩ -- a
+    load-independent MATERIAL map. Neighbourhood-smooth the local physical C6 (as local_field_smooth),
+    invert to compliance, then average ν(θ)/E(θ) over ANG. Vectorised (nu_E_theta's 4-tensor
+    contraction, batched over triangles). Returns (nu_avg, E_avg), each (nt,)."""
+    cen = np.asarray(geo['centroids']); kk = min(k, len(cen))
+    _, idx = cKDTree(cen).query(cen, k=kk)
+    if kk == 1:
+        idx = idx[:, None]
+    C6m = np.asarray(C6_per)[idx].mean(1)
+    Cphys = C6m * (8.0 * kk / np.asarray(geo['areas'])[idx].sum(1))[:, None]
+    nt = len(cen)
+    Cv = np.zeros((nt, 3, 3))                                    # Voigt stiffness (0=xx,1=yy,2=xy)
+    Cv[:, 0, 0] = Cphys[:, 0]; Cv[:, 0, 1] = Cv[:, 1, 0] = Cphys[:, 2]; Cv[:, 0, 2] = Cv[:, 2, 0] = Cphys[:, 1]
+    Cv[:, 1, 1] = Cphys[:, 5]; Cv[:, 1, 2] = Cv[:, 2, 1] = Cphys[:, 4]; Cv[:, 2, 2] = Cphys[:, 3]
+    with np.errstate(all='ignore'):
+        S = np.linalg.pinv(Cv)                                   # compliance (pinv: robust to a near-
+    Sc = np.zeros((nt, 2, 2, 2, 2))                              # singular floppy triangle)
+    Sc[:, 0, 0, 0, 0] = S[:, 0, 0]; Sc[:, 1, 1, 1, 1] = S[:, 1, 1]
+    Sc[:, 0, 0, 1, 1] = Sc[:, 1, 1, 0, 0] = S[:, 0, 1]
+    for a, b, c, d in [(0, 0, 0, 1), (0, 0, 1, 0), (0, 1, 0, 0), (1, 0, 0, 0)]:
+        Sc[:, a, b, c, d] = S[:, 0, 2] / 2
+    for a, b, c, d in [(1, 1, 0, 1), (1, 1, 1, 0), (0, 1, 1, 1), (1, 0, 1, 1)]:
+        Sc[:, a, b, c, d] = S[:, 1, 2] / 2
+    for a, b, c, d in [(0, 1, 0, 1), (0, 1, 1, 0), (1, 0, 0, 1), (1, 0, 1, 0)]:
+        Sc[:, a, b, c, d] = S[:, 2, 2] / 4
+    nu_sum = np.zeros(nt); E_sum = np.zeros(nt)
+    with np.errstate(all='ignore'):
+        for th in ANG:
+            m = np.array([np.cos(th), np.sin(th)]); n = np.array([-np.sin(th), np.cos(th)])
+            Emm = np.einsum('nijkl,i,j,k,l->n', Sc, m, m, m, m)
+            Emn = np.einsum('nijkl,i,j,k,l->n', Sc, m, m, n, n)
+            nu_sum += -Emn / Emm; E_sum += 1.0 / Emm
+    return nu_sum / len(ANG), E_sum / len(ANG)
+
+
 def fill_local_map(ax, geo, val, cmap='RdBu_r', sym=False, vlim=None):
     """FILLED per-triangle map (colored triangle interiors, image-correct) in a square frame."""
     from matplotlib.collections import PolyCollection

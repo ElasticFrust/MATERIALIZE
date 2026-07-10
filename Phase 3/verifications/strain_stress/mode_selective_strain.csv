@@ -1,0 +1,7 @@
+topo,shape,mean_dilation_under_+x,mean_dilation_under_+y,excess_over_bg_+x,excess_over_bg_+y
+regular,disc,1.1940,1.0255,+0.2077,+0.0421
+regular,triangle,0.9392,1.2492,-0.0471,+0.2658
+regular,background,0.9863,0.9834,+0.0000,+0.0000
+disorder_hi,disc,1.2084,1.0067,+0.2260,+0.0322
+disorder_hi,triangle,1.0025,1.2072,+0.0202,+0.2327
+disorder_hi,background,0.9824,0.9745,+0.0000,+0.0000

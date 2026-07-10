@@ -1,0 +1,5 @@
+topo,reads_as,active_mean_stressmag,reference_mean_stressmag,contrast_ratio
+regular,disc_under_exx,0.5731,0.4784,1.198
+regular,triangle_under_eyy,0.6570,0.2166,3.034
+disorder_hi,disc_under_exx,0.6955,2.7345,0.254
+disorder_hi,triangle_under_eyy,1.8022,0.2202,8.186

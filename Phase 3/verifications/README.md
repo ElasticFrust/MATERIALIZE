@@ -205,12 +205,43 @@ path (renders crisply); an isolated blob (a disc) cannot carry the flux alone, s
 at its height necessarily lights up too (Eshelby gives a uniform disc *interior*, but the flux still
 has to enter and leave). Takeaway: **load-aligned shapes render cleanly; shapes across the load always
 grow a feeder streak.** Outputs `mode_selective_colocated.csv`,
-`strain_stress_mode_selective_colocated_<kind>_<topo>.png`.
+`strain_stress_mode_selective_colocated_<kind>_<topo>.png`. `replot_clean.py` re-renders any saved
+mode-selective network *without* the guiding region outlines (`*_clean.png`) — the shapes on their own.
+
+**`strain_stress/mode_selective_strain.py`** — the STRAIN analogue: pull +x and a DISC undergoes total
+DILATION (fills red) while a separate TRIANGLE blends into the background; pull +y and they SWAP. On
+regular + disorder_hi. This renders as **clean FILLED shapes** (unlike the stress load-paths) because
+strain concentrates *locally* in a soft/auxetic inclusion (Eshelby: ~uniform strain *inside* it) rather
+than percolating, and a `homogeneity` penalty keeps each shape uniform. Physical constraints pinned
+here: (a) the **cell-mean dilation is fixed by the pull** (≈1 in the metric convention), so a region can
+only stand out by dilating ABOVE the mean — you cannot suppress the surround toward zero (an early
+attempt was infeasible and pushed the compensating strain into floppy streaks); the active shape targets
+dilation > mean, and the **inactive shape targets the background mean so it vanishes** (a rigid=0 target
+made it a visible white hole). (b) A strong dilation needs a very SOFT shape (E→0, near-mechanism), so
+the target is kept moderate (DIL=1.25) — the shapes sit at E≈0.25–0.30 vs the ≈0.94 background (a real
+stable soft inclusion, not a mechanism), the tradeoff being gentler contrast. Each design also saves a
+**material COMPOSITION** map (`_nuE.png`) — the local angle-averaged ν and E (`_common.local_nuE_angleavg`)
+— showing the shapes are soft inclusions. Outputs `mode_selective_strain.csv`,
+`strain_stress_mode_selective_strain_<topo>{,_clean,_nuE}.png`.
+
+**`strain_stress/mode_selective_colocated_stress.py`** — the STRESS analogue of the co-located idea,
+with two PULLS (εxx and εyy) and a FREE non-zero background: a filled DISC (responds to εxx) nested in a
+filled TRIANGLE (responds to εyy). Under εyy the whole triangle fills; under εxx only the disc reads. The
+honest caveat (documented in the script): because stress follows equilibrium load PATHS, the disc under
+εxx is a horizontal load-path streak and its surrounding frame can't go fully quiet (disc/frame contrast
+caps ~1.3×) — the εyy triangle fills fine, the εxx disc does not cleanly isolate. Contrast with the
+strain version above, which renders both as clean filled shapes.
+
+**Re-plot utilities (no re-optimising, load saved `.npz`):** `replot_clean.py` re-renders any saved
+mode-selective network *without* the guiding region outlines (`*_clean.png`). `replot_bullseye.py` adds
+two views to the `large16k_rings` bullseye: its **strain response** (local dilation under the isotropic
+stretch — complementary to the stress bands) and its **composition** (local angle-averaged E and ν maps,
+which reveal the alternating stiff/soft rigidity rings) — `strain_stress_large16k_rings_<topo>_{strain,composition}.png`.
 
 All designs are checked two independent ways per the convention above (differentiable-path readback
 + `_common.unit_mode_response`'s separate NumPy simulation). Outputs: `strain_stress.csv`, `bulge.csv`,
 `rings.csv`, `large16k_rings.csv`, `mode_selective.csv`, `mode_selective_colocated.csv`,
-`strain_stress_*.png`, saved networks.
+`mode_selective_strain.csv`, `mode_selective_colocated_stress.csv`, `strain_stress_*.png`, saved networks.
 
 ## Homogeneity regularizer
 `Objective(..., homogeneity=w)` adds `w * var(local_field[region])` to the loss for any `nu`/`E`/
