@@ -198,6 +198,25 @@ def make_lattice(phi, psi, half=10.0, seed=0, eta=0.0, half_y=None):
     return _periodic_delaunay(pts, Lx, Ly)
 
 
+def make_crystal(phi, psi, half=4.0):
+    """Single-site triangular crystal SHEARED/stretched by (phi, psi) with its BOND TOPOLOGY PRESERVED.
+    Unlike make_lattice (whose periodic-Delaunay retriangulation reduces the basis to nearest
+    neighbours — so a large shift v2=(phi/2,·) collapses back to v2-v1 and the shear is lost), this
+    starts from the regular triangular lattice and applies the affine map M=[[1,(phi-1)/√3],[0,psi]]
+    that carries v1=(1,0),v2=(1/2,√3/2) to v1=(1,0),v2=(phi/2, psi·√3/2). The bonds v1, v2, v2-v1 are
+    kept at their true (possibly long, sheared) lengths, so a genuinely oblique crystal results
+    (nonzero shear-normal coupling C_xxxy). Still a Bravais lattice → W=0 (affine strain IS the
+    equilibrium), so the homogenised response is exact on a tiny patch."""
+    geo = make_lattice(1.0, 1.0, half=half)             # regular triangular; correct NN bond topology
+    M = np.array([[1.0, (phi - 1.0) / np.sqrt(3)], [0.0, psi]])
+    for key in ('pts', 'edge_vecs', 'bond_R', 'centroids', 'tri_verts'):
+        geo[key] = geo[key] @ M.T                        # affine-map every geometric field (topology kept)
+    geo['actual_len2'] = (geo['edge_vecs'] ** 2).sum(-1)
+    geo['areas'] = geo['areas'] * abs(np.linalg.det(M))
+    geo['BL1'] = M @ geo['BL1']; geo['BL2'] = M @ geo['BL2']
+    return geo
+
+
 def make_topology(topo_id, half, seed=0):
     """Named topology at square half-size `half`, built with the preferred make_lattice
     (square real-space PBC region; anisotropy visible in the real geometry)."""

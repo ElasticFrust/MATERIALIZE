@@ -1,10 +1,12 @@
 """
 anisotropy / crystal_response — closed-form-checkable elastic response of a CRYSTALLINE lattice.
 
-Build the single-site Bravais lattice make_lattice(phi, psi) with base vectors v1=(1,0),
-v2=(phi/2, psi*sqrt3/2); set k=1 on every bond. Because it is a one-site Bravais lattice, an affine
-macro strain is already the equilibrium — the non-affine fluctuation W vanishes — so the homogenised
-elastic tensor is EXACT on an arbitrarily small periodic patch (no large-N average needed). We:
+Build the single-site triangular crystal make_crystal(phi, psi): the regular lattice sheared/stretched
+by M=[[1,(phi-1)/√3],[0,psi]] so v1=(1,0), v2=(phi/2, psi*sqrt3/2) — with the BOND TOPOLOGY PRESERVED
+(the long sheared bond v2 stays a real spring; make_lattice would have Delaunay-reduced it away). Set
+k=1 on every bond. Because it is a one-site Bravais lattice, an affine macro strain is already the
+equilibrium — the non-affine fluctuation W vanishes — so the homogenised elastic tensor is EXACT on
+an arbitrarily small periodic patch (no large-N average needed). We:
 
   1. verify W=0 empirically: under each unit macro-strain mode the per-triangle strain is spatially
      UNIFORM (std across triangles ~ 1e-15), i.e. every triangle strains affinely with the macro load;
@@ -61,7 +63,7 @@ def engineering_from_Cv(Cv):
 
 
 def main():
-    geo = C.make_lattice(PHI, PSI, half=HALF)
+    geo = C.make_crystal(PHI, PSI, half=HALF)
     geo['bond_k'] = np.ones(len(geo['bond_R'])); geo['tri_k'] = geo['bond_k'][geo['tri_bond']]
     print(f"  [crystal_response] phi={PHI} psi={PSI}  sites={len(geo['pts'])} "
           f"bonds={len(geo['bond_R'])} tri={len(geo['simplices'])}", flush=True)
