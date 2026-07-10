@@ -99,19 +99,26 @@ def main():
                 ['theta_deg', 'nu_theta', 'E_theta'],
                 [(f'{np.degrees(t):.1f}', f'{nu_th[i]:.4f}', f'{E_th[i]:.4f}') for i, t in enumerate(th)])
 
-    # --- plot: network + nu(theta) polar + E(theta) polar ---
+    # --- plot: network + nu(theta) line + E(theta) line (Cartesian) ---
+    deg = np.degrees(th)
     fig = plt.figure(figsize=(15, 5))
     a0 = fig.add_subplot(1, 3, 1)
     C.draw_network(a0, geo, geo['bond_k'], cmap='viridis', lw_scale=3.0)
     a0.set_title(f'crystal  φ={PHI:g}, ψ={PSI:g}  (k=1)', fontsize=11)
 
-    th2 = np.concatenate([th, th + np.pi])
-    a1 = fig.add_subplot(1, 3, 2, projection='polar')
-    a1.plot(th2, np.concatenate([nu_th, nu_th]), color='#d62728', lw=2)
-    a1.set_title(f'ν(θ)  [{nu_th.min():+.2f}, {nu_th.max():+.2f}]', fontsize=11, pad=14)
-    a2 = fig.add_subplot(1, 3, 3, projection='polar')
-    a2.plot(th2, np.concatenate([E_th, E_th]), color='#2ca02c', lw=2)
-    a2.set_title(f'E(θ)  [{E_th.min():.2f}, {E_th.max():.2f}]', fontsize=11, pad=14)
+    a1 = fig.add_subplot(1, 3, 2)
+    a1.plot(deg, nu_th, color='#d62728', lw=2)
+    a1.axhline(0, color='0.6', lw=.6)
+    a1.set_xlabel('direction θ (deg)'); a1.set_ylabel('Poisson ratio ν(θ)')
+    a1.set_xlim(0, 180); a1.set_xticks(range(0, 181, 45)); a1.grid(alpha=.3)
+    a1.set_title(f'ν(θ)  [{nu_th.min():+.2f}, {nu_th.max():+.2f}]', fontsize=11)
+
+    a2 = fig.add_subplot(1, 3, 3)
+    a2.plot(deg, E_th, color='#2ca02c', lw=2)
+    a2.set_xlabel('direction θ (deg)'); a2.set_ylabel('Young modulus E(θ)')
+    a2.set_xlim(0, 180); a2.set_xticks(range(0, 181, 45)); a2.set_ylim(bottom=0); a2.grid(alpha=.3)
+    a2.set_title(f'E(θ)  [{E_th.min():.2f}, {E_th.max():.2f}]  E$_{{max}}$/E$_{{min}}$='
+                 f'{E_th.max()/E_th.min():.2f}', fontsize=11)
 
     fig.suptitle(f'{CASE} / crystal_response — Bravais crystal φ={PHI:g} ψ={PSI:g}, k=1, W=0 (affine, exact)',
                  fontsize=13)
