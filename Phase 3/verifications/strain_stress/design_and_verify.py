@@ -10,22 +10,21 @@ Case strain_stress — design objectives that target the ACTUAL per-triangle str
                         objectives only make sense on a sub-region — whole-cell strain is degenerate
                         (see the Objective docstring in inverse_design.py: region-mean strain over
                         the WHOLE cell equals the applied load exactly).
-  STRAIN BULGE         : (uniaxial x-pull) a large rectangle offset toward the TOP of a
-                        REGULAR-topology patch (not centred, not disordered) designed for a strongly
-                        POSITIVE local eyy (lateral expansion) under the same load, while the
-                        BACKGROUND outside the patch is jointly designed to a flat ν=0 (not just left
-                        at the regular lattice's natural ν=1/3) -- so the bulge reads as a clean local
-                        feature against an explicitly flat surround. A 'stress'-shielded (low
-                        sigma_xx) version of the patch objective was tried first and DID produce a
-                        strong top-only asymmetry under the real stretch test, but the deformation
-                        pattern came out mixed (mostly contracting, not a clean bulge) — stress only
-                        constrains magnitude, not the SIGN of the local strain, so it doesn't
-                        reliably pick out "expands". A direct 'strain' target pins the deformation
-                        itself. On top of the usual periodic design verification, an actual
-                        OPEN-boundary cut-and-stretch test (matching two_region/ribbon.py's
-                        convention) checks the real physical pull, at both the small reference strain
-                        and a large (~30%) extrapolated strain (open_stretch is one LINEAR solve, so
-                        this is an exact rescaling, not a new solve).
+  BULGE (AUX. INCL.)   : an off-centre TOP rectangle of a REGULAR-topology cell designed as a strongly
+                        AUXETIC material (ν<0) embedded in a flat ν=0 background. An auxetic inclusion
+                        expands LATERALLY under an x-pull (that IS ν<0), so it bulges where the ν=0
+                        surround stays neutral -- and because ν is a clean STABLE material property, the
+                        bulge appears in the actual OPEN cut-and-stretch test WITHOUT a near-mechanism.
+                        (History, kept as a lesson: a low-σ_xx 'stress' target under-constrained the
+                        deformation SIGN; a raw 'strain' eyy target pinned the sign, but a STRONG one --
+                        eyy~2.5, a 250% response -- physically REQUIRES a near-mechanism and rendered as
+                        ugly floppy strain streaks. Designing the patch as an auxetic MATERIAL is the
+                        clean, mechanism-free route; on a REGULAR lattice ν cleanly reaches only ~-0.4
+                        (the auxetic_sweep limit), a moderate but honest bulge -- a disordered patch
+                        could go stronger.) On top of the periodic design verification, the actual
+                        OPEN-boundary cut-and-stretch (matching two_region/ribbon.py's convention)
+                        checks the real physical pull at both the reference strain and a large (~30%)
+                        extrapolated strain (open_stretch is one LINEAR solve -> exact rescaling).
   CONCENTRIC RINGS      : (ISOTROPIC stretch, not uniaxial) a stress "bullseye" -- three contiguous
                         concentric regions (center disc, mid ring, outer ring) SIMULTANEOUSLY
                         designed for alternating-sign mean stress p=(σ_xx+σ_yy)/2 (+A / -A / +A), one
@@ -129,16 +128,17 @@ def plot_demo(geo, patch, spec, field_full, target, achieved_diff, achieved_ind,
     print(f'saved {os.path.basename(path)}')
 
 
-def plot_bulge_nu(geo, C6_per, spec, achieved_nu_ind, path):
-    """Local nu map -- confirms the background (outside the patch) reads as flat nu~0, not just
-    'whatever the regular lattice naturally gives' (nu=1/3)."""
+def plot_bulge_nu(geo, C6_per, spec, nu_patch_ind, nu_bg_ind, path):
+    """Local nu map -- the design intent made directly visible: an AUXETIC patch (deep blue, nu<0)
+    embedded in a flat nu=0 background (white). Both achieved values (INDEPENDENT sim) in the title."""
     nu_local = C.local_field_smooth(geo, C6_per, quantity='nu')
     fig, ax = plt.subplots(figsize=(7.5, 7))
     pc = C.fill_local_map(ax, geo, nu_local, cmap='RdBu_r', sym=True, vlim=0.5)
     C.draw_box(ax, geo); C.mark_region(ax, spec)
     plt.colorbar(pc, ax=ax, fraction=0.046)
-    ax.set_title(f'{CASE} — local ν (background designed to ν=0; patch keeps its strong strain '
-                 f'response)\nbackground achieved ν (INDEPENDENT sim) = {achieved_nu_ind:+.3f}', fontsize=11)
+    ax.set_title(f'{CASE} — local ν: AUXETIC patch (ν<0) in a flat ν=0 background\n'
+                 f'achieved ν (INDEPENDENT sim): patch = {nu_patch_ind:+.3f}, background = {nu_bg_ind:+.3f}',
+                 fontsize=11)
     plt.tight_layout()
     plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()
     print(f'saved {os.path.basename(path)}')
@@ -247,54 +247,52 @@ def plot_bulge(geo, u, nwt, spec, path, scale=2.0, applied_label=None):
     ax.set_xticks([]); ax.set_yticks([])
     label = applied_label if applied_label is not None else f'deform ×{scale:.0f}, coarse-grained'
     ax.set_title(f'Actual open x-stretch ({label}) — colour = lateral '
-                 'strain εyy [red = expands]\nOff-centre strain-bulge rectangle (lime, top) — '
-                 'clean asymmetric lateral bulge?', fontsize=11)
+                 'strain εyy [red = expands]\nAuxetic inclusion (lime, top) — the auxetic patch '
+                 'bulges laterally where the ν=0 surround stays neutral', fontsize=11)
     plt.tight_layout()
     plt.savefig(path, dpi=150, bbox_inches='tight'); plt.close()
     print(f'saved {os.path.basename(path)}')
 
 
 def run_strain_bulge(csv_rows):
-    """A 'stress'-shielded (low sigma_xx) target was tried first here and DID produce a strong
-    top-only asymmetry under the real stretch test, but the local deformation pattern came out mixed
-    (mostly contracting, not a clean bulge) -- stress only constrains magnitude, not the SIGN of the
-    local strain. A direct 'strain' target (strongly positive eyy = local lateral expansion) pins the
-    deformation itself, so it reliably produces a clean visible bulge instead of an emergent one.
-    The BACKGROUND (everything outside the patch) is jointly designed to nu=0 everywhere, so the
-    bulge reads as a genuinely local feature against an explicitly flat surround -- not just
-    'whatever the regular lattice naturally gives' (nu=1/3 undesigned)."""
+    """AUXETIC-INCLUSION bulge: an off-centre top patch designed as a strongly AUXETIC material
+    (nu<0) embedded in a nu=0 background. Under a real x-pull an auxetic inclusion expands LATERALLY
+    (that IS what nu<0 means), so it bulges out where a nu=0 surround stays neutral -- and unlike a
+    raw strain target, nu is a clean STABLE material property, so the bulge shows up in the actual
+    OPEN cut-and-stretch test WITHOUT a near-mechanism. (History: a low-sigma_xx 'stress' target
+    under-constrained the deformation SIGN; a raw 'strain' eyy target pinned the sign but a STRONG one
+    -- eyy~2.5, a 250% response -- physically requires a near-mechanism and rendered as ugly floppy
+    streaks. Designing the patch as an auxetic MATERIAL and the background as nu=0 is the clean way to
+    get a real, mechanism-free bulge; the strength is then set by how auxetic a REGULAR lattice can
+    cleanly go, ~-0.4, per the auxetic_sweep finding.) homogeneity on both objectives keeps each
+    region's response uniform rather than concentrated in a few floppy bonds."""
     prob, geo = C.make_case('regular', N)
     Lx, Ly = C.box(geo)
     spec = {'kind': 'rect', 'center': (0.5 * Lx, 0.91 * Ly), 'w': 0.5 * Lx, 'h': 0.16 * Ly, 'color': 'lime'}
     patch, _ = C.region_shape(prob, spec)
     out = np.setdiff1d(np.arange(prob.n_tri), patch)
-    target = torch.tensor([0.3, 0.0, 2.5])                          # strong local LATERAL EXPANSION
-    objs = [C.Objective('strain', target=target, region=patch, load=LOAD, weight=1.0),
-            C.Objective('nu', target=0.0, region=out, weight=1.0)]   # background: flat nu=0
+    NU_PATCH, NU_BG = -0.4, 0.0                                      # auxetic inclusion in a flat nu=0 matrix
+    objs = [C.Objective('nu', target=NU_PATCH, region=patch, weight=2.0, homogeneity=0.5),
+            C.Objective('nu', target=NU_BG, region=out, weight=1.0, homogeneity=1.0)]
     r = C.optimize(prob, objs, mode='k', n_iter=NITER, reg=REG, verbose=False)
     C.apply_k_to_geo(geo, r['k'])
-    rep_strain, rep_nu = C.validate(prob, r['k'], None, objs)
+    rep_patch, rep_bg = C.validate(prob, r['k'], None, objs)
 
     C6 = C.sim_per_triangle_C6(geo)                                  # ONE relaxation, reused below
-    nu_ind_out, _ = C.c6_nuE(C.region_phys_C6(geo, C6, out))         # INDEPENDENT background check
-    eps_ind_full, _ = independent_check(geo)
-    eps_ind_patch = eps_ind_full[patch].mean(0)
-    err_ind = float(np.abs(eps_ind_patch - target.numpy()).max())
-    print(f"  [bulge] target={target.numpy()}  achieved(diff-path)={rep_strain['achieved']} "
-          f"err={rep_strain['err']:.4f}  achieved(INDEPENDENT sim)={eps_ind_patch} err={err_ind:.4f}  "
-          f"| background nu=0: achieved(diff-path)={rep_nu['achieved']:+.3f} "
-          f"achieved(INDEPENDENT sim)={nu_ind_out:+.3f}", flush=True)
-    csv_rows.append(('strain_bulge', *target.numpy(), *rep_strain['achieved'], *eps_ind_patch,
-                     f'{rep_strain["err"]:.4f}', f'{err_ind:.4f}'))
+    nu_ind_patch, _ = C.c6_nuE(C.region_phys_C6(geo, C6, patch))     # INDEPENDENT sim checks (both regions)
+    nu_ind_out, _ = C.c6_nuE(C.region_phys_C6(geo, C6, out))
+    print(f"  [bulge] AUXETIC patch nu target={NU_PATCH:+.2f}: achieved(diff-path)={rep_patch['achieved']:+.3f} "
+          f"achieved(INDEPENDENT sim)={nu_ind_patch:+.3f}  |  background nu=0: "
+          f"achieved(diff-path)={rep_bg['achieved']:+.3f} achieved(INDEPENDENT sim)={nu_ind_out:+.3f}", flush=True)
+    csv_rows.append(('bulge_patch_nu', f'{NU_PATCH:+.2f}', f'{rep_patch["achieved"]:+.4f}', f'{nu_ind_patch:+.4f}'))
+    csv_rows.append(('bulge_background_nu', f'{NU_BG:+.2f}', f'{rep_bg["achieved"]:+.4f}', f'{nu_ind_out:+.4f}'))
 
     C.save_network(os.path.join(C.savedir(CASE), 'strain_bulge.npz'), geo, r['k'], C6,
-                   region=spec, target=target.numpy().tolist(),
-                   background_nu_target=0.0, background_nu_achieved_independent=float(nu_ind_out))
-    plot_demo(geo, patch, spec, eps_ind_full, target.numpy(), rep_strain['achieved'], eps_ind_patch, 'epsilon',
-             os.path.join(C.savedir(CASE), 'strain_stress_bulge_design.png'),
-             f'{CASE} — STRAIN BULGE (regular topology, off-centre rectangle): designed strong lateral '
-             f'expansion in the patch (pull along x), flat background ν=0')
-    plot_bulge_nu(geo, C6, spec, nu_ind_out, os.path.join(C.savedir(CASE), 'strain_stress_bulge_nu.png'))
+                   region=spec, nu_patch_target=NU_PATCH, nu_bg_target=NU_BG,
+                   nu_patch_achieved_independent=float(nu_ind_patch),
+                   nu_bg_achieved_independent=float(nu_ind_out))
+    plot_bulge_nu(geo, C6, spec, nu_ind_patch, nu_ind_out,
+                  os.path.join(C.savedir(CASE), 'strain_stress_bulge_nu.png'))
 
     # the actual physical pull test: open-boundary cut-and-stretch, not the periodic homogenised check
     u, nwt = C.open_stretch(geo, axis=0, regularize=True)
@@ -397,12 +395,16 @@ def main():
     csv_rows = []
     run_stress_concentrator(csv_rows)
     run_strain_shield(csv_rows)
-    run_strain_bulge(csv_rows)
     C.write_csv(os.path.join(C.savedir(CASE), f'{CASE}.csv'),
                 ['demo', 'target_xx', 'target_xy', 'target_yy',
                  'achieved_diffpath_xx', 'achieved_diffpath_xy', 'achieved_diffpath_yy',
                  'achieved_independent_xx', 'achieved_independent_xy', 'achieved_independent_yy',
                  'err_diffpath', 'err_independent'], csv_rows)
+
+    bulge_rows = []                                                  # nu-based (own schema, not vec3)
+    run_strain_bulge(bulge_rows)
+    C.write_csv(os.path.join(C.savedir(CASE), 'bulge.csv'),
+                ['region', 'target_nu', 'achieved_nu_diffpath', 'achieved_nu_independent'], bulge_rows)
 
     rings_rows = []
     for topo in ('regular', 'disorder_hi'):

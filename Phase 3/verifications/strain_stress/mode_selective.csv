@@ -1,0 +1,7 @@
+topo,shape,mean_stressmag_under_+x,mean_stressmag_under_-y,own_load_selectivity
+regular,disc,0.5262,0.0526,10.003
+regular,triangle,0.2471,0.6088,2.464
+regular,background,0.2209,0.1925,1.0
+disorder_hi,disc,0.5611,0.0918,6.115
+disorder_hi,triangle,0.1850,0.6361,3.438
+disorder_hi,background,0.2624,0.2162,1.0

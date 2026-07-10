@@ -1,0 +1,9 @@
+kind,topo,shape,mean_stressmag_under_+x,mean_stressmag_under_-y,own_load_selectivity
+cross_bars,regular,horizontal bar,0.5623,0.0615,9.149
+cross_bars,regular,vertical bar,0.0537,0.5377,10.020
+cross_bars,disorder_hi,horizontal bar,0.5916,0.0691,8.559
+cross_bars,disorder_hi,vertical bar,0.0612,0.5814,9.492
+disc_triangle,regular,inner disc,0.5092,0.0698,7.300
+disc_triangle,regular,tri frame,0.2214,0.5976,2.699
+disc_triangle,disorder_hi,inner disc,0.5577,0.0940,5.936
+disc_triangle,disorder_hi,tri frame,0.1897,0.6232,3.285

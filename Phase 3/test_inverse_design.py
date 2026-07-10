@@ -288,12 +288,96 @@ def test_homogeneity_regularizer():
           f"(achieved nu={rep1['achieved']:+.3f})  OK")
 
 
+def test_homogenization():
+    """The homogenisation function -- turning a relaxed network into effective (ν, E) -- checked
+    three ways that MUST all agree: (a) the forward solver's own homogenised forward(), (b)
+    physical_homog's VIRIAL-stress route, (c) physical_homog's ENERGY-HESSIAN route. The virial IS
+    dU/dε, so (b) and (c) are genuinely separate computations whose agreement is a real
+    self-consistency check of the homogenisation (not a tautology); (a) is the differentiable solver
+    the designer optimises through, which the physical ground truth must confirm. Across regular +
+    disordered + anisotropic topologies with a random per-bond k, plus the analytic regular-lattice
+    value ν=1/3, E=2/√3 at uniform k."""
+    import test_cluster_rigidity as TR
+
+    def free_of(geo):
+        return np.arange(2, 2 * len(geo['pts']))
+
+    geo = C.make_lattice(1.0, 1.0, half=6.0)                      # regular, uniform k=1
+    geo['bond_k'] = np.ones(len(geo['bond_u'])); geo['tri_k'] = geo['bond_k'][geo['tri_bond']]
+    nu0, E0 = PH.virial_nuE(geo, PH.relax(geo, free_of(geo), TR.assemble_K_faff))
+    assert abs(nu0 - 1 / 3) < 0.02 and abs(E0 - 2 / np.sqrt(3)) < 0.05, \
+        f"regular lattice analytic: nu={nu0:.4f} (~0.3333), E={E0:.4f} (~{2/np.sqrt(3):.4f})"
+
+    # solver vs physical is compared at the TENSOR level: scalar ν/E is convention-dependent for an
+    # anisotropic tensor (physical_homog._voigt_nuE averages Ex,Ey; the solver's c6_to_nuE uses a
+    # different reduction), so the two legitimately disagree on the scalar summary while the full
+    # effective tensor -- the unambiguous object the homogenisation actually produces -- agrees. The
+    # virial-vs-energy pair DO share _voigt_nuE's convention, so their scalar (ν,E) is a fair check.
+    worst_ve, worst_vs = 0.0, 0.0
+    for phi, psi, eta, seed in [(1.0, 1.0, 0.0, 0), (1.0, 1.0, 0.35, 1), (1.0, 0.6, 0.0, 2)]:
+        geo = C.make_lattice(phi, psi, half=6.0, eta=eta, seed=seed)
+        rng = np.random.default_rng(seed)
+        k = 0.5 + rng.random(len(geo['bond_u']))
+        geo['bond_k'] = k; geo['tri_k'] = k[geo['tri_bond']]
+        free = free_of(geo)
+        nu_v, E_v = PH.virial_nuE(geo, PH.relax(geo, free, TR.assemble_K_faff))   # virial route
+        nu_e, E_e = PH.energy_nuE(geo, free, TR.assemble_K_faff)                  # energy-Hessian route
+        prob = DesignProblem.from_geo(geo)
+        c_solver = C.solver_region_C6(prob, torch.as_tensor(k))                   # differentiable solver
+        c_phys = C.sim_region_C6(geo, None)                                       # virial-route ground truth
+        ve = max(abs(nu_v - nu_e), abs(E_v - E_e) / abs(E_v))
+        vs = float(np.abs(c_solver - c_phys).max() / np.abs(c_phys).max())
+        assert ve < 3e-3, f"virial vs energy-Hessian disagree (phi={phi},psi={psi},eta={eta}): {ve:.2e}"
+        assert vs < 0.01, f"solver vs physical homogenisation tensor disagree (phi={phi},psi={psi},eta={eta}): {vs:.2e}"
+        worst_ve, worst_vs = max(worst_ve, ve), max(worst_vs, vs)
+    print(f"  [15] homogenisation: regular nu={nu0:.4f}/E={E0:.4f}; worst virial-vs-energy(ν,E)={worst_ve:.1e}, "
+          f"solver-vs-physical(tensor)={worst_vs:.1e}  OK")
+
+
+def test_isotropization():
+    """Isotropisation via the 'isotropy' objective as a DESIGN driver (not just the readback of test
+    [9]) -- as a ROUND TRIP that is guaranteed reachable and honest: (1) take a disordered (nearly
+    isotropic) base and DESIGN a strongly directional response into it (2-fold E(θ)); confirm the
+    result is genuinely anisotropic; (2) RE-design the same lattice with the 'isotropy' objective and
+    confirm the anisotropy collapses. Anisotropy is measured with inverse_design._anisotropy on the
+    INDEPENDENT sim tensor (not the solver's own readback). Two subtleties this test pins down:
+      - A geometric CRYSTAL's anisotropy (e.g. aniso_str's compressed rows) lives in the reference
+        metric and CANNOT be removed by k-scaling -- isotropising it fails (anisotropy even grows). So
+        the base must be one whose anisotropy k-design can actually reach: a disordered lattice with
+        the anisotropy DESIGNED in, exactly as here. (This is also why disordered bases are the ones
+        the repo isotropises in tests [8]/[9].)
+      - The 'isotropy' objective alone leaves the LEVEL free, so on its own it degenerates (collapses
+        the tensor toward zero -> anisotropy 0/0 = nan); anchoring the modulus with an 'E' objective
+        (the `constrain(isotropic=True, E=...)` idiom) makes it well-posed."""
+    from inverse_design import _anisotropy, ANG
+    prob, geo = C.make_case('disorder_hi', 14, seed=3)
+    res_a = optimize(prob, [Objective('E_theta', 1.0 * (1 + 0.5 * np.cos(2 * ANG)))],
+                     mode='k', n_iter=140, reg=1e-4, verbose=False)          # (1) DESIGN anisotropy in
+    C.apply_k_to_geo(geo, res_a['k'])
+    C6_a = C.sim_region_C6(geo, None)
+    a0 = float(_anisotropy(torch.as_tensor(C6_a)))
+    _, E0 = C.c6_nuE(C6_a)                                                   # anchor level at the anisotropic E
+    assert a0 > 0.1, f"induced base should be clearly anisotropic, got {a0:.4f}"
+    res_i = optimize(prob, [Objective('isotropy', weight=1.0), Objective('E', target=E0, weight=0.3)],
+                     mode='k', n_iter=160, reg=1e-4, verbose=False)          # (2) isotropise it back
+    C.apply_k_to_geo(geo, res_i['k'])
+    C6_i = C.sim_region_C6(geo, None)
+    a1 = float(_anisotropy(torch.as_tensor(C6_i)))
+    _, E1 = C.c6_nuE(C6_i)
+    assert np.isfinite(a1) and a1 < 0.2 * a0, \
+        f"isotropy objective didn't isotropise: anisotropy {a0:.4f} -> {a1:.4f}"
+    assert E1 > 0.3 * E0, f"isotropy collapsed the modulus (E {E0:.3f} -> {E1:.3f}), not a real isotropisation"
+    print(f"  [16] isotropization (disordered round-trip): anisotropy {a0:.4f} -> {a1:.4f}, "
+          f"E {E0:.3f} -> {E1:.3f} (sim-confirmed)  OK")
+
+
 if __name__ == '__main__':
     torch.manual_seed(0)
     tests = [test_round_trip, test_property_auxetic, test_property_E, test_local_region,
              test_mixed_global_local, test_large_N_adjoint, test_open_domain, test_directional,
              test_constrain_isotropic, test_strain_stress_equivalence, test_strain_stress_autograd,
-             test_strain_stress_design, test_homogeneity_regularizer]
+             test_strain_stress_design, test_homogeneity_regularizer, test_homogenization,
+             test_isotropization]
     print("inverse_design tests")
     failed = 0
     for t in tests:

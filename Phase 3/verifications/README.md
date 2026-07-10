@@ -144,31 +144,73 @@ fluctuation field has zero cell-mean) — `'strain'` objectives only make sense 
 - **stress concentrator** (uniaxial pull) — a patch designed to carry amplified σ_xx.
 - **strain shield** (uniaxial pull) — a (different) patch designed for near-zero local strain (rigid
   inclusion).
-- **strain bulge** (uniaxial pull) — a rectangle hugging the TOP edge of a regular-topology cell,
-  designed for a strong positive local eyy, while the BACKGROUND outside the patch is *jointly*
-  designed to ν=0 (region-mean, not just left at the regular lattice's natural ν=1/3) so the bulge
-  reads as a clean local feature against a flat surround; verified against a real open-boundary
-  cut-and-stretch test at both the small reference strain and an extrapolated ~30% large strain
-  (`open_stretch` is one linear solve, so the large-strain view is an exact rescaling, not a re-solve).
-  A `'stress'`-only version of the patch objective was tried first and gave a mixed, non-bulging
-  deformation under the real stretch — stress constrains magnitude, not the *sign* of local strain,
-  so a direct `'strain'` target was needed to reliably pick out "expands".
+- **bulge — auxetic inclusion** (uniaxial pull) — an off-centre top rectangle of a regular cell
+  designed as a strongly AUXETIC material (ν<0) in a flat ν=0 background. An auxetic inclusion expands
+  laterally under an x-pull, so it bulges where the ν=0 surround stays neutral; and because ν is a
+  clean *stable* material property (not a raw strain), the bulge appears in the real open cut-and-
+  stretch test WITHOUT a near-mechanism. On a regular lattice ν cleanly reaches only ~-0.4 (the
+  auxetic_sweep limit) and a small inclusion is **Eshelby-dominated** by the surrounding matrix (see
+  `two_region/inclusion_square.py`), so the open-stretch signature is moderate (the patch contracts
+  *less* than its surroundings) — the honest physical result; the clean local-ν map is the primary
+  design-intent figure. *History kept as a lesson:* a low-σ_xx `'stress'` patch target
+  under-constrained the deformation SIGN; a raw `'strain'` eyy target pinned the sign but a STRONG one
+  (eyy~2.5, a 250 % response) physically requires a near-mechanism and rendered as floppy strain
+  streaks — designing the patch as an auxetic *material* is the clean, mechanism-free route.
 - **concentric rings** (isotropic stretch) — a stress "bullseye": three contiguous rings jointly
-  designed for alternating-sign mean stress p=(σ_xx+σ_yy)/2 (+A/−A/+A) in one optimize() call, at two
-  magnitudes (0.35, 1.0) on both a regular and a disorder_hi topology (4 designs). **Negative
-  result, kept documented rather than hidden:** tried first under a uniaxial pull (middle ring, sand-
-  wiched between two same-sign neighbours, underachieved and went wrong-sign as magnitude/disorder
-  grew); switching to an isotropic load — matching the rings' own rotational symmetry — does NOT fix
-  it and is actually worse (outright numerical blow-up of the independent check at high
-  magnitude+disorder). The reason is physical: under an imposed global dilation, a passive *stable*
-  sub-region's mean stress must share the sign of the imposed dilation (the opposite requires a
-  locally negative bulk modulus, forbidden for a stable linear-elastic material) — the optimizer can
-  only fake it with a near-mechanism (a large fraction of bonds driven to ~0), which is exactly why
-  the independent nonlinear relaxation becomes ill-conditioned rather than merely inaccurate.
+  designed for alternating-**sign** mean stress p=(σ_xx+σ_yy)/2 (+A/−A/+A) in one optimize() call, at
+  two magnitudes (0.35, 1.0) on regular and disorder_hi (4 designs). **Negative result, kept documented
+  rather than hidden:** the middle ring (sandwiched between two same-sign neighbours) fails — under
+  uniaxial pull it underachieves and goes wrong-sign as magnitude/disorder grow; under an isotropic
+  load (matching the rings' symmetry) it is *worse*, blowing the independent check up numerically. The
+  reason is physical: under an imposed global dilation a passive *stable* sub-region's mean stress must
+  share the dilation's sign (the opposite needs a locally negative bulk modulus, forbidden for a stable
+  material) — the optimizer can only fake it with a near-mechanism, which is exactly why the independent
+  nonlinear relaxation becomes ill-conditioned. The achievable, *cool* bullseye is the same-SIGN
+  alternating-MAGNITUDE version at 16k triangles below.
+
+**`strain_stress/large16k_rings.py`** — the achievable "bullseye" scaled to ~16k triangles (HALF=42),
+using alternating **magnitude** (STRONG/WEAK/STRONG/WEAK, all same positive sign — nothing forbidden)
+under the isotropic load, with a low-weight per-band `'isotropy'` objective. The STRONG/WEAK levels are
+both genuinely **stress-bearing** (a ~2× contrast, 0.8/0.4) — an earlier 10× contrast (1.0/0.1) drove
+the weak bands so soft they became near-mechanisms at 16k and the independent nonlinear relaxation
+diverged (stress ~1e19). Plots BOTH the mean-stress and mean-strain response fields, and each band's
+directional ν(θ)/E(θ) average (polar), on regular and disorder_hi. Outputs `large16k_rings.csv`,
+`strain_stress_large16k_rings_*.png`.
+
+**`strain_stress/mode_selective.py`** — a single ~16k-triangle network whose stress pattern **depends
+on the load direction**: stretch +x lights up a filled DISC of high stress; compress −y lights up a
+separate TRIANGLE; each shape stays quiet under the other load, and the background is suppressed for
+definition. On regular and disorder_hi. This is the cleanest demonstration of the **"full response
+operator"** character of the formulation: because the solver returns the whole strain-concentration
+operator W (not one load's answer), **all objectives across BOTH loads** (disc-loud/triangle-quiet
+under +x, triangle-loud/disc-quiet under −y, background suppressed under both) live in **one**
+`optimize()` call, querying the same W at two different loads — a displacement/FEM design loop would
+need a separate solve + adjoint per load case. Mechanism: directional stiffness contrast (disc
+stiff-x/soft-y, triangle stiff-y/soft-x). Achieved: disc ~6–10× own-load selectivity, triangle
+~2.5–3.4× (the disc is consistently sharper — "stiff-x/soft-y" is an easier anisotropy to build than
+a triangle forced "stiff-y/soft-x" across its own edges). Outputs `mode_selective.csv`,
+`strain_stress_mode_selective_<topo>.png`.
+
+**`strain_stress/mode_selective_colocated.py`** — the harder variant: the SAME spot shows a DIFFERENT
+shape by load direction. Two shape-sets (× regular/disorder_hi):
+- **`cross_bars`** — a full-width HORIZONTAL bar (lights under +x) crossing a full-height VERTICAL bar
+  (lights under −y): a "+" whose arms are direction-selective, ~9–10× both, **cleanly rendered**.
+- **`disc_triangle`** — an inner DISC (under +x) nested in a TRIANGULAR frame (under −y): striking
+  (disc ~6–7×, frame ~2.7–3.3×) but the disc keeps a horizontal feeder streak.
+
+The fidelity gap is an honest **physical** point, not a tuning failure: stress under a uniform load is
+not free-form — equilibrium (div σ = 0) conserves the load flux across every cut, so high stress forms
+a connected PATH spanning the cell in the load direction. A bar aligned with the load **is** such a
+path (renders crisply); an isolated blob (a disc) cannot carry the flux alone, so the horizontal strip
+at its height necessarily lights up too (Eshelby gives a uniform disc *interior*, but the flux still
+has to enter and leave). Takeaway: **load-aligned shapes render cleanly; shapes across the load always
+grow a feeder streak.** Outputs `mode_selective_colocated.csv`,
+`strain_stress_mode_selective_colocated_<kind>_<topo>.png`.
 
 All designs are checked two independent ways per the convention above (differentiable-path readback
-+ `_common.unit_mode_response`'s separate NumPy simulation). Outputs: `strain_stress.csv`,
-`rings.csv`, `strain_stress_*.png`, saved networks.
++ `_common.unit_mode_response`'s separate NumPy simulation). Outputs: `strain_stress.csv`, `bulge.csv`,
+`rings.csv`, `large16k_rings.csv`, `mode_selective.csv`, `mode_selective_colocated.csv`,
+`strain_stress_*.png`, saved networks.
 
 ## Homogeneity regularizer
 `Objective(..., homogeneity=w)` adds `w * var(local_field[region])` to the loss for any `nu`/`E`/
