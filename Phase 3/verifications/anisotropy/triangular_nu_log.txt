@@ -1,6 +1,6 @@
-  [triangular_nu] disorder_hi N=16 tri=2304  REG=0.003
+  [triangular_nu:2fold] 2-fold disorder_hi N=16 tri=2304  REG=0.0008
     target ν(θ): +0.00 → +0.50 (2-fold sawtooth)
-    achieved ν(θ): diff-path [+0.076,+0.479] maxerr=0.097  | INDEPENDENT sim [+0.081,+0.487] maxerr=0.102
-    network uniformity: k median=0.421 mean=0.530 [min=0.000, max=2.208]  n(k<0.1)=1071/3456
+    achieved ν(θ): diff-path [+0.061,+0.482] maxerr=0.083  | INDEPENDENT sim [+0.065,+0.500] maxerr=0.087
+    network uniformity: k median=0.141 mean=0.376 [min=0.000, max=2.506]  n(k<0.1)=1575/3456
 saved triangular_nu.png
 done

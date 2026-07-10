@@ -47,8 +47,8 @@ NU_HI, PEAK = 0.5, 0.72                      # sawtooth peak value; peak at 72% 
 #           LARGER patch (N=24) supplies the extra bond DOF to keep the deep-auxetic result uniform.
 # tag='' keeps the 2-fold's canonical triangular_nu.* filenames (read by the maps/param scripts).
 CONFIGS = {
-    '2fold': dict(fold=2, N=16, n_iter=320, reg=3.0e-3, n_restarts=3, nu_lo=0.0,  tag=''),
-    '4fold': dict(fold=4, N=24, n_iter=320, reg=2.0e-3, n_restarts=3, nu_lo=-0.1, tag='_4fold'),
+    '2fold': dict(fold=2, N=16, n_iter=420, reg=8.0e-4, n_restarts=4, nu_lo=0.0,  tag=''),
+    '4fold': dict(fold=4, N=24, n_iter=360, reg=1.0e-3, n_restarts=3, nu_lo=-0.1, tag='_4fold'),
 }
 
 
