@@ -102,6 +102,32 @@ def main():
     plt.savefig(p2, dpi=140, bbox_inches='tight'); plt.close()
     print(f'saved {os.path.basename(p2)}')
 
+    # --- POLAR grids (mirrored to full circle) for nu(theta) and E(theta) ---
+    th2 = np.concatenate([C.ANG, C.ANG + np.pi])
+
+    def polar_grid(field, title, color, signed, fname):
+        figp, axp = plt.subplots(nR, nC, figsize=(24, 12), subplot_kw={'projection': 'polar'},
+                                 squeeze=False)
+        for i, psi in enumerate(PSIS):
+            for j, phi in enumerate(PHIS):
+                a = axp[i, j]; f = field[i, j]; f2 = np.concatenate([f, f])
+                if signed:                                   # signed radius: nu can be < 0
+                    a.plot(th2, np.zeros_like(th2), color='0.6', lw=.5)   # nu = 0 circle
+                    a.set_rorigin(min(0.0, f.min()) * 1.05)
+                a.plot(th2, f2, color=color, lw=1.3)
+                a.set_title(f'φ={phi:g} ψ={psi:g}', fontsize=8, pad=3)
+                a.set_xticklabels([]); a.tick_params(labelsize=5)
+        figp.suptitle(title, fontsize=14)
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        p = os.path.join(C.savedir(CASE), fname)
+        plt.savefig(p, dpi=120, bbox_inches='tight'); plt.close()
+        print(f'saved {os.path.basename(p)}')
+
+    polar_grid(NU, 'anisotropy / crystal_grid — ν(θ) POLAR (mirrored; grey = ν=0, radius signed)',
+               '#d62728', True, 'crystal_grid_polar_nu.png')
+    polar_grid(EE, 'anisotropy / crystal_grid — E(θ) POLAR (mirrored)', '#2ca02c', False,
+               'crystal_grid_polar_E.png')
+
 
 if __name__ == '__main__':
     main()
