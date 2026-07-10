@@ -1,0 +1,6 @@
+  [triangular_nu:4fold] 4-fold disorder_hi N=24 tri=5376  REG=0.002
+    target ν(θ): -0.10 → +0.50 (4-fold sawtooth)
+    achieved ν(θ): diff-path [-0.066,+0.395] maxerr=0.144  | INDEPENDENT sim [-0.064,+0.397] maxerr=0.142
+    network uniformity: k median=0.609 mean=0.622 [min=0.000, max=2.090]  n(k<0.1)=1880/8064
+saved triangular_nu_4fold.png
+done
