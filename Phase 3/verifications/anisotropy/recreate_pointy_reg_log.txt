@@ -1,0 +1,5 @@
+  [recreate_pointy] target=crystal(4,1) nu on disorder_hi N=16 tri=2304  REG=0.005
+    target  ν(θ): [-3.633,+7.180]
+    achieved ν(θ): diff [-3.299,+3.339]  sim [-2.417,+2.796]  sim maxerr=4.385
+    network floppiness: k median=0.129 [min=0.000, max=18.938]  n(k<0.1)=1585/3456
+saved recreate_pointy_reg5e3.png
