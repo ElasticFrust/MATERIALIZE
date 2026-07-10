@@ -41,10 +41,14 @@ BETA = 5.0                       # softplus sharpness (k ≈ raw for moderate ra
 
 # --------------------------------------------------------------------------- parameterisation
 def _softplus(raw):
+    """Map an unconstrained optimiser variable `raw` to a POSITIVE stiffness `k = softplus(raw)`.
+    Optimising `raw` freely then squashing through softplus keeps `k>0` without a hard constraint."""
     return torch.nn.functional.softplus(raw, beta=BETA)
 
 
 def _inv_softplus(k):
+    """Inverse of `_softplus`: the raw variable that yields a given positive `k` (used to seed the
+    optimiser from a starting stiffness, e.g. all-ones)."""
     k = torch.as_tensor(k, dtype=torch.float64)
     return torch.log(torch.expm1(BETA * k)) / BETA
 
@@ -89,10 +93,12 @@ def c6_to_nuE_theta(C, thetas):
 
 
 def c6_to_nu_theta(C, thetas):
+    """Directional Poisson ratio ν(θ) only (thin wrapper over c6_to_nuE_theta) — for `nu_theta` objectives."""
     return c6_to_nuE_theta(C, thetas)[0]
 
 
 def c6_to_E_theta(C, thetas):
+    """Directional Young's modulus E(θ) only (thin wrapper over c6_to_nuE_theta) — for `E_theta` objectives."""
     return c6_to_nuE_theta(C, thetas)[1]
 
 
@@ -193,6 +199,10 @@ class Objective:
     """
     def __init__(self, kind, target=None, region=None, weight=1.0, thetas=None, load=None,
                 homogeneity=0.0):
+        """Validate `kind` and normalise `target` into the tensor form `_loss` expects for that kind:
+        a scalar nu/E broadcasts to a flat ν(θ)/E(θ) profile over `thetas`; a `tensor` target is the
+        6-vector; a `strain`/`stress` target is a vec3 (and requires `load`). Stores `region`,
+        `weight`, `homogeneity` for the loss to consume."""
         assert kind in ('nu', 'E', 'nu_dir', 'E_dir', 'tensor', 'nu_theta', 'E_theta', 'isotropy',
                         'strain', 'stress')
         if homogeneity:
@@ -261,6 +271,9 @@ class DesignProblem:
     """Wraps geometry + solver + per-bond→per-triangle map for periodic or open networks."""
 
     def __init__(self, solver, tri_bond, bond_len, areas, centroids, rl_ref):
+        """Store the forward `solver` and the geometry needed to (a) map per-BOND design variables to
+        the per-triangle-edge arrays the solver wants (`tri_bond`), and (b) reduce per-triangle output
+        over regions (`areas`, `centroids`). Prefer the `periodic`/`open`/`from_geo` constructors."""
         self.solver = solver
         self.tri_bond = torch.as_tensor(tri_bond, dtype=torch.long)     # (N,3)
         self.bond_len = torch.as_tensor(bond_len, dtype=torch.float64)  # (n_bond,)
@@ -287,11 +300,15 @@ class DesignProblem:
 
     @classmethod
     def periodic(cls, N=14, eta=0.3, seed=0):
+        """Build a PERIODIC unit-cell problem: a triangular lattice of half-size `N`, positionally
+        perturbed by disorder `eta` (0 = perfect crystal), with uniform starting stiffness k=1."""
         geo = VD.build_geometry(N, eta, seed=seed); VD.set_VD(geo, 0)
         return cls.from_geo(geo)
 
     @classmethod
     def open(cls, tri):
+        """Build an OPEN (finite, free-boundary) problem from a scipy-style triangulation `tri`
+        (e.g. `Disc_2_Cont_optimized.generate_foam_points`)."""
         tri = clean_tri(tri)
         mesh = build_open_mesh(tri)
         solver, _, rl = fst.from_triangulation(tri)
@@ -301,6 +318,8 @@ class DesignProblem:
 
     # ---- region helpers ----
     def region_in_circle(self, center, radius):
+        """A region = the indices of triangles whose CENTROID lies within `radius` of `center`
+        (the basic building block for LOCAL objectives)."""
         c = np.asarray(center)
         return np.where(((self.centroids - c) ** 2).sum(1) < radius ** 2)[0]
 
@@ -310,6 +329,9 @@ class DesignProblem:
 
     # ---- forward ----
     def forward(self, k_bond, l0_bond=None, physical_units=True):
+        """Run the differentiable forward solve for a per-BOND stiffness `k_bond`: scatter it to the
+        per-triangle-edge array via `tri_bond`, then call the intrinsic solver. Returns the solver's
+        dict (poisson, young, elastic_tensor, per_triangle, bare, W). Differentiable w.r.t. `k_bond`."""
         tri_k = k_bond[self.tri_bond]                                    # (N,3)
         rl = self.rl_ref if l0_bond is None else l0_bond[self.tri_bond]
         return self.solver.forward(tri_k, rest_lengths=rl,
@@ -334,6 +356,13 @@ def _params_to_kl(raw, prob, mode):
 
 
 def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
+    """The scalar training loss minimised by `optimize` (fully differentiable w.r.t. `k_bond`).
+    LOGIC: one forward solve gives the per-triangle tensor `per`, bare tensor `bare`, and
+    strain-concentration `W`; then each Objective contributes `weight·‖achieved − target‖²`, where
+    'achieved' is computed for that objective's KIND (nu/E/tensor/directional from the region tensor;
+    raw strain/stress from `bare,W` under the objective's load) over its REGION (or globally). An
+    optional `homogeneity` term adds the within-region variance of the local field, and `reg` adds a
+    small mean((k−1)²) that discourages drifting into floppy/unstable configurations."""
     out = prob.forward(k_bond, l0_bond, physical_units=True)
     per, bare, W = out['per_triangle'], out['bare'], out['W']
     total = torch.zeros((), dtype=torch.float64)
@@ -375,6 +404,9 @@ def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
 
 
 def _init_raw(prob, mode, seed):
+    """Initialise the raw (unconstrained) optimiser variables for a restart: `k` seeded at the
+    uniform lattice (`softplus⁻¹(1)`) plus small random noise so different restarts explore different
+    basins; `l0` (if designed) seeded near zero. Returns a dict of leaf tensors requiring grad."""
     rng = torch.Generator().manual_seed(seed)
     raw = {}
     if mode in ('k', 'both'):
