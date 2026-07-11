@@ -1,0 +1,2 @@
+  [recreate_pointy_regular] target crystal(4,1) ν∈[-3.633,+7.180] on regular N=16
+  reg=0.01: diff[-2.905,+6.336] sim[+0.320,+3.094] maxerr=6.188 |sim-diff|=5.896 kmed=0.000 kmax=20.42 n(k<0.1)=2389/3456

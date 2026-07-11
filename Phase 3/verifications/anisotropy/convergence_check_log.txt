@@ -1,0 +1,9 @@
+  [convergence_check] disorder_hi N=16 tri=2304 target=4-fold-triangle reg=0.001
+    max_iter cap = 4000
+    LBFGS actual iterations = 159   (CONVERGED (hit tolerance))
+    function evals = 169
+    loss 5.3218e-02 -> 1.5357e-03   final |grad|_inf = 8.41e-08
+    loss at eval   100 = 1.5369e-03   (gap to final = 1.25e-06)
+C:\Users\doron\Documents\GitHub\MATERIALIZE\Phase 3\verifications\anisotropy\convergence_check.py:80: UserWarning: No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+  ax.grid(alpha=.3, which='both'); ax.legend(fontsize=9)
+saved convergence_check.png

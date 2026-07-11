@@ -1,0 +1,5 @@
+  [honeycomb_nu] target ν=1 (honeycomb) on regular N=16; k=1 reference: ν≈+0.333, E≈1.155
+  reg=0.01: ν(θ) sim [-7.173,+6.800] (mean +0.115) | E(θ) [0.000,0.029] (soft vs E0=1.15) | k median=0.000 n(k<0.1)=2509/3456
+  reg=0.001: ν(θ) sim [+0.237,+1.033] (mean +0.581) | E(θ) [0.000,0.000] (soft vs E0=1.15) | k median=0.000 n(k<0.1)=2525/3456
+  reg=0.0001: ν(θ) sim [-0.323,+1.035] (mean +0.647) | E(θ) [0.000,0.001] (soft vs E0=1.15) | k median=0.000 n(k<0.1)=2530/3456
+saved honeycomb_nu.png
