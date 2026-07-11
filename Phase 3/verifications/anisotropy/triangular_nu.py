@@ -5,8 +5,11 @@ anisotropic SAWTOOTH function of direction. Two configurations (select on the co
   '2fold' (default) — ν(θ) rises from ν=0 up to ν=+0.5 and falls back ONCE per half-turn (period π).
       Stays non-negative because a negative trough is reciprocity-forbidden here (see below).
       Outputs triangular_nu.{png,csv,npz}.
-  '4fold' — the same sharp sawtooth but FOUR lobes per turn (period π/2), dipping to a genuine auxetic
-      trough (ν=−0.1), on a LARGER patch. Outputs triangular_nu_4fold.{png,csv,npz}.
+  '4fold' — a symmetric POINTY TRIANGLE wave, FOUR lobes per turn (period π/2), dipping to a genuine
+      auxetic trough (ν=−0.1), on a LARGER patch. Symmetric (not sawtooth) because 4-fold ν(θ) is a
+      function of the single variable cos4(θ−φ) — its lobes are mirror-symmetric by construction; the
+      in-phase 8θ/12θ overtones can only sharpen it toward a triangle, never lean it (see below).
+      Outputs triangular_nu_4fold.{png,csv,npz}.
 
   RECIPROCITY — why the fold count matters for the auxetic trough. Elastic reciprocity (compliance
   symmetry S₁₂=S₂₁, E>0) forces ν(θ) and ν(θ+90°) to share a sign for EVERY θ.
@@ -38,36 +41,46 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import _common as C
 
 CASE, TOPO = 'anisotropy', 'disorder_hi'
-NU_HI, PEAK = 0.5, 0.72                      # sawtooth peak value; peak at 72% of the period (sharp fall)
+NU_HI = 0.5                                   # peak value of the profile
 
-# Per-configuration knobs. The auxetic trough (nu_lo) differs by fold because of reciprocity:
-#   '2fold' targets nu_lo=0 — a NEGATIVE trough is forbidden here (its orthogonal sits on the positive
-#           ramp); a −0.1 attempt was confirmed to cap at ~+0.05 and just made the network floppy.
-#   '4fold' targets nu_lo=−0.1 — with ν(θ)=ν(θ+90°) the auxetic trough is reciprocity-LEGAL, and the
-#           LARGER patch (N=24) supplies the extra bond DOF to keep the deep-auxetic result uniform.
+# Per-configuration knobs. `peak` sets the position of the maximum within the period: peak=0.72 →
+# asymmetric SAWTOOTH (slow rise, fast fall); peak=0.5 → symmetric TRIANGLE wave. `nu_lo` (trough)
+# differs by fold because of reciprocity:
+#   '2fold' — asymmetric sawtooth, nu_lo=0. A NEGATIVE trough is forbidden here (its orthogonal sits on
+#             the positive ramp; a −0.1 attempt capped at ~+0.05 and just made the network floppy). The
+#             sawtooth LEAN is reachable because 2-fold has two independent modes (weights 2 and 4).
+#   '4fold' — symmetric pointy triangle (peak=0.5), nu_lo=−0.1. With ν(θ)=ν(θ+90°) the auxetic trough
+#             is reciprocity-LEGAL. A LEAN is impossible (single weight-4 mode, phase-locked overtones →
+#             mirror-symmetric lobes), so we ask for the reachable shape: a SYMMETRIC pointy triangle.
+#             The LARGER patch (N=24) supplies the DOF to keep the deep-auxetic result a real material.
 # tag='' keeps the 2-fold's canonical triangular_nu.* filenames (read by the maps/param scripts).
 CONFIGS = {
-    '2fold': dict(fold=2, N=16, n_iter=420, reg=8.0e-4, n_restarts=4, nu_lo=0.0,  tag=''),
-    '4fold': dict(fold=4, N=24, n_iter=360, reg=1.0e-3, n_restarts=3, nu_lo=-0.1, tag='_4fold'),
+    '2fold': dict(fold=2, N=16, n_iter=420, reg=8.0e-4, n_restarts=4, nu_lo=0.0,  peak=0.72, tag=''),
+    '4fold': dict(fold=4, N=24, n_iter=360, reg=1.0e-3, n_restarts=3, nu_lo=-0.1, peak=0.50, tag='_4fold'),
 }
 
 
-def triangle_nu(theta, fold, nu_lo):
-    """A `fold`-fold SAWTOOTH ν(θ) with period P=π/(fold//2) (2-fold→π, 4-fold→π/2): over each period ν
-    rises from nu_lo to NU_HI over the first `PEAK` fraction, then falls back to nu_lo (asymmetric ->
-    sawtooth). Continuous and π-periodic. For 4-fold, ν(θ)=ν(θ+90°) so orthogonal directions match and
-    a negative nu_lo (auxetic trough) is reciprocity-legal; for 2-fold nu_lo must stay ≥0."""
+def profile_shape(peak):
+    return 'triangle' if abs(peak - 0.5) < 1e-6 else 'sawtooth'
+
+
+def triangle_nu(theta, fold, nu_lo, peak):
+    """A `fold`-fold piecewise-linear ν(θ) with period P=π/(fold//2) (2-fold→π, 4-fold→π/2): over each
+    period ν rises from nu_lo to NU_HI over the first `peak` fraction, then falls back to nu_lo. peak=0.5
+    → symmetric TRIANGLE wave; peak≠0.5 → asymmetric SAWTOOTH. Continuous and π-periodic. For 4-fold,
+    ν(θ)=ν(θ+90°) so a negative nu_lo (auxetic trough) is reciprocity-legal; for 2-fold nu_lo must ≥0."""
     P = np.pi / (fold // 2)                                     # angular period of one lobe
     ph = np.mod(theta, P) / P                                  # phase in [0,1) over the period
-    ramp = np.where(ph < PEAK, ph / PEAK, 1.0 - (ph - PEAK) / (1.0 - PEAK))   # 0→1→0, asymmetric
+    ramp = np.where(ph < peak, ph / peak, 1.0 - (ph - peak) / (1.0 - peak))   # 0→1→0
     return nu_lo + (NU_HI - nu_lo) * ramp
 
 
 def main(name, cfg):
-    fold, N, tag, nu_lo = cfg['fold'], cfg['N'], cfg['tag'], cfg['nu_lo']
+    fold, N, tag, nu_lo, peak = cfg['fold'], cfg['N'], cfg['tag'], cfg['nu_lo'], cfg['peak']
+    shape = profile_shape(peak)
     base = 'triangular_nu' + tag
     th = C.ANG                                                   # θ grid ∈ [0,π], 37 points
-    target = triangle_nu(th, fold, nu_lo)
+    target = triangle_nu(th, fold, nu_lo, peak)
 
     prob, geo = C.make_case(TOPO, N)
     obj = C.Objective('nu_theta', target=target)                 # design the whole cell (uniform patch)
@@ -82,7 +95,7 @@ def main(name, cfg):
     err_sim = float(np.abs(nu_sim - target).max())
     k = r['k'].detach().numpy()
     print(f"  [triangular_nu:{name}] {fold}-fold {TOPO} N={N} tri={prob.n_tri}  REG={cfg['reg']}", flush=True)
-    print(f"    target ν(θ): {nu_lo:+.2f} → {NU_HI:+.2f} ({fold}-fold sawtooth)", flush=True)
+    print(f"    target ν(θ): {nu_lo:+.2f} → {NU_HI:+.2f} ({fold}-fold {shape})", flush=True)
     print(f"    achieved ν(θ): diff-path [{nu_diff.min():+.3f},{nu_diff.max():+.3f}] maxerr={err_diff:.3f}  "
           f"| INDEPENDENT sim [{nu_sim.min():+.3f},{nu_sim.max():+.3f}] maxerr={err_sim:.3f}", flush=True)
     print(f"    network uniformity: k median={np.median(k):.3f} mean={k.mean():.3f} "
@@ -104,12 +117,12 @@ def main(name, cfg):
                  f'{np.median(k):.2f}', fontsize=11)
 
     a1 = fig.add_subplot(2, 2, 2)
-    a1.plot(np.degrees(th), target, 'k--', lw=2, label=f'target ({fold}-fold sawtooth)')
+    a1.plot(np.degrees(th), target, 'k--', lw=2, label=f'target ({fold}-fold {shape})')
     a1.plot(np.degrees(th), nu_diff, color='#1f77b4', lw=1.8, label='achieved (diff-path)')
     a1.plot(np.degrees(th), nu_sim, color='#d62728', lw=1.8, ls=':', label='achieved (INDEPENDENT sim)')
     a1.axhline(0, color='0.6', lw=.6)
     a1.set_xlabel('direction θ (deg)'); a1.set_ylabel('Poisson ratio ν(θ)')
-    a1.set_title(f'{fold}-fold sawtooth ν(θ): {nu_lo:.2f} → {NU_HI:.2f}', fontsize=11)
+    a1.set_title(f'{fold}-fold {shape} ν(θ): {nu_lo:.2f} → {NU_HI:.2f}', fontsize=11)
     a1.legend(fontsize=8); a1.grid(alpha=.3)
 
     a2 = fig.add_subplot(2, 2, 3, projection='polar')
@@ -125,7 +138,7 @@ def main(name, cfg):
     C.draw_box(a3, geo); plt.colorbar(pc, ax=a3, fraction=0.046)
     a3.set_title('local ν map — spatial uniformity', fontsize=11)
 
-    fig.suptitle(f'{CASE} / {base} — uniform patch, anisotropic {fold}-fold SAWTOOTH ν(θ) '
+    fig.suptitle(f'{CASE} / {base} — uniform patch, anisotropic {fold}-fold {shape.upper()} ν(θ) '
                  f'({nu_lo:.2f}…{NU_HI:.2f}, {TOPO} N={N}, REG={cfg["reg"]})', fontsize=13)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     path = os.path.join(C.savedir(CASE), base + '.png')
