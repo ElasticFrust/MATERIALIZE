@@ -40,10 +40,20 @@
       VD), gradients correct (autograd vs finite-diff agree), `method='woodbury'` backward-
       compatible (`verify_intrinsic_solver.py`, `verify_subchoice2*.py`).
 
-## In progress
+## Deferred — only for the correlated / anisotropic-rigidity regime
+> **Not needed for current design work.** The shipped `forward(method='intrinsic')` default
+> reproduces the PBC sim to η≈0.4 (8/10 varied networks to a few %) and is **differentiable at
+> every mesh size** (dense torch Woodbury ≤600 tri; sparse-saddle adjoint `_IntrinsicSparseWFn`
+> above). The cluster solver is NOT an alternative to it — it targets ONLY the two known outlier
+> regimes where per-triangle locality is insufficient: **spatially-correlated rigidity**
+> (checkerboard clusters Δν≈+0.045) and **anisotropic k(θ)** (Δν≈−0.106, ΔE/E≈−47%). Pick these
+> back up only if you deliberately design/GNN-label in those regimes.
+
 - [ ] **(2) Batched cluster forward solver → homogenised C_eff / ν / E**, compared to the
       PBC simulation across η and rigidity contrast. Validate ν(η=0)=1/3.
-      (`test_cluster_Ceff.py`)
+      (`test_cluster_Ceff.py` — written, not yet run to completion; `dg_cluster_Ceff.png` absent.)
+      The per-triangle *field* version already passed (see closed cluster-response items); this
+      carries it through to the scalar ν/E. Do this BEFORE (3).
 
 ## Next
 - [x] **Code cleanup / readability pass on `Phase 2/forward_solver_torch.py`** (conservative,
@@ -109,10 +119,13 @@
       nonlinear `det(F_s)` constraint (the quadratic-in-δg correction to the normalisation /
       compatibility) — to make the metric solve exact at large η without resorting to the
       cluster. Verify against sim ν/E at η=0.5 and across VD contrasts.
-- [ ] **(3) Differentiable cluster solver** — each triangle's response is a small local
-      linear solve (3 RHS for the 3 macro modes); make it autograd-friendly so Phase 3
-      inverse design and Phase 4 GNN labelling can use it. No new hyperparameters beyond
-      the cluster radius.
+- [ ] **(3) Differentiable cluster solver** *(deferred — same scope as (2), gated on it)* — each
+      triangle's response is a small local linear solve (3 RHS for the 3 macro modes); make it
+      autograd-friendly so Phase 3 inverse design and Phase 4 GNN labelling can use it. No new
+      hyperparameters beyond the cluster radius. **Only worth building if (2) shows a finite radius
+      actually recovers C_eff in the outlier regimes** — the intrinsic default is already
+      differentiable everywhere, so this is purely for correlated/anisotropic rigidity, not a
+      general need.
 
 - [ ] **Implement and verify varying reference metric and residual stresses.** All tests so
       far drive the solver with `rest_lengths` = the actual (current-configuration) edge

@@ -15,8 +15,11 @@ Two solve methods (selected by forward(method=...)):
       and the AREA-weighted normalisation Σ_s S_s δg(s)=0. Eliminating the
       normalisation multiplier χ gives the area-weighted (A−B) Woodbury with
       δA(s)=A(s)−[A]·S_s/[S_s] (see _woodbury_solve_aw). For ≤ INTRINSIC_DENSE_MAX
-      triangles this runs as a DIFFERENTIABLE dense torch solve; larger meshes
-      fall back to the NumPy sparse saddle (_intrinsic_solve_W, forward-only).
+      triangles this runs as a DIFFERENTIABLE dense torch solve; larger meshes use
+      the sparse saddle, which is ALSO differentiable when gradients are requested
+      (_IntrinsicSparseWFn: NumPy forward = _intrinsic_solve_W, analytic adjoint
+      backward reusing the KKT factorisation) and falls back to a forward-only
+      NumPy solve otherwise.
 
   'woodbury'   (legacy) — the original G&B mean-field (A−B)W=−δA (Eq. 19-20),
       optionally projected onto edge / vertex-angle compatibility via the KKT
@@ -37,8 +40,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-# Max #triangles for the differentiable dense intrinsic Woodbury path; larger meshes
-# fall back to the (non-differentiable) sparse saddle solve.
+# Max #triangles for the dense intrinsic Woodbury path; larger meshes use the sparse
+# saddle solve (differentiable via _IntrinsicSparseWFn's adjoint when grad is needed,
+# forward-only NumPy otherwise). Both size paths carry gradients.
 INTRINSIC_DENSE_MAX = 600
 
 
@@ -326,8 +330,10 @@ class ElasticSolver(nn.Module):
         Toggles can be turned off individually; the intrinsic path has all three ON by
         default. The intrinsic solve uses the area-weighted χ-elimination δA=A_s−[A]·S_s/[S_s]
         (sub-choice 2): for ≤ INTRINSIC_DENSE_MAX triangles it runs a DIFFERENTIABLE torch
-        Woodbury (edge+curvature KKT); larger meshes fall back to the NumPy sparse saddle
-        (forward-only). Both reproduce the simulation; only the dense path carries gradients.
+        Woodbury (edge+curvature KKT); larger meshes use the sparse saddle, which stays
+        DIFFERENTIABLE when gradients are requested (adjoint backward reusing the KKT
+        factorisation) and drops to a forward-only NumPy solve otherwise. Both size paths
+        reproduce the simulation and carry gradients.
 
         physical_units: None/False (default) → elastic_tensor & young in the internal
                         (bare-tensor /16) scale, unchanged from before. True → rescale the
