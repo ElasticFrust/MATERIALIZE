@@ -1,0 +1,6 @@
+  aniso_str: base wobble ±0.30
+  aniso_shr: base wobble ±0.12
+  disorder_hi: base wobble ±0.04
+C:\Users\doron\Documents\GitHub\MATERIALIZE\Phase 3\verifications\showcase\fig3_isotropize.py:71: UserWarning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+  plt.tight_layout()
+saved fig3_isotropize.png

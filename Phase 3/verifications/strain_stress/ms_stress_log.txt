@@ -1,0 +1,4 @@
+  [mode_selective_stress_response disorder_hi] tri=2304 disc=221 triangle=148
+    pull +x:  ‖σ‖  disc=0.098  tri=0.097  bg=0.131
+    pull +y:  ‖σ‖  disc=0.092  tri=0.123  bg=0.129
+saved mode_selective_stress_response_disorder_hi.png

@@ -1,0 +1,5 @@
+  [mode_selective_small regular] tri=2304 disc=218 triangle=144
+    background: +x 0.971±0.151  +y 0.968±0.217
+    DISC  ON(+x) excess +0.262 | OFF(+y) excess +0.164 (±0.084 vs bg ±0.217)  <- OFF ~0 = invisible
+    TRI   ON(+y) excess +0.278 | OFF(+x) excess +0.084 (±0.051 vs bg ±0.151)  <- OFF ~0 = invisible
+saved mode_selective_small_regular.png

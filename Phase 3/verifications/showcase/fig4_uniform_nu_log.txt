@@ -1,0 +1,4 @@
+  regular: ⟨ν⟩=-0.497 spread±0.002 local-ν median=-0.658 IQR=0.590
+  disorder_hi: ⟨ν⟩=-0.498 spread±0.002 local-ν median=-0.611 IQR=0.306
+  aniso_str: ⟨ν⟩=-1.221 spread±1.424 local-ν median=-0.951 IQR=0.858
+saved fig4_uniform_nu.png

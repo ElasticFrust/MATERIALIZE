@@ -1,0 +1,2 @@
+  [fig1c regular rot90] target ν∈[-3.63,+7.18]  solver [+0.03,+0.58]  sim [+0.03,+0.58]  kmed=0.01
+saved fig1c_rot90_regular.png

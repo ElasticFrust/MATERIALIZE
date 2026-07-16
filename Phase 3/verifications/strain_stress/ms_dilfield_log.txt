@@ -1,0 +1,3 @@
+  εxx: disc excess +0.303   triangle excess +0.389  (per unit strain)
+  εyy: disc excess +0.109   triangle excess +0.293  (per unit strain)
+saved mode_selective_dilation_field_clean_disorder_hi.png

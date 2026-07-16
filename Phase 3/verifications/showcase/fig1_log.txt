@@ -1,0 +1,2 @@
+  target ν∈[-3.63,+7.18]  achieved sim [-2.42,+2.80]  kmed=0.13
+saved fig1_recreate_pointy.png

@@ -1,0 +1,2 @@
+  [regular] target ν∈[-3.63,+7.18]  achieved sim [-0.32,+19.13]  |sim-diff|=21.89  kmed=0.00 n(k<0.1)=2393/3456
+saved fig1b_recreate_pointy_regular.png

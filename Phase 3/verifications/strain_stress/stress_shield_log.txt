@@ -1,0 +1,4 @@
+  [stress_shield_concentrate regular] tri=2304 disc=218 triangle=144
+    ‖σ‖ under +x:  DISC(shield)=0.067  BACKGROUND=0.401  TRIANGLE(concentrate)=1.093
+    shield ratio disc/bg = 0.17×   concentration triangle/bg = 2.73×
+saved stress_shield_concentrate_regular.png

@@ -1,0 +1,9 @@
+orig target peak 25deg, rot target peak 115deg range[-3.63,+7.18]
+  seed0 ROT : sim nu[-1.20,+1.21] kmed=0.18
+  seed0 ORIG: sim nu[-2.54,+2.91] kmed=0.16
+  seed1 ROT : sim nu[-2.84,+2.97] kmed=0.19
+  seed1 ORIG: sim nu[-2.14,+2.41] kmed=0.16
+  seed2 ROT : sim nu[-2.13,+1.79] kmed=0.16
+  seed2 ORIG: sim nu[-2.39,+2.55] kmed=0.13
+  seed3 ROT : sim nu[-2.09,+2.40] kmed=0.18
+  seed3 ORIG: sim nu[-1.78,+2.31] kmed=0.15

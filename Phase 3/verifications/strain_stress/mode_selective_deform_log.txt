@@ -1,0 +1,4 @@
+  [mode_selective_deform disorder_hi] tri=2304 disc=221 triangle=148
+saved mode_selective_deform_disorder_hi.png
+saved mode_selective_deform_network_disorder_hi.png
+saved mode_selective_deform_toscale_disorder_hi.png

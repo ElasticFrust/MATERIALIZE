@@ -268,6 +268,22 @@ def draw_network(ax, geo, k_bond, cmap='viridis', lw_scale=3.0, box=True):
     return lc
 
 
+def draw_lattice_zoom(ax, geo, color='0.2', cells=3.0, lw=1.4):
+    """Draw a (crystal) geo inside a CENTRED SQUARE window ~`cells` lattice-constants wide, drawing ALL
+    interior bonds and letting the window EDGES CUT them (clipped) — so the square is filled edge-to-edge
+    with no missing elements/voids. Centred in the interior, away from the periodic-boundary stubs."""
+    from matplotlib.collections import LineCollection
+    p0 = geo['pts'][geo['bond_u']]; p1 = p0 + geo['bond_R']
+    c = geo['pts'].mean(0)
+    L = float(np.sqrt(geo['actual_len2']).min())         # shortest bond ≈ lattice constant
+    ext = 0.5 * cells * L
+    near = (np.abs(p0[:, 0] - c[0]) <= ext + L) & (np.abs(p0[:, 1] - c[1]) <= ext + L)  # keep local (fast)
+    lc = LineCollection(np.stack([p0[near], p1[near]], 1), colors=color, linewidths=lw)
+    ax.add_collection(lc)                                # clipped to axes bbox -> edges cut the bonds
+    ax.set_xlim(c[0] - ext, c[0] + ext); ax.set_ylim(c[1] - ext, c[1] + ext)
+    ax.set_aspect('equal'); ax.set_xticks([]); ax.set_yticks([])
+
+
 def local_field_smooth(geo, C6_per, quantity='nu', k=18):
     """Per-triangle local ν or E, each triangle = physical homogenisation of its k nearest
     neighbours (smooth field for FILLED-triangle maps). Returns (nt,) values."""

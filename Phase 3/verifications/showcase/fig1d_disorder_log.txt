@@ -1,0 +1,3 @@
+    raw k range [3.096e-22, 18.11]  applied k min 3.096e-22  (KFLOOR=0.0, floored 0 bonds)
+  [fig1d disorder_hi rot90] target ν∈[-3.63,+7.18]  solver [-2.72,+3.07]  sim [-1.38,+1.62]  kmed=0.12
+saved fig1d_rot90_disorder.png

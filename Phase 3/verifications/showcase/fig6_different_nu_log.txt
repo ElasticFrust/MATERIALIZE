@@ -1,0 +1,4 @@
+  regular: max|achieved-target|=0.288
+  disorder_hi: max|achieved-target|=0.005
+  aniso_str: max|achieved-target|=0.269
+saved fig6_different_nu.png
