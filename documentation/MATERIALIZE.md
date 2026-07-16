@@ -316,30 +316,56 @@ and rest angles — i.e. $\bar g(s)$ is the metric whose edge lengths are $\ell_
 
 ### 4.2 What changes in the equations
 
-- **Energy.** Replace the fluctuation-only form by the full metric-mismatch energy
-  $E=\tfrac12\sum_s A(s)\,(g(s)-\bar g(s))^{2}=\tfrac12\sum_s A(s)\,(\Delta g+\delta g(s))^{2}$ — same
-  algebra, but now $A(s)$ and the edge carriers $q_e$ are built from the **rest** geometry $\bar g$,
-  and the driving pre-stress $-A\,\Delta\bar g_\text{rep}$ acquires a **residual** part from the
-  incompatibility of $\bar g$.
-- **Curvature constraint (C2).** Currently $\mathcal C\,\delta g=0$ (fluctuation is curvature-free).
-  For a curved reference it becomes $\mathcal C\,\delta g = -\operatorname{inc}(\bar g)$ — the
-  fluctuation must *absorb* the reference's disclination density; a nonzero RHS. The multiplier
-  $\kappa$ (the Airy potential) then reports the **residual stress field** directly.
-- **Homogenisation.** $C_\text{eff}$ is still $\tfrac1N\sum_s(\mathbb 1+W)^{\!\top}A(\mathbb 1+W)$, but
-  one additionally reports the **prestress tensor** $\sigma_0=\langle A(s)\,\delta g_\text{res}(s)\rangle$
-  from the residual fluctuation at zero applied load.
+Write the reference per triangle as $\bar g(s)=\bar g+\delta\bar g(s)$ (a patch-mean plus a
+fluctuation) and the actual metric as $g(s)=g+\delta g(s)$, with $\Delta g=g-\bar g$ and the response
+ansatz $\delta g(s)=W(s)\,\Delta g$ **defined exactly as before**. Two regimes:
 
-### 4.3 The one blocker to fix first
+- **Slowly-varying reference** ($\delta\bar g\approx0$ over the patch): $\bar g$ is a relabelled
+  constant, so $\Delta g$ is generically nonzero but the local problem is the current one to leading
+  order. *Nothing changes* — just rename the reference metric.
+- **Patch-scale reference** ($\delta\bar g\neq0$): the genuinely new case, and the changes localise to
+  a single **source term** — the operators are untouched:
 
-In the *current* solver the rest length enters **only** through the ratio $k_e/\ell_e^2$ (it rescales
-the stiffness). So designing $\ell_0$ at fixed node geometry is **mathematically degenerate** with
-designing $k$ — the incompatible-reference physics is invisible. Making residual stress real requires
-decoupling $\ell_0$ from $k$: the edge carrier $q_e$ and the curvature operator $\mathcal C$ must be
-evaluated at the **rest** geometry $\bar g(\ell_0)$ rather than the actual node geometry, so that an
-incompatible $\{\ell_{0,e}\}$ produces a nonzero $\operatorname{inc}(\bar g)$ and hence real
-prestress. That single change (plus reporting $\sigma_0$) turns the existing metric machinery into a
-residual-stress designer. It is the highest-value, most self-contained extension of the framework
-(FUTURE_DIRECTIONS #1).
+  - **Energy.** $E=\tfrac12\sum_s A(s)\,(g(s)-\bar g(s))^2=\tfrac12\sum_s A(s)\,(\Delta g+\delta
+    g(s)-\delta\bar g(s))^2$. The bare tensor $A(s)$ and the edge carriers $q_e$ are the **same**
+    (built from the actual/lab geometry, as now) — they are *not* rebuilt from the rest geometry.
+  - **Stationarity.** Minimising over the loading-independent $W$ (equivalently, over the field
+    $\delta g$ then stripping $\Delta g$ — how the existing solve is written) gives the per-triangle
+    force balance
+    $A(s)^{\mu\nu\alpha\beta}\bigl(\Delta g+\delta g(s)-\delta\bar g(s)\bigr)_{\alpha\beta}
+    +[\lambda_e,\kappa_v,\chi]^{\mu\nu}=0$, free index pair $\mu\nu$. The **constraints are
+    unchanged** — edge $J\delta g=0$, curvature $C\delta g=0$, mean $M_S\delta g=0$ are conditions on
+    the *actual* field $\delta g$ (flat-space achievability of the real network), still homogeneous;
+    the reference's incompatibility does **not** go on a constraint RHS. The *only* new element is the
+    substitution $(\Delta g+\delta g)\to(\Delta g+\delta g-\delta\bar g)$, i.e. $\delta\bar g$ enters
+    as the added source $A(s)^{\mu\nu\alpha\beta}\delta\bar g(s)_{\alpha\beta}$ on the RHS. Setting
+    $\delta\bar g=0$ recovers the current equation exactly (§3.3).
+  - **Homogenisation / prestress.** $C_\text{eff}$ is unchanged; additionally report the **prestress**
+    carried in the mismatch $\sigma(s)=A(s)\,(\Delta g+\delta g(s)-\delta\bar g(s))$.
+
+A caveat that separates this from the current solve: once $\delta\bar g\neq0$ the RHS source
+$A\,\delta\bar g$ is **not** proportional to $\Delta g$, so $\Delta g$ can no longer be cleanly
+*stripped* as it is now — the precise handling (and the finite base-strain / geometric-stiffening
+correction when the patch is itself prestressed) is under active discussion. Full derivation with
+indices in the working note [`residual_stress_note.pdf`](residual_stress_note.pdf).
+
+### 4.3 What must actually change in the solver
+
+Much lighter than a rewrite of the metric machinery. The current solver has **no $\delta\bar g$
+input** — the reference is pinned to the actual geometry (equivalently $\bar g=I$, $\delta\bar g=0$),
+and rest length enters only through $k_e/\ell_e^2$, so $\ell_0$-design is degenerate with $k$-design.
+Making residual stress real means: **(i)** supply $\delta\bar g(s)$ as an input (the incompatible
+reference-metric fluctuation, physically a rest-length/-angle mismatch); **(ii)** add the source term
+$A(s)\,\delta\bar g(s)$ to the RHS of the existing block solve — the operators $A$, $q_e$, and the
+edge/curvature/mean constraints are **untouched**; **(iii)** read out the prestress from the mismatch.
+It stays differentiable (same factorisation).
+
+The genuine open problem is **not** the solver mechanics but the **self-consistent definition of
+$\delta\bar g(s)$** — how to split a prescribed reference field into the patch-mean $\bar g$ (absorbed
+into $\Delta g$, Regime 1) and the sub-patch fluctuation $\delta\bar g$ (the source, Regime 2),
+including the scale at which "sub-patch" is defined. That, and the finite-base-strain treatment, are
+deferred (see FUTURE_DIRECTIONS #1). This remains the highest-value, most self-contained extension of
+the framework.
 
 > **Design remark.** Because the intrinsic solve is already curvature-aware (it *has* the operator
 > $\mathcal C$ and its multiplier $\kappa$), the code is structurally close to this: the constraint

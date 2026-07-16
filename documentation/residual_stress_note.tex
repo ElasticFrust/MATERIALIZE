@@ -1,0 +1,136 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{parskip}
+
+\newcommand{\dg}{\delta g}
+\newcommand{\dgb}{\delta\bar g}
+\newcommand{\Dg}{\Delta g}
+\newcommand{\avg}[1]{\left\langle #1 \right\rangle}
+
+\title{\vspace{-1.5em}Residual stress in the D2C metric solve\\
+\large a reference metric that fluctuates on the patch scale}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-3em}
+
+\section*{Setup}
+
+Per triangle $s$, split the \emph{actual} and \emph{reference} metrics into a macroscopic mean plus a
+fluctuation:
+\[
+g_s = g + \dg_s,
+\qquad
+\bar g_s = \bar g + \dgb_s,
+\qquad
+\Dg \equiv g - \bar g .
+\]
+The new ingredient is $\dgb_s$: the reference metric now varies \emph{within} a patch, not only the
+actual metric. The fluctuation is \emph{not} a free field --- it is fixed by the response ansatz
+\[
+\dg_s = W_s\,\Dg ,
+\]
+and the variational unknown of the forward solve is the loading-independent operator $W_s$. The energy
+is minimised \textbf{with respect to $W_s$} (subject to the compatibility constraints), not with respect
+to $\dg_s$. This is the point I first got wrong.
+
+\paragraph{What does \emph{not} change.}
+The edge carrier $q_e$ is a coordinate vector (lab geometry); it is unchanged. The compatibility
+constraints (edge / angle--curvature / area-mean) encode \emph{flat-space achievability of the actual
+network} --- the nodes really sit in the plane --- and are unchanged. The reference $\bar g_s$ need
+\emph{not} be flat-embeddable; its incompatibility does \textbf{not} enter as a constraint right-hand
+side.
+
+\section*{Regime 1 --- $\bar g$ slowly varying (scale $\gg$ patch)}
+
+Over one patch $\bar g$ is essentially constant, so $\dgb_s \approx 0$. Then $\bar g$ is merely a
+relabelled constant reference: $\Dg = g-\bar g$ is generically nonzero, but the local problem is the
+old one to leading order,
+\[
+\dg_s = W_s\,\Dg,\qquad W_s \text{ exactly as before.}
+\]
+Nothing to change --- ``just rename the reference metric.''
+
+\section*{Regime 2 --- $\bar g$ varying on the patch scale ($\dgb_s \neq 0$)}
+
+\paragraph{Energy.}
+Write the local mismatch as $r_s \equiv (I+W_s)\Dg - \dgb_s$. Then
+\[
+E = \sum_s A_s\,(g_s-\bar g_s)^2
+  = \sum_s A_s\,\bigl(\Dg + \dg_s - \dgb_s\bigr)^2
+  = \sum_s r_s^\top A_s\, r_s ,
+\qquad A_s(\cdot)^2 \equiv (\cdot)^\top A_s (\cdot),
+\]
+with $A_s$ and $q_e$ built from the same coordinate geometry as before.
+
+\paragraph{Stationarity (matched to the existing solve).}
+The variational unknown is the loading-independent operator $W_s$, with the field fixed by
+$\dg_s = W_s\Dg$; minimising over $W_s$ is equivalent to minimising over the field $\dg_s$ and then
+stripping $\Dg$ (everything is linear in it), which is how the existing solve is written
+(\texttt{INTRINSIC\_METRIC\_SOLVE.md} \S3.3). In the metric two-index notation
+$g(s)_{\mu\nu}$, with four-index $A(s)^{\mu\nu\alpha\beta}$, four-index
+$W(s)^{\alpha\beta}_{\mu\nu}$ (9 components), and $\dg(s)_{\mu\nu}=W(s)^{\alpha\beta}_{\mu\nu}\Dg_{\alpha\beta}$,
+the per-triangle stationarity is
+\[
+A(s)^{\mu\nu\alpha\beta}\bigl(\Dg+\dg(s)-\dgb(s)\bigr)_{\alpha\beta}
+\;+\;\bigl[\,\lambda_e,\ \kappa_v,\ \chi\ \text{terms}\,\bigr]^{\mu\nu}\;=\;0,
+\qquad \dg(s)=W(s)\Dg,
+\]
+with the \emph{single} free index pair $\mu\nu$ and the bracket the edge ($\lambda_e$) $+$ curvature
+($\kappa_v$) $+$ area-mean ($\chi$) multiplier terms. Setting $\dgb=0$ is exactly the existing boxed
+equation $A(s)^{\mu\nu\alpha\beta}(\Dg+\dg(s))_{\alpha\beta}+[\cdots]^{\mu\nu}=0$; stripping $\Dg$ then
+gives the loading-independent operator solve with right-hand side $-A$ (\texttt{INTRINSIC\_METRIC\_SOLVE.md}
+Eq.~after the Lagrangian). The \emph{only} new element is the substitution
+$(\Dg+\dg)\to(\Dg+\dg-\dgb)$ inside the mismatch. (Sign: $-\dgb$ from the energy; a $+\dgb$
+convention flips it.)
+
+\paragraph{Why not a trailing $\Dg$.}
+Differentiating the energy w.r.t.\ $W$ (rather than the field) attaches an extra factor
+$\partial\dg/\partial W = \Dg$, giving $f_s\otimes\Dg$ with $f_s$ the bracket above. The key point is that
+the \emph{same} $\Dg$ multiplies the constraint variation: the three constraints are imposed on the
+\textbf{field} $\dg=W\Dg$ --- edge $(J\dg)_e=0$, curvature $(C\dg)_v=0$, mean $M_S\dg=0$
+(\texttt{INTRINSIC\_METRIC\_SOLVE.md} \S3) --- so each carries $\Dg$, and its $W$-variation carries the
+identical trailing $\Dg_{\rho\sigma}$ with the same free indices. It factors out, leaving $f_s=0$ ---
+the force-balance form above, free indices $\mu\nu$ only, not $\mu\nu\alpha\beta$. (A term would survive
+\emph{only} if a constraint were operator-level, on $W$ with no $\Dg$; none is.) Carrying the trailing
+$\Dg$ would over-index the equation relative to the existing one.
+
+\paragraph{What the reference fluctuation does.}
+$\dg(s) = W(s)\Dg$ holds \emph{always}. The reference fluctuation $\dgb(s)$ enters only through the
+mismatch $(\Dg+\dg-\dgb)$, i.e.\ as the \textbf{added source} $A(s)^{\mu\nu\alpha\beta}\dgb(s)_{\alpha\beta}$
+on the right-hand side of the \emph{same} block system: it shifts the target the mismatch is measured
+against, so the solved response acquires a $\dgb$-driven correction. The operator $A(s)$, the carriers
+$q_e$, and the constraints (edge / curvature / mean) are untouched. (Note: once $\dgb\neq0$ the source is
+no longer purely $\propto\Dg$, so $\Dg$ cannot be cleanly stripped as at $\dgb=0$ --- the precise
+consequence of that, and the self-consistent definition of $\dgb$, are deferred.)
+
+\section*{Consequences}
+
+\begin{itemize}[leftmargin=1.6em]
+\item \textbf{$q_e$, $A_s$, and the constraints are unchanged}, and $W$ is still obtained from the same
+KKT system --- now with the extra source $A(s)^{\mu\nu\alpha\beta}\dgb(s)_{\alpha\beta}$ on the
+right-hand side.
+\item \textbf{Cheap and differentiable.} It is an added source term (plus the mismatch/pre-stress
+readout), not new operators; the existing factorisation and its gradients are reused.
+\item \textbf{Reduces correctly.} As $\dgb_s \to 0$ (slowly varying reference) everything collapses to the
+current framework.
+\item \textbf{Residual / pre-stress} lives in the mismatch $\sigma_s = A_s r_s = A_s\bigl[(I+W_s)\Dg
+- \dgb_s\bigr]$, whose $-A_s\dgb_s$ piece is the reference-frustration contribution. Exactly how the
+zero-macroscopic-load residual stress is extracted within the $\dg_s = W_s\Dg$ ansatz is left open here
+(see below), not asserted.
+\end{itemize}
+
+\section*{The genuine open problem}
+
+Everything above assumes $\dgb_s$ is \emph{given}. The real work is defining it \emph{self-consistently}:
+what counts as ``small scale,'' and how to split a prescribed reference field into the patch-mean $\bar g$
+(absorbed into $\Dg$, Regime~1) versus the sub-patch fluctuation $\dgb_s$ (the source, Regime~2). That
+scale separation --- a self-consistent definition of the patch reference metric --- is the conceptual
+crux, not the solver mechanics.
+
+\end{document}

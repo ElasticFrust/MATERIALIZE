@@ -12,7 +12,7 @@ do first.
 
 | # | direction | value | size | touches protected solver? |
 |---|---|---|---|---|
-| 1 | Incompatible reference metric → **residual stress** (decouple $\ell_0$) | ★★★★★ | **L** | yes |
+| 1 | Incompatible reference metric → **residual stress** (add $\delta\bar g$ source) | ★★★★★ | **M–L** | yes |
 | 2 | **Stability / anti-mechanism** constraint in the design loss | ★★★★☆ | **S–M** | no |
 | 3 | Differentiable **open-boundary** (cut-and-stretch) forward | ★★★★☆ | **M** | partial |
 | 4 | **Connectivity / topology** design (sparsify $k$) | ★★★★☆ | **M** | no |
@@ -36,23 +36,33 @@ formulation is already written in exactly that (incompatible-elasticity) languag
 natural, high-payoff generalisation. See [`MATERIALIZE.md` §4](MATERIALIZE.md#4-toward-incompatible-elasticity-residual-stress--theory-ready)
 for the theory, ready.
 
-**The blocker to fix first.** In the current solver the rest length enters *only* through
-$k_e/\ell_e^2$, so designing $\ell_0$ is degenerate with designing $k$ and the incompatible-reference
-physics is invisible. The fix: build the edge carrier $q_e$ and the curvature operator $\mathcal C$
-from the **rest** geometry $\bar g(\ell_0)$ instead of the actual node geometry, so an incompatible
-$\{\ell_{0,e}\}$ yields a nonzero $\operatorname{inc}(\bar g)$; make the curvature constraint RHS
-$\mathcal C\,\delta g=-\operatorname{inc}(\bar g)$; and report the residual prestress
-$\sigma_0=\langle A\,\delta g_\text{res}\rangle$ (the Airy multiplier $\kappa$ already carries it).
+**The mechanism (corrected).** Let the reference fluctuate on the patch scale,
+$\bar g(s)=\bar g+\delta\bar g(s)$, keeping the response ansatz $\delta g(s)=W(s)\,\Delta g$. The
+operators are **unchanged**: the edge carrier $q_e$, the bare tensor $A(s)$, and the edge/curvature/mean
+constraints (which act on the *actual* field $\delta g$, still homogeneous) all stay as they are — the
+reference's incompatibility does **not** go on a constraint RHS. The single change is the substitution
+$(\Delta g+\delta g)\to(\Delta g+\delta g-\delta\bar g)$ in the energy, so $\delta\bar g$ enters as an
+added **source** $A(s)\,\delta\bar g(s)$ on the RHS of the same block solve; $\delta\bar g=0$ recovers
+the current equation exactly. See [`MATERIALIZE.md` §4.2](MATERIALIZE.md#42-what-changes-in-the-equations)
+and the indexed working note [`residual_stress_note.pdf`](residual_stress_note.pdf).
 
-**Why L, not M:** it touches the protected `forward_solver_torch.py` (constraint assembly + a new
-RHS + a new output), needs its own physical ground truth (a prestressed-network virial with residual
-stress) and regression tests, and the inverse engine needs a `'prestress'` objective kind. But the
-machinery (curvature operator, metric language) already exists — this is *completing* the theory, not
-inventing it.
+**The blocker.** The current solver has **no $\delta\bar g$ input** — the reference is pinned to the
+actual geometry ($\bar g=I$), and rest length enters only through $k_e/\ell_e^2$, so $\ell_0$-design is
+degenerate with $k$-design. The fix is to (i) supply $\delta\bar g(s)$, (ii) add the source
+$A(s)\,\delta\bar g(s)$ to the RHS, (iii) report the prestress from the mismatch
+$\sigma(s)=A(s)(\Delta g+\delta g-\delta\bar g)$. The genuinely open problem is **not** the mechanics
+but the **self-consistent definition of $\delta\bar g$** (the patch-scale split of a prescribed
+reference field) and the finite-base-strain treatment — both under active discussion, deferred.
 
-**Deliverables:** $\ell_0$ non-degenerate; a `prestress` output + objective; a residual-stress demo
-(e.g. design a target disclination pattern / a self-buckling sheet) verified against a prestressed
-simulation.
+**Why it still touches the protected core:** it modifies `forward_solver_torch.py` (a new RHS source +
+a prestress output), needs its own physical ground truth (a prestressed-network virial with residual
+stress) and regression tests, and the inverse engine needs a `'prestress'` objective kind. But it is an
+*added source term*, **not** a rebuild of the operators — lighter than first framed; the metric
+machinery already does the rest.
+
+**Deliverables:** a $\delta\bar g$ input + `prestress` output/objective ($\ell_0$ non-degenerate); a
+residual-stress demo (e.g. a target disclination pattern / a self-buckling sheet) verified against a
+prestressed simulation.
 
 ---
 
