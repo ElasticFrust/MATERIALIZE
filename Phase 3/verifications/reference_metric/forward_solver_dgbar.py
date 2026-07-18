@@ -64,6 +64,26 @@ constant A). Capturing it requires a NON-linear term where σ⁰ multiplies the 
   TODO: add the geometric-stiffness operator G(σ⁰) so C_tangent = A + G(σ⁰).
 
 --------------------------------------------------------------------------------------------------
+DIFFERENCES FROM THE PREVIOUS forward_dgbar.py  (that file has been removed; verified equivalent
+on the operator+source path by test_forward_solver_dgbar.py — ḡ=I reduction, covariant collapse,
+sphere regression)
+--------------------------------------------------------------------------------------------------
+- `poisson` / `young` are now the COVARIANT moduli (ḡ-orthonormal directions + √det ḡ). The old
+  code returned the FLAT (ḡ=I-convention) values as `nu` / `E`, which are frame-dependent and WRONG
+  when ḡ≠I. The flat values are still returned, but explicitly as `poisson_flat` / `young_flat`.
+- The `ref_in_operator` flag is GONE. This solver ALWAYS puts ḡ in the operator (rest lengths) AND
+  as the source — the correct formulation. The old flag's `ref_in_operator=False` ("source-only",
+  A built from the actual geometry) was an exploration that computes a compressed-state response,
+  not the physical modulus; it is not offered here.
+- The exploratory eigenstrain prestress (`stress_eigen = −A(𝟙+W)δḡ`, `sigma0_eigen`) is REMOVED. It
+  was found to be a worse (local, un-relaxed) stand-in for the relaxed source and added noise.
+- Renamed keys: old `Ceff` → `elastic_tensor`; old `C6` (which was the per-triangle tensor) →
+  `per_triangle`. `sigma0`, `stress_field`, `dg0`, `W` are unchanged.
+- Structured as a `DGBarSolver` class with documented steps instead of one inline function. The
+  underlying operators/physics are identical (both reuse the Phase 2 core), so the numbers on the
+  operator+source path match the old code to machine precision.
+
+--------------------------------------------------------------------------------------------------
 NOTES
 --------------------------------------------------------------------------------------------------
 - Does NOT modify the protected Phase 2 core. It REUSES the core's operators (edge/curvature/mean
@@ -227,7 +247,9 @@ class DGBarSolver:
         nu_cov, E_cov = self._covariant_nuE(C6, gbar_avg, [0.0])
 
         out = dict(
-            elastic_tensor=C6,
+            elastic_tensor=C6,                                             # old key was 'Ceff'
+            # poisson/young are COVARIANT (old forward_dgbar returned the flat 'nu'/'E' here, which
+            # are frame-dependent and wrong when ḡ≠I). Flat values kept as *_flat for reference.
             poisson=float(nu_cov[0]), young=float(E_cov[0]),
             poisson_flat=float(core_out['poisson']), young_flat=float(core_out['young']),
             W=core_out['W'].numpy(), per_triangle=core_out['per_triangle'].numpy(),
