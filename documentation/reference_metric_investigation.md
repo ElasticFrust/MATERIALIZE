@@ -68,6 +68,13 @@ The intrinsic and simulated fields agree at **correlation 0.993**, with a best-f
 **½** — the known metric-vs-engineering strain convention (`Δg = δ(L²) = 2·ε·L²`). So the residual
 **stress** is correct.
 
+**Generic (random) reference (`random_ref_compare.py`, fig `random_ref_compare.png`).** To confirm
+this is not special to the structured sphere, we perturb every bond's rest length by a small random
+factor (η=5%) — a generically incompatible reference — feeding the *same* perturbation to both the
+simulation (per-bond rest lengths) and the solver (per-triangle `ḡ_s` reconstructed from its 3 edge
+rest lengths, `ℓ0²=ḡ_s:q_e`). The residual-pressure fields agree at **correlation 0.9955**. So the
+residual stress is validated on both a structured and a random incompatible reference.
+
 ---
 
 ## 4. The response is NOT captured — geometric stiffening (the gap)
@@ -84,6 +91,18 @@ The simulation carries an isotropic residual tension; that prestress **geometric
 network (a real bond's tangent stiffness is `k n̂n̂ + (t/L)(𝟙−n̂n̂)`; the `(t/L)` prestress term is
 absent from a constant `A`), collapsing ν from ~1/3 to ~0.03. The linear D2C has a fixed `A` and
 cannot see it.
+
+The **random** reference (`random_ref_compare.py`) shows the same gap at smaller amplitude:
+
+| | ν (angle-avg) | E (angle-avg) |
+|---|---|---|
+| solver | +0.332 | 1.161 |
+| simulation | +0.178 | 1.413 |
+
+The solver sits at the regular values (rest-length disorder alone barely moves ν, E); the simulation
+is stiffer and less auxetic. The response gap scales with the prestress — the random prestress
+(rms 0.025) is ~⅓ of the sphere's (0.074) and its ν-shift (0.15) is ~½ of the sphere's (0.30) — the
+signature of the missing `σ⁰`-dependent term.
 
 ### Why the linear equation cannot produce it (settled numerically)
 
@@ -123,7 +142,10 @@ response.
 | file | what |
 |---|---|
 | `forward_solver_dgbar.py` | the reference-metric solver (operator + source, covariant readout) |
+| `test_forward_solver_dgbar.py` | hard-assertion checks: ḡ=I reduction, covariant collapse, sphere pin |
+| `recover_old_results.py` | regression: recovers the old isotropic & anisotropic ν/E numbers |
 | `cov_poisson.py` / `.png` | covariant ν(θ), E(θ): two descriptions collapse |
 | `sphere_reference.py` / `.png` | spherical incompatible reference → residual stress field |
 | `sphere_sim_compare.py` / `.png` | residual stress vs direct simulation (corr 0.993) |
 | `sphere_response_compare.py` / `.png` | response vs simulation — the geometric-stiffening gap |
+| `random_ref_compare.py` / `.png` | random incompatible reference: residual stress (0.9955) + E, ν vs sim |
