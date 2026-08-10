@@ -54,6 +54,19 @@ $\sigma(s)=A(s)(\Delta g+\delta g-\delta\bar g)$. The genuinely open problem is 
 but the **self-consistent definition of $\delta\bar g$** (the patch-scale split of a prescribed
 reference field) and the finite-base-strain treatment — both under active discussion, deferred.
 
+**Open sub-problem — the reference-metric split (a correct finite-size theory, not a convention pick).**
+Defining $\delta\bar g$ is upstream of implementing it. The decomposition $\bar g=\bar g_\text{bg}+\delta\bar g$
+has **two independent axes**: a **scale filter** (macroscopic $\Delta g$ vs sub-patch reference) and a
+**compatible/incompatible (St-Venant, $\operatorname{inc}$) projection** — only the incompatible part
+$\operatorname{inc}(\bar g)\neq 0$ sources stress. In the current **flat** setting the second axis collapses
+to $\bar g$ **constant vs non-constant** (any *compatible* $\bar g$ is flattenable to constant by a
+coordinate choice); the full compatible/incompatible distinction earns its keep only for non-flat / higher-D
+embeddings (#11). Candidate backgrounds: **(A)** uniform patch-mean [perturbative default], **(B)**
+systematic-vs-disorder, **(C)** spectral / scale-cutoff, **(D)** compatible/incompatible projection,
+**(E)** energy-optimal compatible projection, **(F)** ensemble mean (unifies A/B). The correct split + its
+finite-size corrections — especially **ordered finite-size curvature**, where scales do *not* separate and
+not everything belongs in $\delta\bar g$ — is a genuine theory task, upstream of the $\delta\bar g$ source below.
+
 **Why it still touches the protected core:** it modifies `forward_solver_torch.py` (a new RHS source +
 a prestress output), needs its own physical ground truth (a prestressed-network virial with residual
 stress) and regression tests, and the inverse engine needs a `'prestress'` objective kind. But it is an

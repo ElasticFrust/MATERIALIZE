@@ -63,10 +63,18 @@ def c6_to_nuE(c6):
 
 
 def Ceff_nuE(mesh, W3, bare):
-    W9 = torch.as_tensor(W3_to_W9(W3)); A = torch.as_tensor(bare)
-    C6 = fst._compute_actual_elastic_tensor(A, W9).numpy()       # (N,6)
-    w = mesh['areas'] / mesh['areas'].sum()
-    return c6_to_nuE((C6 * w[:, None]).sum(0))
+    # REMOVED 2026-08-10 — the legacy AREA-WEIGHTED metric average is physically WRONG: it biases
+    # nu on unequal-area (disordered/anisotropic) meshes and overstates auxeticity. The correct
+    # homogenisation is the UNWEIGHTED mean of C(s) (= physical energy=virial modulus). Use
+    # verification_tools/physical_homog.py (sim_nuE / virial_nuE / energy_nuE) as ground truth.
+    # Original body preserved for historical restore:
+    #     W9 = torch.as_tensor(W3_to_W9(W3)); A = torch.as_tensor(bare)
+    #     C6 = fst._compute_actual_elastic_tensor(A, W9).numpy()       # (N,6)
+    #     w = mesh['areas'] / mesh['areas'].sum()
+    #     return c6_to_nuE((C6 * w[:, None]).sum(0))
+    raise NotImplementedError(
+        "Ceff_nuE (legacy area-weighted metric average) removed as physically wrong; "
+        "use verification_tools/physical_homog.py (sim_nuE / virial_nuE / energy_nuE).")
 
 
 def main():
