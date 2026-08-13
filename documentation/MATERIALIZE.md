@@ -45,10 +45,10 @@ interior vertex by $v$.
 | $q_e$ | rank-1 **edge carrier** $q_e^{\mu\nu}=\Delta x_e^{\mu}\Delta x_e^{\nu}$ (a symmetric 2×2, i.e. a vec3 in Voigt) |
 | $S_s$ | reference **area** of triangle $s$ |
 | $g(s)$ | the 2×2 **metric** of triangle $s$ |
-| $\bar g$ | **reference (rest) metric**; here $\bar g = I$ (flat, unstressed). Section 4 generalises this |
-| $\Delta\bar g$ (code `load`, `Δg`) | the **applied macroscopic strain** (uniform affine metric change); a vec3 $[xx,xy,yy]$ |
+| $\bar g$ | **reference metric** (the metric $\ell_0$ encodes); here $\bar g = I$ (flat, unstressed). §4 generalises — a general $\bar g$ need **not** be a zero-energy "rest" state |
+| $\Delta g$ (code `load`) | the **applied macroscopic strain** (uniform affine metric change); a vec3 $[xx,xy,yy]$ |
 | $\delta g(s)$ | the **non-affine fluctuation** of triangle $s$'s metric (the unknown of the homogenisation) |
-| $W(s)$ (code `W`) | per-triangle **strain-concentration operator**: $\delta g(s)=W(s)\,\Delta\bar g$ (9 comps/triangle) |
+| $W(s)$ (code `W`) | per-triangle **strain-concentration operator**: $\delta g(s)=W(s)\,\Delta g$ (9 comps/triangle) |
 | $A(s)$ (code `bare`) | per-triangle **bare elastic tensor** = the spring-energy metric Hessian $H_s$ (below) |
 | $H_s$ | $H_s=\sum_{e\in s}\frac{k_e}{4\ell_e^2}\,q_e q_e^{\!\top}$ — the 3×3 (Voigt) form of $A(s)$ |
 | $C(s)$ (code `per_triangle`) | per-triangle **actual** tensor $(\,\mathbb 1+W(s))^{\!\top}A(s)(\mathbb 1+W(s))$ |
@@ -181,7 +181,7 @@ geometry being linearised."
 
 The solver does **not** answer "what happens under this one load." It solves, once, for the
 strain-concentration field $W(s)$ — the *complete* linear map from any macroscopic strain to each
-triangle's local metric response, $\delta g(s)=W(s)\,\Delta\bar g$. From that single object fall, with
+triangle's local metric response, $\delta g(s)=W(s)\,\Delta g$. From that single object fall, with
 no further solves: the homogenised tensor $C_\text{eff}$ (all components at once), the directional
 $\nu(\theta),E(\theta)$ at **every** angle, and the per-triangle strain/stress under **any** load.
 
@@ -196,10 +196,10 @@ cannot be prescribed fully independently (realizability, Section 7).
 
 ### 3.4 The governing equations
 
-**Energy** (loading $\Delta\bar g$ fixed; minimise over the fluctuation field $\delta g$):
+**Energy** (loading $\Delta g$ fixed; minimise over the fluctuation field $\delta g$):
 $$
 E[\delta g] \;=\; \tfrac12 \sum_s A(s)^{\mu\nu\alpha\beta}
-\bigl(\Delta\bar g+\delta g(s)\bigr)_{\mu\nu}\bigl(\Delta\bar g+\delta g(s)\bigr)_{\alpha\beta},
+\bigl(\Delta g+\delta g(s)\bigr)_{\mu\nu}\bigl(\Delta g+\delta g(s)\bigr)_{\alpha\beta},
 \qquad
 A(s)\ \leftrightarrow\ H_s=\sum_{e\in s}\frac{k_e}{4\ell_e^2}\,q_e q_e^{\!\top}.
 $$
@@ -242,11 +242,11 @@ by* compatibility, hence harmless, whereas the plain mean injects an inconsisten
 $$
 \begin{pmatrix} A & J^{\!\top} & \mathcal C^{\!\top} & M_S^{\!\top}\\ J&0&0&0\\ \mathcal C&0&0&0\\ M_S&0&0&0\end{pmatrix}
 \begin{pmatrix}\delta g\\ \lambda\\ \kappa\\ \chi\end{pmatrix}
-=\begin{pmatrix}-A\,\Delta\bar g_\text{rep}\\ 0\\ 0\\ 0\end{pmatrix}.
+=\begin{pmatrix}-A\,\Delta g_\text{rep}\\ 0\\ 0\\ 0\end{pmatrix}.
 $$
-The driving term $-A\,\Delta\bar g_\text{rep}$ is the affine pre-stress ($\Delta\bar g$ replicated on
-every triangle). Because everything is linear in $\Delta\bar g$, **stripping it** yields the
-loading-independent response operator $W$ directly (replace the RHS $-A\,\Delta\bar g_\text{rep}\to
+The driving term $-A\,\Delta g_\text{rep}$ is the affine pre-stress ($\Delta g$ replicated on
+every triangle). Because everything is linear in $\Delta g$, **stripping it** yields the
+loading-independent response operator $W$ directly (replace the RHS $-A\,\Delta g_\text{rep}\to
 -A$ and $\delta g\to W$). This is the "solve once, get the whole operator" of Section 3.3.
 
 **Homogenisation** (Section 3.5): the **unweighted** mean of the per-triangle actual tensors,
@@ -258,7 +258,7 @@ $$
 
 The final effective tensor is the **unweighted** per-triangle mean of $C(s)$ — the true physical
 (energy = virial) modulus. ($A(s)$ carries no area prefactor, so the total energy is an unweighted
-*sum* and its $\Delta\bar g$-Hessian is the unweighted mean.) An area weight *is* used in the
+*sum* and its $\Delta g$-Hessian is the unweighted mean.) An area weight *is* used in the
 compatibility normalisation (C3), where it is correct; it is **not** used in the final average, where
 it would bias $\nu$ on disordered/anisotropic meshes. Verified against virial and energy-Hessian
 ground truths (`verification_tools/physical_homog.py`). `physical_units=True` additionally rescales
@@ -353,7 +353,8 @@ indices in the working note [`residual_stress_note.pdf`](residual_stress_note.pd
 
 Much lighter than a rewrite of the metric machinery. The current solver has **no $\delta\bar g$
 input** — the reference is pinned to the actual geometry (equivalently $\bar g=I$, $\delta\bar g=0$),
-and rest length enters only through $k_e/\ell_e^2$, so $\ell_0$-design is degenerate with $k$-design.
+and rest length enters only through $k_e/\ell_e^2$, so $\ell_0$-design *appears* degenerate with
+$k$-design (a flat-gauge artefact — $\bar g=\bar g(\ell_0)$ in general; see §10).
 Making residual stress real means: **(i)** supply $\delta\bar g(s)$ as an input (the incompatible
 reference-metric fluctuation, physically a rest-length/-angle mismatch); **(ii)** add the source term
 $A(s)\,\delta\bar g(s)$ to the RHS of the existing block solve — the operators $A$, $q_e$, and the
@@ -500,7 +501,7 @@ target over a region (`region=None` ⇒ global; index array ⇒ local).
 
 Arguments: `target` (scalar / vec3 / 6-vec / $\theta$-profile as appropriate); `region` (indices or
 `None`); `weight` (scalar in the summed loss); `thetas` (angle grid for directional kinds); `load`
-(applied macro $\Delta\bar g$ vec3 — **required** for strain/stress); `homogeneity` (>0 ⇒ variance
+(applied macro $\Delta g$ vec3 — **required** for strain/stress); `homogeneity` (>0 ⇒ variance
 penalty, Section 7.5).
 
 **`optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter, n_restarts, reg, seed)`** — runs
@@ -550,13 +551,13 @@ anisotropic), whereas `Objective('nu', −0.3)` gives range **0.011** and
 Because the solver returns `bare` ($A$) and `W`, the *actual* per-triangle strain and stress under any
 applied load are one differentiable contraction:
 $$
-\varepsilon_\text{loc}(s)=(\mathbb 1+W(s))\,\Delta\bar g,\qquad
+\varepsilon_\text{loc}(s)=(\mathbb 1+W(s))\,\Delta g,\qquad
 \sigma_\text{loc}(s)=A(s):\varepsilon_\text{loc}(s)
 $$
 (`per_triangle_strain_stress(bare, W, load)`). This enables objectives on the raw local response:
 
-- `Objective('stress', target=[σxx,σxy,σyy], region=R, load=Δḡ)` — region-mean stress under `load`.
-- `Objective('strain', target=[εxx,εxy,εyy], region=R, load=Δḡ)` — region-mean strain. (Whole-cell mean
+- `Objective('stress', target=[σxx,σxy,σyy], region=R, load=Δg)` — region-mean stress under `load`.
+- `Objective('strain', target=[εxx,εxy,εyy], region=R, load=Δg)` — region-mean strain. (Whole-cell mean
   strain is degenerate — it equals the applied load — so `'strain'` is only meaningful on a
   **sub-region**; `'stress'` is designable everywhere.)
 
@@ -620,14 +621,14 @@ optimize(prob, [Objective('nu', +0.25, region=None,  weight=1.0),   # whole netw
 ```python
 import numpy as np
 from inverse_design import ANG
-optimize(prob, [Objective('nu_theta', 0.2 + 0.35*np.cos(2*ANG))], mode='k', n_iter=110)  # program
+optimize(prob, [Objective('nu_theta', 0.2 + 0.35*np.cos(4*ANG))], mode='k', n_iter=110)  # program 4θ ν (flat-E OK; a 2θ ν would need matching E-anisotropy — reciprocity)
 optimize(prob, [Objective('nu_theta', -0.2)],                     mode='k', n_iter=150)  # isotropise
 ```
 
 **Per-triangle stress/strain, and mode-selective response** — one network, two different responses to
 two load directions, designed in *one* `optimize()` call by querying the same $W$ at two loads:
 ```python
-LOAD_X, LOAD_Y = np.array([1.,0,0]), np.array([0,0,1.])   # x-pull and y-pull (macro Δḡ vec3)
+LOAD_X, LOAD_Y = np.array([1.,0,0]), np.array([0,0,1.])   # x-pull and y-pull (macro Δg vec3)
 disc, tri = ...                                            # two sub-regions
 optimize(prob, [Objective('strain', [DIL,0,DIL], disc, load=LOAD_X, homogeneity=0.6),  # disc dilates under +x
                 Objective('strain', [DIL,0,DIL], tri,  load=LOAD_Y, homogeneity=0.6)], # triangle under +y
@@ -696,17 +697,19 @@ python "Phase 3/test_inverse_design.py"     # 16 tests: round-trip, auxetic, loc
 - **ν and E are coupled** — both are contractions of the one $C_\text{eff}$; a `tensor`/`isotropic_c6`
   target pins the whole thing.
 - **Units** — $\nu$ always physical; pass `physical_units=True` for physical $E$ (Section 6.4).
-- **$\ell_0$ degeneracy** — the rest length currently enters *only* as $k/\ell_0^2$, so designing
-  $\ell_0$ at fixed geometry is degenerate with designing $k$. Real reference-metric / residual-stress
-  physics needs the fix in Section 4.3 (FUTURE_DIRECTIONS #1).
+- **$\ell_0$ / $\bar g$** — $\ell_0$ sets the reference metric $\bar g(\ell_0)$; it is **not** a free
+  knob independent of the geometry. In the current flat solver $\ell_0$ enters *only* as $k/\ell_0^2$,
+  so it *appears* degenerate with $k$ — but that is a **flat-gauge ($\bar g=I$, geometry-pinned)
+  artefact, not a true degeneracy** (moving $\ell_0$ at fixed $\bar g=I$ forces the geometry to change).
+  Real reference-metric / residual-stress physics needs the fix in Section 4.3 (FUTURE_DIRECTIONS #1).
 - **Near-mechanism fragility** — Section 3.7. `min(k)==0` alone is *not* a reliable mechanism
   indicator (softplus underflows for very negative raw-$k$); the honest metric is the per-triangle
   response *variance* within a region (what `homogeneity` controls) and, ultimately, the independent
   nonlinear simulation.
 - **Protected core** — do not modify `Phase 2/forward_solver_torch.py` without a passing
   `test_forward_solver.py` and the physical `verify_*` suite.
-- **Do not** compare against the legacy metric average (`test_cluster_Ceff.Ceff_nuE`) — superseded;
-  use the physical (virial/energy) ground truth.
+- **Do not** use the legacy area-weighted metric average — `test_cluster_Ceff.Ceff_nuE` has been
+  **removed/tombstoned** (it biased ν on unequal-area meshes); use the physical (virial/energy) ground truth.
 
 ---
 

@@ -48,8 +48,9 @@ the current equation exactly. See [`MATERIALIZE.md` §4.2](MATERIALIZE.md#42-wha
 and the indexed working note [`residual_stress_note.pdf`](residual_stress_note.pdf).
 
 **The blocker.** The current solver has **no $\delta\bar g$ input** — the reference is pinned to the
-actual geometry ($\bar g=I$), and rest length enters only through $k_e/\ell_e^2$, so $\ell_0$-design is
-degenerate with $k$-design. The fix is to (i) supply $\delta\bar g(s)$, (ii) add the source
+actual geometry ($\bar g=I$), and rest length enters only through $k_e/\ell_e^2$, so $\ell_0$-design
+*appears* degenerate with $k$-design (a flat-gauge artefact — $\bar g=\bar g(\ell_0)$ in general). The
+fix is to (i) supply $\delta\bar g(s)$, (ii) add the source
 $A(s)\,\delta\bar g(s)$ to the RHS, (iii) report the prestress from the mismatch
 $\sigma(s)=A(s)(\Delta g+\delta g-\delta\bar g)$. The genuinely open problem is **not** the mechanics
 but the **self-consistent definition of $\delta\bar g$** (the patch-scale split of a prescribed

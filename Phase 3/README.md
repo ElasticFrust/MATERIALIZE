@@ -112,8 +112,8 @@ res = optimize(prob, objs, mode='k', n_iter=150)
 import numpy as np
 from inverse_design import ANG
 prob = DesignProblem.periodic(N=20, eta=0.3, seed=0)
-# program a 2-fold Poisson profile:
-res = optimize(prob, [Objective('nu_theta', 0.2 + 0.35*np.cos(2*ANG))], mode='k', n_iter=110)
+# program a 4-fold Poisson profile (4θ is flat-E-compatible; a 2θ ν would need matching E-anisotropy — reciprocity):
+res = optimize(prob, [Objective('nu_theta', 0.2 + 0.35*np.cos(4*ANG))], mode='k', n_iter=110)
 # isotropise an anisotropic base to a chosen flat level (scalar broadcasts):
 res = optimize(prob, [Objective('nu_theta', -0.2)], mode='k', n_iter=150)
 # independent anisotropy: flat ν, directional E (mixed directional objectives):
@@ -135,8 +135,8 @@ res = optimize(prob, [Objective('nu', target=0.0)], mode='k', n_iter=60)
 ```
 
 **Design rest lengths instead of / with k** (`mode='l0'` or `'both'`) is supported and plumbed, but
-note: in the current solver `l0` enters only as `k/l0²`, so `l0`-design is mathematically
-degenerate with `k`-design until reference-metric / residual-stress physics is added
+note: in the current flat solver `l0` enters only as `k/l0²`, so `l0`-design *appears* degenerate
+with `k`-design (a flat-gauge artefact — `ḡ=ḡ(l0)` in general) until reference-metric / residual-stress physics is added
 (`../Phase 2/SOLVER_GUIDE.md` §7).
 
 ---
@@ -160,4 +160,4 @@ the PBC simulation via `verification_tools/physical_homog.sim_nuE`.
 - **Multi-start clustering / per-edge CV** solution-manifold analysis is deferred (`optimize` has
   `n_restarts` but no clustering yet).
 - **`l0` independent physics** (incompatible reference metric → residual stress) waits on the
-  reference-metric work; the variable is exposed but degenerate today.
+  reference-metric work; the variable is exposed but only *apparently* degenerate (flat-gauge artefact) today.

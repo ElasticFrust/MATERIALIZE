@@ -150,16 +150,19 @@ nu.backward()              # d(nu)/dk in k.grad — dense (<=600) or adjoint (>6
 - **Physical ground truth for sim-vs-solver:** `verification_tools/physical_homog.py`
   (`sim_nuE` = virial, `energy_nuE`) — the relaxed network's physical ν/E, used by the
   `verify_*` scripts.
-- **Do not** compare against the legacy metric average (`test_cluster_Ceff.Ceff_nuE`); it is the
-  superseded convention.
+- **Do not** use the legacy area-weighted metric average — `test_cluster_Ceff.Ceff_nuE` has been
+  **removed/tombstoned** (superseded; it biased ν on unequal-area meshes); use the physical
+  (virial/energy) ground truth.
 
 ---
 
 ## 7. Notes / caveats
 
-- **Reference lengths `l₀`** are a differentiable input, but in the current solver enter only as
-  `k/l₀²` — so designing `l₀` at fixed geometry is **mathematically degenerate with designing `k`**.
-  True reference-metric / residual-stress physics (incompatible `l₀`) is not yet implemented.
+- **Reference lengths `l₀`** are a differentiable input and set the reference metric `ḡ(l₀)` — they
+  are **not** a free knob independent of the geometry. In the current flat solver `l₀` enters only as
+  `k/l₀²`, so it *appears* degenerate with `k` — but that is a **flat-gauge (`ḡ=I`, geometry-pinned)
+  artefact, not a true degeneracy** (moving `l₀` at fixed `ḡ=I` forces the geometry to change). True
+  reference-metric / residual-stress physics (incompatible `l₀`) is not yet implemented.
 - `physical_units` E-scale is exact for periodic meshes; on open finite samples the boundary edges
   make it slightly approximate (`ν` is unaffected).
 - Protected core: changes to `forward_solver_torch.py` are gated by `test_forward_solver.py` and
