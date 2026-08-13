@@ -255,8 +255,11 @@ Three DISTINCT quantities — keep them separate:
 
 ### Plotting & output conventions  *(settled 2026-08-13)*
 
-Policy here; concrete style values will be enforced by the shared plotting module (refactor tracked,
-#2.7) — there is no separate style catalogue yet.
+Policy here; **implemented in the root `plotting.py` module (the single source of truth).** **Every
+plotting task MUST start from `plotting.py`** — import it and use its primitives (`draw_network`,
+`draw_field`, `plot_directional`, `plot_means_spread`, `save_element`/`save_fig`, `montage`,
+`STYLE`); never roll a one-off `plot_*`/`draw_*`. Missing a primitive ⇒ add it *there* and update
+this policy. It is pure-render (numpy + matplotlib; callers pass already-loaded data).
 
 - **Square plot regions always** for spatial/network panels.
 - **Canonical network draw = tiled-continuous, cropped.** Tile the periodic cell (reps×reps) and crop
