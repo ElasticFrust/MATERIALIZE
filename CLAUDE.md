@@ -1,13 +1,16 @@
 # MATERIALIZE — project guide for Claude
 
 > Project-specific companion to the global working charter (`~/.claude/CLAUDE.md`, auto-loaded).
-> Covers only what is specific to MATERIALIZE: scope, architecture, and — once agreed — the
-> maths/physics conventions and working habits. It does **not** restate the charter.
+> Covers only what is specific to MATERIALIZE: scope (§1), architecture (§2), and the settled
+> maths/physics conventions & working habits (§3). It does **not** restate the charter.
 >
-> **Session start — don't start cold.** Before acting each session, read: this file (§1–2), the
+> **Session start — don't start cold.** Before acting each session, read: this file (§1–3), the
 > relevant `Phase */PLAN.md`, `Phase 2/SOLVER_GUIDE.md`, and — for theory — `documentation/MATERIALIZE.md`.
 > Keep code, docs, and this file mutually consistent; drift is a bug (there is a standing
 > code-vs-docs consistency-sweep task).
+>
+> **Entry points:** to run a design, `Phase 5/designer.py` → `design(nu_target, E_target, tag)`;
+> reusable API in `Phase 5/PLAN.md §1` and `MATERIALIZE.md §11`. M2 (GNN edit-policy): `Phase 5/m2/M2.md`.
 >
 > Precedence (from the charter): live instruction > this file > global charter > memory.
 
@@ -84,10 +87,10 @@ Principles specific here:
 
 ## 3. Conventions & working habits
 
-> Maths & physics conventions below are **settled**. The remaining subsections (verification,
-> environment, plotting, saving) are **under active development — not yet authoritative**: being
-> co-developed section by section, in the complete formalism. Until a subsection is marked settled,
-> **do not treat it as law and do not invent its content** — raise it and agree it first.
+> All subsections below are **settled** (see the date on each) and authoritative — co-developed in
+> the complete formalism. **NB:** some canonical docs referenced for "full statements" still carry
+> pre-correction wording (e.g. the ℓ₀-"degeneracy" and cos4θ framings) pending the code-vs-docs
+> consistency sweep; **on any conflict, this file's settled statement wins.**
 
 ### Maths & physics conventions  *(settled 2026-08-09)*
 
@@ -143,7 +146,9 @@ plain unweighted-mean normalisation are superseded — never in verification or 
 
 **One solve → the whole response operator ("direct").** W(s) is the complete linear map; from it
 fall C_eff (all components), ν(θ),E(θ) at every angle, per-triangle strain/stress under any load —
-no per-direction solve, no global-displacement adjoint.
+no per-direction solve, and no adjoint of a global displacement equilibrium solve (the classical
+inverse-design adjoint). *(Distinct from the sparse-KKT **gradient** adjoint that backprops through
+this solve above 600 tri — §2.)*
 
 **Units.** ν always physical/scale-invariant; E, C_eff internal-scale unless `physical_units=True`
 (rescale 8N/Σ_s S_s → regular triangular lattice ν=1/3, E=2/√3).
@@ -250,8 +255,8 @@ Three DISTINCT quantities — keep them separate:
 
 ### Plotting & output conventions  *(settled 2026-08-13)*
 
-Policy here; concrete style values enforced by the shared plotting module (refactor tracked as a
-task); full catalogue in `documentation/MATERIALIZE.md §10`.
+Policy here; concrete style values will be enforced by the shared plotting module (refactor tracked,
+#2.7) — there is no separate style catalogue yet.
 
 - **Square plot regions always** for spatial/network panels.
 - **Canonical network draw = tiled-continuous, cropped.** Tile the periodic cell (reps×reps) and crop
