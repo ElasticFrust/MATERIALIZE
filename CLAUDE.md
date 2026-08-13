@@ -248,15 +248,91 @@ Three DISTINCT quantities — keep them separate:
   saving/docs subsection.
 - **Traceability:** every artifact traceable to (code commit, config, seed).
 
-### Remaining subsections — under active development
-- **Plotting & output conventions** *(pending)* — the canonical network draw is the
-  **tiled-continuous, cropped view** (bonds crossing the periodic boundary render continuously, no
-  non-physical gaps; cf. `Phase 5/gallery.py: draw_one_tiled`), to *replace* the stub-producing
-  variants; square plot regions; **means-together / spread-separate** (all group means in one plot,
-  each group's mean±σ in its own subplot) — standing, with a **formalized "combine-all" exception**
-  still to be specified; ν(θ), E(θ) panels per designed network; per-panel high-DPI reusable
-  elements; load-don't-reoptimise. Requires a **shared `plotting.py`** (single source of truth)
-  that unifies all plot families and retires the current several-variants state; concrete style
-  values catalogued in `documentation/MATERIALIZE.md §10`.
-- **Saving / docs habits** *(pending)* — experiment persistence (script + outputs + plot in-repo);
-  module `.md` lockstep with code.
+### Plotting & output conventions  *(settled 2026-08-13)*
+
+Policy here; concrete style values enforced by the shared plotting module (refactor tracked as a
+task); full catalogue in `documentation/MATERIALIZE.md §10`.
+
+- **Square plot regions always** for spatial/network panels.
+- **Canonical network draw = tiled-continuous, cropped.** Tile the periodic cell (reps×reps) and crop
+  to the central cell so boundary-crossing bonds render continuously (no non-physical gaps);
+  `Phase 5/gallery.py: draw_one_tiled` is the reference. REPLACES the stub variants (`draw_network`,
+  `draw_one`).
+- **Bond styling.** Colour by k with **viridis** (sequential, k≥0); **constant medium line width**
+  (do NOT encode k by width). Bonds **very close to k=0** are drawn **dashed** (solid otherwise) — no
+  faintness/alpha.
+- **Field maps (per-triangle ν or E): fill the whole triangle** (filled polygons). **ν → diverging
+  colormap centered at 0**; **E → sequential**. Colorbar each.
+- **Directional response ν(θ), E(θ).** Cartesian is the MAIN plot (ν and E vs θ∈[0,π], target dashed).
+  ADD a polar plot (esp. E). **Polar ν scheme:** radius = **|ν(θ)|**, coloured **blue where ν>0, red
+  where ν<0**; E polar is direct (E>0).
+- **Means & spread.** Default: all group means together in ONE clean plot (no bands); each group's
+  mean±σ in its OWN subplot. **Combine-all** (means+σ overlaid) only when ≤3 groups AND the
+  comparison IS the overlap.
+- **Resolution.** Standalone reusable elements **≥300 DPI** (higher for publication); montages 200
+  (working; bump for production). Render each element/panel as its own high-DPI image, then compose.
+- **Load, don't re-optimise** at plot time (`load_network`; random restarts ⇒ non-reproducible).
+
+### Design-workflow conventions  *(settled 2026-08-13)*
+
+- **Regularization: penalise k-VARIANCE, not deviation from 1.** `optimize(reg>0)` adds
+  `reg·mean((k−mean k)²)` — keeps k near a *constant level* (the level floats freely, e.g. for an E
+  target), discouraging floppy/near-mechanism designs. Use `reg ≈ 0.01–0.05`. **The default is
+  `reg=0.0` (no regularization) — you MUST pass reg;** reg=0 lets k drift to soft channels →
+  near-mechanism designs the linear solver mispredicts. *(Any further reg feature: discuss first.)*
+- **Multi-region = GLUE, never joint-optimize.** Design each patch independently on its own cell,
+  then `C.glue()` (retriangulate the seam, keep each side's k; `glue_square_hole` for inclusions). A
+  joint region-scoped `optimize()` over one connected lattice drives the *interface* bonds to k≈0 —
+  slitting the sheet into a mechanism (looks solved, physically broken).
+- **Position optimization (default ON) — ALTERNATING polish, not simultaneous.** `design()` searches k
+  over the topology pool, then polishes the top design by alternating `[gradient k-design] ↔ [SPSA
+  position nudge]`. **Why alternating:** k has cheap solver gradients; **positions do not** — they
+  enter via the geometry (`q_e`, triangle areas, the constraint operators), off the autograd path — so
+  they use derivative-free SPSA. Simultaneous joint k+position would need differentiable positions (a
+  Phase 2 core change) or SPSA-on-everything (loses k's gradient speed); logged as a future direction
+  (FUTURE_DIRECTIONS #13). Rules:
+  - **Weight-matching (default):** pass the k-design's `nu_weight`/`E_weight` to the polish, else it
+    silently optimises a different loss and destroys anisotropy. Opt-out only to change weights on purpose.
+  - **Never re-triangulate** (`redelaunay_every=0`): distortion only, connectivity frozen.
+  - **Safety gate:** the polished design replaces the top ONLY IF it both lowers the design loss AND
+    passes the independent-sim honesty check (`solver_sim_gap < gap_tol`).
+  - Positions help isotropic targets / loss but NOT the **anisotropy-amplitude ceiling** — an
+    *empirical* topology/size bound (not a harmonic limit); to push further, change topology or grow
+    the cell, don't burn budget on positions.
+- **Triangulation vs re-triangulation.** Triangulating a point cloud to CREATE a topology is the
+  normal generation step (`seeds`) — fine, the only time triangulation is needed. **Re-triangulation**
+  (re-Delaunaying an existing network after moving its points, discarding the topology) is AVOIDED
+  unless specifically required.
+- **Disorder — two intents, don't conflate.** (a) *Frozen-connectivity magnitude-η* (Phase 2
+  `build_periodic_tf_mesh`, η<0.5): perturb node positions on a FIXED topology, no re-triangulation, no
+  `uniform(−η,η)` — this yields the auxetic band. (b) *Topology scan*: triangulate perturbed point
+  clouds (`seeds`) to reach different topologies — here triangulation is the point.
+- **Always save the designed network once** (`save_network`: k + C6_per + meta incl. target, gap,
+  `is_fictional` mask); figures LOAD it, never re-optimise (cf. plotting/env).
+
+### Project coding conventions  *(settled 2026-08-13)*
+
+Complements the global charter's coding style; only the project-specific bits here.
+
+- **Match the base-paper notation** (Grossman & Boudaoud, PRR 2026) in code and comments: ν, E, k, ℓ₀,
+  Voigt vec3 `[xx,xy,yy]`, `q_e`, `A(s)`, `W`, `C_eff`, Δg, ḡ — names track the maths.
+- **Conform to the core.** `Phase 2/forward_solver_torch.py` is authoritative for solver conventions
+  and API; new code adapts to it (never the reverse). Reuse `_common` / `inverse_design`; if a helper
+  must be factored out, **copy it into the consuming phase** rather than editing the protected core.
+- **File-header provenance:** each file states its purpose + which paper §/equation it implements.
+- **DRY, minimal diffs.** Least code that does the job; a second consumer of a routine ⇒ factor it into
+  one shared module; code reads like its surroundings. Naming: clarity over brevity.
+- **Fail-fast** errors (project default); annotate types where they sharpen intent.
+
+### Saving / docs habits  *(settled 2026-08-13)*
+
+- **Keep every experiment in-repo** (script + outputs + plot), add-only during active work — never
+  only in scratch/tmp. Each carries provenance (commit / config / seed) + a short `.md`.
+- **Designs: save-then-load** — `save_network` once; figures load, never re-optimise (cf. env/plotting).
+- **Docs in lockstep with code.** Module `.md` updated at the end of every task; project docs
+  (`documentation/`) on big changes; papers only after a wide range of experiments. **`.md` + `.pdf`
+  rebuilt together** (`_build_pdf.py` — cf. env). Root `README.md` stays a stub — do not edit.
+- **Cleanup only proposed-and-approved, never mid-work or autonomous.** Keep what backs a
+  result/figure/oracle; drop failed/superseded/redundant; ask when in doubt.
+- **Memory vs repo docs:** memory = context for continuing development; repo docs = every completed
+  achievement / interface. Keep resumable at every checkpoint (docs + memory + committed/noted work).

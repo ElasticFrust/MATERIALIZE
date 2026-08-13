@@ -24,6 +24,7 @@ do first.
 | 10 | $\eta{=}0.5$ **second-order** ($O(\delta^2)$) homogenisation correction | ★★☆☆☆ | **M** | yes |
 | 11 | **3D** extension | ★★★★☆ | **XL** | rewrite |
 | 12 | Docs / demo / packaging polish | ★★☆☆☆ | **S** | no |
+| 13 | **Differentiable positions** → simultaneous $k$+position design | ★★★☆☆ | **M–L** | yes |
 
 ---
 
@@ -247,6 +248,27 @@ theory is complete (#1) so the 3D version inherits residual stress from the star
 Ongoing: a couple of schematic vector diagrams (the KKT block structure; the metric-vs-displacement
 picture) rendered natively; a `pip`-installable package layout; a one-command "reproduce all figures"
 script; expanding the worked-example gallery. Low risk, incremental.
+
+---
+
+## 13 — Differentiable positions → simultaneous $k$+position design  ·  ★★★☆☆  ·  M–L
+
+**Why:** node positions are a large design lever, but today they are optimised **separately** from $k$:
+`designer.design` searches $k$ over topologies, then polishes the top design by **alternating**
+[gradient $k$-design] ↔ [derivative-free **SPSA** position nudges]. SPSA is used because positions have
+**no gradient through the solver** — they enter via the geometry (edge carriers $q_e$, triangle areas,
+the compatibility/curvature/mean constraint operators), which is off the autograd path (only $k$,
+$\ell_0$ are differentiable). Alternating is the pragmatic compromise (fast gradient-$k$ + slow
+SPSA-positions).
+
+**What to do:** make the solver **differentiable w.r.t. node positions** — differentiate the geometry
+assembly ($q_e$, areas) and the constraint operators w.r.t. node coordinates — so $k$ and positions can
+be optimised **simultaneously** by gradient descent on one joint objective, replacing the alternating
+SPSA polish. Touches the protected core (new gradients through the geometry).
+
+**Payoff / caveat:** positions become a first-class gradient DOF; but the empirical anisotropy-amplitude
+ceiling is a topology/size bound (positions won't beat it — see the design-workflow conventions), so the
+gain is on *reachable* targets, not the extreme-anisotropy frontier.
 
 ---
 

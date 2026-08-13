@@ -362,7 +362,8 @@ def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
     'achieved' is computed for that objective's KIND (nu/E/tensor/directional from the region tensor;
     raw strain/stress from `bare,W` under the objective's load) over its REGION (or globally). An
     optional `homogeneity` term adds the within-region variance of the local field, and `reg` adds a
-    small mean((k−1)²) that discourages drifting into floppy/unstable configurations."""
+    small mean((k−mean k)²) = k-variance (pull toward a constant level, free to float) that
+    discourages drifting into floppy/unstable configurations."""
     out = prob.forward(k_bond, l0_bond, physical_units=True)
     per, bare, W = out['per_triangle'], out['bare'], out['W']
     total = torch.zeros((), dtype=torch.float64)
@@ -398,8 +399,10 @@ def _loss(prob, objectives, k_bond, l0_bond, reg=0.0):
             total = total + ob.weight * _anisotropy(C6)
         else:                                                            # 'tensor'
             total = total + ob.weight * ((C6 - ob.target) ** 2).mean()
-    if reg > 0.0:                                                        # keep k near-uniform:
-        total = total + reg * ((k_bond - 1.0) ** 2).mean()              # discourages floppy/unstable designs
+    if reg > 0.0:                                                        # keep k near a CONSTANT level:
+        total = total + reg * ((k_bond - k_bond.mean()) ** 2).mean()    # penalise k VARIANCE — the level is
+                                                                        # free to float (e.g. for E-scale),
+                                                                        # discourages floppy/unstable designs
     return total
 
 
