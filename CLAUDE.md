@@ -222,9 +222,33 @@ Three DISTINCT quantities — keep them separate:
 - **Regressions:** `test_forward_solver.py` (crystal ν, **gradients + large-N adjoint**);
   `test_inverse_design.py` (16 tests). Use the anaconda python (see environment subsection).
 
+### Environment & reproducibility  *(settled 2026-08-10)*
+
+- **Python:** run everything with `C:\Users\doron\anaconda3\python.exe` (verified stack: numpy 2.3.5,
+  scipy 1.16.3, torch 2.12.1+cpu). **`python`/`python3` on PATH are broken Windows Store stubs — never
+  use them.**
+- **float64 everywhere.** `torch.set_default_dtype(torch.float64)` is REQUIRED — the whole solver
+  stack is float64 (the constrained saddle/KKT solves need the precision).
+- **Periodic (PBC) by default in Phase 5** — ν(θ),E(θ) is then a clean bulk property. Canonical angle
+  grid `ANG = np.linspace(0, np.pi, 37)`; directional targets are length-37 arrays (scalar → flat).
+- **Phase 5 import preamble (verbatim):** set `REPO`, `sys.path.insert` Phase 3/verifications, then
+  `import _common as C` (this wires the rest of sys.path + the solver stack) **before**
+  `from inverse_design import …`. Path-depth: `REPO=join(dirname,'..')` for scripts directly in
+  `Phase 5/`; `'..','..'` for `Phase 5/verifications/`.
+- **Seeds always.** A seed is an explicit input everywhere; if none given, auto-generate, **output
+  it**, and note it was auto-generated. Isolate randomness at explicit injection points (a seeded
+  generator passed down — no global RNG).
+- **Save-then-load, never re-optimise at plot time.** Every `optimize()` saves the network once
+  (`save_network`: k + C6 + meta); figures **load** it and never re-optimise (random restarts ⇒
+  non-reproducible). *(Full persistence conventions in the saving subsection.)*
+- **Docs build:** `python documentation/_build_pdf.py [NAME…]` regenerates the doc PDFs
+  (`MATERIALIZE`, `FUTURE_DIRECTIONS`) from their `.md` (markdown → self-contained HTML with local
+  MathJax → headless Edge `--print-to-pdf`; needs the anaconda `markdown` pkg + Edge). Docs ship as
+  **both `.md` and `.pdf`** — rebuild the PDF after editing a `.md` (lockstep). Doc *conventions* →
+  saving/docs subsection.
+- **Traceability:** every artifact traceable to (code commit, config, seed).
+
 ### Remaining subsections — under active development
-- **Environment & reproducibility** *(pending)* — anaconda python (Store stubs broken); float64
-  throughout; PBC; `ANG` grid; seeds always injected.
 - **Plotting & output conventions** *(pending)* — the canonical network draw is the
   **tiled-continuous, cropped view** (bonds crossing the periodic boundary render continuously, no
   non-physical gaps; cf. `Phase 5/gallery.py: draw_one_tiled`), to *replace* the stub-producing
