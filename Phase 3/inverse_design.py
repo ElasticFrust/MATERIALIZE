@@ -422,8 +422,9 @@ def _init_raw(prob, mode, seed):
 
 def optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80,
              n_restarts=1, seed=0, reg=0.0, verbose=True):
-    """Design k (and/or l0) to meet the objectives. `reg` (>0) adds a mean((k-1)²) penalty that
-    keeps k near-uniform — discourages the optimiser from exploiting floppy/unstable
+    """Design k (and/or l0) to meet the objectives. `reg` (>0) adds a mean((k−mean k)²) = k-variance
+    penalty that keeps k near a constant level (uniform; the level floats freely, e.g. for an E
+    target) — discourages the optimiser from exploiting floppy/unstable
     configurations that satisfy a scalar target but collapse in simulation. Returns the best
     result over restarts: dict(k, l0, loss, history, raw)."""
     assert mode in ('k', 'l0', 'both')
