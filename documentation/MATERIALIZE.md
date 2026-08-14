@@ -378,21 +378,26 @@ the framework.
 
 ```
 MATERIALIZE/
+├── plotting.py                  SINGLE source of truth for all figures (see project CLAUDE.md §3)
+├── Disc_2_Cont_optimized.py     D2C origin / legacy numpy mean-field path + foam-mesh helpers
 ├── Phase 2/                     the differentiable FORWARD solver (protected core)
 │   ├── forward_solver_torch.py  ElasticSolver: network -> C_eff, nu, E, W  (differentiable)
 │   ├── SOLVER_GUIDE.md          canonical usage/API guide for the solver
 │   └── test_forward_solver.py   regression tests (nu=1/3 crystal, gradients, adjoint, ...)
-├── Phase 3/                     INVERSE design
+├── Phase 3/                     INVERSE design (k on a fixed topology)
 │   ├── inverse_design.py        DesignProblem, Objective, optimize, validate, constrain
-│   ├── test_inverse_design.py   16-test suite (round-trip, auxetic, local, mixed, strain/stress,
-│   │                            homogenisation, isotropisation, ...)
+│   ├── test_inverse_design.py   16-test suite (round-trip, auxetic, local, mixed, strain/stress, ...)
 │   ├── README.md                inverse-design concepts + examples
 │   └── verifications/           end-to-end design->simulate->check demos (Section 9)
-│       ├── _common.py           shared harness (topologies, plotting, INDEPENDENT simulation)
-│       └── <case>/              auxetic_sweep, auxetic_patch, anisotropy, two_region,
-│                                dir_aux_ribbon, strain_stress, large16k, ...
-├── Phase 4/                     ML surrogates & generative design (GNN/VAE) — see Tutorial.md
-├── verification_tools/          physical ground truth (physical_homog.py) + analysis
+│       ├── _common.py           shared harness (topologies, INDEPENDENT simulation, persistence)
+│       └── <case>/              auxetic_sweep, auxetic_patch, anisotropy, two_region, strain_stress, ...
+├── Phase 4/                     LEGACY remnant — its topology/point-cloud generators are reused by Phase 5
+├── Phase 5/                     the DESIGNER (current work): topology + node positions + k search (M1)
+│   ├── designer.py seeds.py positions.py triangulation.py gallery.py plot_responses.py
+│   ├── m2/                       M2 learned edit-policy (GNN) — prototyped (model + trained checkpoint)
+│   └── verifications/ networks/ results/
+├── verification_tools/          physical ground truth (physical_homog.py — SELF-SCREENS near-singular
+│                                geometry, raising a catchable UnhealthyGeometryError) + analysis
 ├── THEORY_NOTES.md              why the intrinsic metric solve is correct (derivation)
 ├── INTRINSIC_METRIC_SOLVE.md    the intrinsic KKT formulation in full (Section 3.4 in detail)
 └── documentation/              THIS document (.md + .pdf) + FUTURE_DIRECTIONS + figures
