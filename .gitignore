@@ -9,5 +9,16 @@ Phase 4/data/processed/
 # Model checkpoints (binary, too large for git)
 Phase 4/checkpoints/
 
+# Phase 5 — REGENERABLE artifacts only. Everything that backs a result stays tracked:
+# results/ (figures + csv + the per-experiment .md), networks/ (the save-then-load contract —
+# figures LOAD these and must never re-optimise), and m2/checkpoint.pt (the trained M2 model).
+# M2 labelled data — rebuild: Phase 5/m2/build_dataset.py
+Phase 5/dataset/
+Phase 5/m2/data/
+# per-panel high-DPI render elements — rebuild from networks/ via plotting.py
+Phase 5/elements/
+# loose top-level galleries (scratch; the kept figures live in results/)
+Phase 5/*.png
+
 # Runtime logs
 *.log
