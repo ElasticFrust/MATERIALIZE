@@ -69,7 +69,8 @@ def one(path):
     err_new = (float(max(np.abs(nu_phy - tgt_nu).max(), np.abs(E_phy - tgt_E).max()))
                if has_tgt else float('nan'))
     return dict(
-        name=os.path.basename(path), seed_name=str(meta.get('seed_name', '?')), n_tri=nt,
+        name=os.path.relpath(path, os.path.join(REPO, 'Phase 5', 'networks')).replace('\\', '/'),
+        seed_name=str(meta.get('seed_name', '?')), n_tri=nt,
         gap_stored=float(meta.get('solver_sim_gap', float('nan'))),
         gap_new=rel_gap(nu_slv, E_slv, nu_sim, E_sim),
         gap_physical=rel_gap(nu_slv, E_slv, nu_phy, E_phy),
@@ -80,13 +81,19 @@ def one(path):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    paths = sorted(glob.glob(os.path.join(REPO, 'Phase 5', 'networks', '*.npz')))
+    # RECURSIVE: the per-experiment designs live in networks/<exp>/ (goal1, g1_2, goal2,
+    # goal2_attempts, reentrant) — those are the ones backing the results docs, so a top-level
+    # glob would assess only a fraction of the saved designs.
+    paths = sorted(glob.glob(os.path.join(REPO, 'Phase 5', 'networks', '**', '*.npz'),
+                             recursive=True))
     rows, skipped = [], []
-    for p in paths:
+    for i, p in enumerate(paths):
         r = one(p)
-        (rows if r is not None else skipped).append(r if r is not None else os.path.basename(p))
-        print('.', end='', flush=True)
-    print()
+        (rows if r is not None else skipped).append(
+            r if r is not None else os.path.relpath(p, REPO))
+        if i % 25 == 0:
+            print(f"  {i}/{len(paths)}", flush=True)
+    print(f"  {len(paths)}/{len(paths)}", flush=True)
 
     with open(os.path.join(OUT, 'blast_radius.csv'), 'w', newline='') as f:
         wr = csv.DictWriter(f, fieldnames=list(rows[0].keys())); wr.writeheader(); wr.writerows(rows)
