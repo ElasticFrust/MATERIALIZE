@@ -1,5 +1,26 @@
 # Phase 5 — Inverse designer for triangulated metamaterials (implementation spec)
 
+> ## ⚠ STATUS 2026-08-14 — the saved designs are stale; the designer is sound
+>
+> A defect in the protected core's homogenisation contraction (`C_xyxy` over-stiff wherever
+> `W ≠ 0`) was found and fixed — `documentation/shear_channel_defect.md`. The forward map now agrees
+> with the independent physical oracle to ~1e-12, so **the designer machinery is trustworthy**. But
+> every design in `Phase 5/networks/` was produced *and verified* against the old map:
+>
+> - **`goal2` / `goal2_attempts`: treat achieved numbers as INVALIDATED** — 39/39 and 98/102 designs
+>   worsened; mean target error 0.05 → 0.48 and 0.20 → 0.71 (worst case 4.14). They target full
+>   anisotropic tensors, so they leaned hardest on the broken component.
+> - **`g1_2`: 21 of 53 saved designs now exceed `gap_tol`** against the true oracle.
+> - `goal1` is the most robust (6/110 over tol). Full table: `Phase 5/results/shear_fix/SHEAR_FIX.md`.
+> - `run_g1_2.py` saved only designs passing the *old* trustworthiness check, so its 58 rejected runs
+>   are unrecoverable — **re-run, don't re-analyse.**
+>
+> **Known limits of the current verification** (audit register `documentation/AUDIT_2026-08.md`):
+> `verify()`'s "independent sim" is **not** independent — it routes through the solver's own
+> contraction (A-1), and the independent oracle covers **bulk only**, so per-triangle and regional
+> `C(s)` are still ungated (A-9). §4 of this file's API notes have drifted from the code (C-6).
+> Do not add designs on top of this until A-9 and A-7b are done.
+
 > **Purpose of this document.** A self-contained, step-by-step spec an independent implementer can follow to build
 > **Milestone 1 (M1)**: a *search-based inverse designer* that, given a target directional response **ν(θ), E(θ)** and a
 > network size, produces **explicit triangulated networks (points + edges) + per-bond rigidities** that realise it, verified
