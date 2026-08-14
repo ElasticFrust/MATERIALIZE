@@ -216,13 +216,15 @@ Three DISTINCT quantities — keep them separate:
   to be completed; tracked todo.)*
 - **Sanity gate first.** Regular triangular lattice → **ν=1/3, E=2/√3** on *both* solver and sim
   (`Phase 5/verifications/sanity.py`); run before trusting any run.
-- **Health-gate geometry before the independent sim.** The sim is dense scipy/LAPACK — a
-  near-singular geometry (sliver / near-zero-area triangles) makes it **hard-crash (native segfault,
-  UNCATCHABLE in Python)**, so you cannot `try/except` it: **screen every candidate first.** Reject if
-  any triangle area ≤ 0 or `min area < ~1e-3·mean`, or the (safe) solver's uniform-k ν,E aren't
-  finite/physical (|ν|<2.5, E>0). Screen in BOTH topology construction and the position search.
-  Pattern: `Phase 5/verifications/run_g1_2.py: _healthy` (currently experiment-local — factor into the
-  reusable path if it recurs).
+- **The sim self-screens near-singular geometry.** The independent sim is dense scipy/LAPACK — a
+  near-singular geometry (sliver / near-zero-area triangles) would **hard-crash it (native segfault,
+  UNCATCHABLE in Python)**. So the sim entry (`physical_homog.relax` / `energy_nuE`, hence
+  `_common.sim_per_triangle_C6` / `virial_nuE` / `sim_region_*`) calls `require_healthy_mesh` and
+  **raises a catchable `UnhealthyGeometryError`** instead — callers just `try/except` it, no
+  pre-screening needed. (The crash is **sim-only**; the torch solver degrades gracefully and needs no
+  guard.) The finer "is the RESPONSE physical" check (solver ν,E finite) stays **caller-side** (e.g.
+  the designer) — it needs the solver, on which the sim must not depend. *(TODO #2.6:
+  `_common.open_stretch` open-boundary solve not yet guarded.)*
 - **Physical ground truth = virial/energy (unweighted mean of C(s)).** The legacy **area-weighted
   metric average** (`Ceff_nuE`) is physically wrong (biases ν on unequal-area meshes) and has been
   **removed** (tombstoned 2026-08-10; git-restorable).

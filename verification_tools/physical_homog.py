@@ -23,8 +23,32 @@ MODES = [np.array([[1., 0.], [0., 0.]]), np.array([[0., 0.], [0., 1.]]),
 Fk = [np.eye(2) + DELTA * M for M in MODES]
 
 
+class UnhealthyGeometryError(ValueError):
+    """A geometry too near-singular to simulate: the scipy/LAPACK solve would HARD-CRASH (native
+    segfault, uncatchable in Python). The sim raises this CATCHABLE error instead, so callers can
+    `try/except` it. Screening is automatic at every sim entry — callers need not pre-screen."""
+
+
+def require_healthy_mesh(mesh, min_area_frac=1e-3):
+    """Screen `mesh`; raise `UnhealthyGeometryError` if it is too near-singular to simulate safely:
+    any triangle area ≤ 0 (inverted) or min area < `min_area_frac`·mean area (sliver) — the geometric
+    conditions that make the scipy/LAPACK solve segfault. Called at the top of every sim entry
+    (`relax`, `energy_nuE`) so the SIM SELF-PROTECTS (the crash is sim-only — the torch solver
+    degrades gracefully and needs no guard). A finer "is the RESPONSE physical" check belongs in the
+    caller/designer, not here — it needs the solver, which the sim must not depend on."""
+    a = mesh.get('areas')
+    if a is None:
+        return                                                # nothing to screen — proceed
+    a = np.asarray(a, float)
+    if not np.all(a > 0) or a.min() < min_area_frac * a.mean():
+        raise UnhealthyGeometryError(
+            f"near-singular geometry: min triangle area {a.min():.3e}, mean {a.mean():.3e} "
+            f"(inverted or sliver) — refusing to simulate (scipy/LAPACK would hard-crash).")
+
+
 def relax(mesh, free, assemble):
     """Relax the network under the 3 macro strain modes; return the fluctuation fields (nn,2)."""
+    require_healthy_mesh(mesh)                             # self-protect: refuse near-singular geometry
     nn = len(mesh['pts'])
     K, _ = assemble(mesh, np.eye(2))
     Kff = K[free][:, free].tocsc()
@@ -61,6 +85,7 @@ def virial_nuE(mesh, u_modes):
 
 def energy_nuE(mesh, free, assemble, h=1e-3):
     """Physical (ν, E) from the Hessian of the relaxed elastic energy (independent of virial)."""
+    require_healthy_mesh(mesh)                             # self-protect: refuse near-singular geometry
     A = mesh['areas'].sum(); nn = len(mesh['pts'])
     K, _ = assemble(mesh, np.eye(2)); Kff = K[free][:, free].tocsc()
     R = mesh['bond_R']; L = np.sqrt((R ** 2).sum(1)); kb = _bond_k(mesh)
