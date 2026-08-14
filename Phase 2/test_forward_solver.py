@@ -18,8 +18,10 @@ import numpy as np
 import torch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)                       # forward_solver_torch
-sys.path.insert(0, os.path.dirname(HERE))      # Disc_2_Cont_optimized
+sys.path.insert(0, ROOT)                       # Disc_2_Cont_optimized
+sys.path.insert(0, os.path.join(ROOT, 'verification_tools'))   # independent physical oracle [7]
 
 import Disc_2_Cont_optimized as D2C
 from forward_solver_torch import from_triangulation
@@ -115,6 +117,66 @@ def test_adjoint_large_N():
           f"vs FD={g_fd:.4e}  OK")
 
 
+def test_elastic_tensor_vs_energy_hessian():
+    """[7] The homogenisation contraction vs an INDEPENDENT physical oracle, COMPONENT BY COMPONENT.
+
+    Why this test exists: the regular lattice has W ≡ 0 identically, so C(s) = A(s) there and the
+    ν=1/3 / E=2/√3 gate is structurally blind to any error in how W is contracted. Scalar ν,E is
+    weakly sensitive to the shear-shear entry, so it hides such an error too. This checks the whole
+    TENSOR against `physical_homog.energy_C` — the Hessian of the relaxed energy of the same spring
+    network, a genuinely different code path — on DISORDERED meshes, where W ≠ 0.
+
+    `_compute_actual_elastic_tensor` is fed the SIMULATION's measured W (not the solver's own), so
+    the check isolates the contraction: same A(s), same W, two independent routes to C_eff.
+    """
+    import scipy.sparse.linalg as spla
+    import forward_solver_torch as fst
+    import physical_homog as PH
+    import test_cluster_rigidity as TR
+    import test_cluster_Ceff as CE
+    import test_cluster_VD as VD
+
+    Dgt = [F.T @ F - np.eye(2) for F in PH.Fk]                      # the 3 macro metric-change modes
+    Dinv = np.linalg.inv(np.stack([CE.vec3(g) for g in Dgt], 1))    # vec3 mode matrix, inverted once
+
+    # (N, eta, seed, VD contrast or None for uniform k); eta=0 uniform is the BLIND control (W=0)
+    cases = [(8, 0.00, 0, None), (8, 0.20, 1, None), (8, 0.20, 1, 5),
+             (8, 0.35, 2, None), (12, 0.30, 3, 10)]
+    worst = 0.0
+    for N, eta, seed, vd in cases:
+        mesh = VD.build_geometry(N, eta, seed)
+        if vd is None:
+            mesh['bond_k'] = np.ones(len(mesh['bond_R']))
+            mesh['tri_k'] = mesh['bond_k'][mesh['tri_bond']]
+        else:
+            VD.set_VD(mesh, vd)                                     # k = 1 + tanh(a·(|R|−1))
+        nn, nt = len(mesh['pts']), len(mesh['simplices'])
+        free = np.arange(2, 2 * nn)                                 # pin node 0
+
+        # W measured from the SIM's relaxation: delta_g(s) = W(s) Delta_g  ->  W3 = D · Dinv
+        u_modes = PH.relax(mesh, free, TR.assemble_K_faff)
+        D = np.zeros((nt, 3, 3))
+        for j, (F, u) in enumerate(zip(PH.Fk, u_modes)):
+            D[:, :, j] = CE.vec3(
+                CE.tri_metric_change(mesh['edge_vecs'], mesh['simplices'], F, u) - Dgt[j])
+        W3 = D @ Dinv
+
+        c6 = fst._compute_actual_elastic_tensor(
+            torch.as_tensor(TR.bare_tensor(mesh)),
+            torch.as_tensor(W3.reshape(-1, 9))).numpy()
+        c = c6.mean(0) * (8.0 * nt / mesh['areas'].sum())           # unweighted mean → physical units
+        C_solver = np.array([[c[0], c[2], c[1]], [c[2], c[5], c[4]], [c[1], c[4], c[3]]])
+        C_phys = PH.energy_C(mesh, free, TR.assemble_K_faff)        # INDEPENDENT oracle
+
+        err = np.abs(C_solver - C_phys).max() / np.abs(C_phys).max()
+        worst = max(worst, err)
+        tag = f"eta={eta}" + (f" VD{vd:+d}" if vd else " k=1")
+        assert err < 1e-2, (f"C_eff disagrees with the energy Hessian ({tag}, N={N}): {err:.3e}\n"
+                            f"  solver:\n{C_solver}\n  physical:\n{C_phys}")
+    print(f"  [7] C_eff vs energy Hessian (component-wise, {len(cases)} disordered/VD meshes): "
+          f"worst {worst:.2e}  OK")
+
+
 def test_woodbury_legacy_runs():
     np.random.seed(4)
     tri = D2C.generate_foam_points((3, 3), 0.2)
@@ -133,6 +195,7 @@ if __name__ == '__main__':
         test_autograd_vs_fd,
         test_adjoint_large_N,
         test_woodbury_legacy_runs,
+        test_elastic_tensor_vs_energy_hessian,
     ]
     print("forward_solver_torch regression test")
     failed = 0

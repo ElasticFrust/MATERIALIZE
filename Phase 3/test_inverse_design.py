@@ -33,9 +33,12 @@ def test_round_trip():
 
 
 def test_property_auxetic():
+    # reg per CLAUDE.md 3 (never leave the reg=0.0 default: k drifts into soft channels -- here it
+    # collapsed to k_min/mean ~1e-10). reg alone is NOT enough on this target: from a single init
+    # LBFGS lands in a bad basin at every reg, so take the restarts the designer itself uses.
     prob = DesignProblem.periodic(N=14, eta=0.3, seed=2)
     objs = [Objective('nu', target=-0.20)]
-    res = optimize(prob, objs, mode='k', n_iter=100, verbose=False)
+    res = optimize(prob, objs, mode='k', n_iter=100, n_restarts=3, reg=0.02, verbose=False)
     rep = validate(prob, res['k'], res['l0'], objs)[0]
     assert rep['err'] < 0.02, f"nu achieved {rep['achieved']:.3f} vs target -0.20"
     print(f"  [2] auxetic target nu=-0.20: achieved {rep['achieved']:+.3f}  OK")
@@ -52,14 +55,18 @@ def test_property_E():
 
 
 def test_local_region():
+    # `region` (not `reg`) -- `reg` is optimize()'s regularisation weight, which this now passes.
+    # At the reg=0.0 default the outcome is bistable: repeated identical runs give err 0.0000 or
+    # 0.0664 (a near-mechanism, k_min/mean ~1e-8). reg=0.01-0.02 is both correct and stable;
+    # reg=0.05 over-constrains and misses the target (err 0.11).
     prob = DesignProblem.periodic(N=16, eta=0.2, seed=4)
     c = prob.centroids.mean(0)
-    reg = prob.region_in_circle(c, radius=0.20 * (prob.centroids[:, 0].max() - prob.centroids[:, 0].min()))
-    objs = [Objective('nu', target=-0.15, region=reg, weight=1.0)]
-    res = optimize(prob, objs, mode='k', n_iter=120, verbose=False)
+    region = prob.region_in_circle(c, radius=0.20 * (prob.centroids[:, 0].max() - prob.centroids[:, 0].min()))
+    objs = [Objective('nu', target=-0.15, region=region, weight=1.0)]
+    res = optimize(prob, objs, mode='k', n_iter=120, reg=0.02, verbose=False)
     rep = validate(prob, res['k'], res['l0'], objs)[0]
     assert rep['err'] < 0.03, f"local nu achieved {rep['achieved']:.3f} vs -0.15"
-    print(f"  [4] local region ({len(reg)} tri) nu=-0.15: achieved {rep['achieved']:+.3f}  OK")
+    print(f"  [4] local region ({len(region)} tri) nu=-0.15: achieved {rep['achieved']:+.3f}  OK")
 
 
 def test_mixed_global_local():
@@ -132,16 +139,20 @@ def test_constrain_isotropic():
         nu = c6_to_nu_theta(C6, ANG).detach().numpy()
         return float(np.ptp(nu)), float(nu.mean())
 
+    # reg per CLAUDE.md 3 -- at the reg=0.0 default this lands on a near-mechanism (spread 0.14,
+    # mean -0.47 instead of a flat -0.2); reg=0.02 alone restores it (spread 1e-4).
     # legacy single-direction 'nu_dir' leaves the patch anisotropic; scalar 'nu' (=isotropic) fixes it
-    ish = optimize(prob, [Objective('nu_dir', -0.2, region=patch)], mode='k', n_iter=140, verbose=False)
+    ish = optimize(prob, [Objective('nu_dir', -0.2, region=patch)], mode='k', n_iter=140,
+                   reg=0.02, verbose=False)
     sp_ish, _ = nu_spread(ish['k'])
-    ex = optimize(prob, [Objective('nu', -0.2, region=patch)], mode='k', n_iter=160, verbose=False)
+    ex = optimize(prob, [Objective('nu', -0.2, region=patch)], mode='k', n_iter=160,
+                  reg=0.02, verbose=False)
     sp, mn = nu_spread(ex['k'])
     assert sp < 0.05 and abs(mn + 0.2) < 0.03 and sp < sp_ish, \
         f"exact flat ν spread {sp:.3f} mean {mn:.3f} (ish spread {sp_ish:.3f})"
     # exact isotropic tensor (ν AND E) -> tiny isotropy residual
     it = optimize(prob, constrain(region=patch, tensor=isotropic_c6(-0.2, 0.6)), mode='k',
-                  n_iter=180, verbose=False)
+                  n_iter=180, reg=0.02, verbose=False)
     iso = validate(prob, it['k'], None, [Objective('isotropy', region=patch)])[0]['err']
     assert iso < 0.06, f"isotropy residual {iso:.3f}"
     print(f"  [9] constrain: exact flat nu spread={sp:.3f}@{mn:+.3f} (ish={sp_ish:.2f}), "
@@ -294,9 +305,10 @@ def test_homogenization():
     physical_homog's VIRIAL-stress route, (c) physical_homog's ENERGY-HESSIAN route. The virial IS
     dU/dε, so (b) and (c) are genuinely separate computations whose agreement is a real
     self-consistency check of the homogenisation (not a tautology); (a) is the differentiable solver
-    the designer optimises through, which the physical ground truth must confirm. Across regular +
-    disordered + anisotropic topologies with a random per-bond k, plus the analytic regular-lattice
-    value ν=1/3, E=2/√3 at uniform k."""
+    the designer optimises through, which the physical ground truth must confirm -- COMPONENT BY
+    COMPONENT, since ν,E are only two contractions of the tensor and are weakly sensitive to its
+    shear-shear entry. Across regular + disordered + anisotropic topologies with a random per-bond k,
+    plus the analytic regular-lattice value ν=1/3, E=2/√3 at uniform k."""
     import test_cluster_rigidity as TR
 
     def free_of(geo):
@@ -313,6 +325,10 @@ def test_homogenization():
     # different reduction), so the two legitimately disagree on the scalar summary while the full
     # effective tensor -- the unambiguous object the homogenisation actually produces -- agrees. The
     # virial-vs-energy pair DO share _voigt_nuE's convention, so their scalar (ν,E) is a fair check.
+    # The oracle here is PH.energy_C -- an INDEPENDENT code path. It must NOT be C.sim_region_C6:
+    # that routes the sim's relaxation through the solver's own _compute_actual_elastic_tensor, so
+    # comparing against it is self-verification and hides any defect in the contraction itself
+    # (it hid the 2026-08 shear-channel one; cf. Phase 2/test_forward_solver.py [7]).
     worst_ve, worst_vs = 0.0, 0.0
     for phi, psi, eta, seed in [(1.0, 1.0, 0.0, 0), (1.0, 1.0, 0.35, 1), (1.0, 0.6, 0.0, 2)]:
         geo = C.make_lattice(phi, psi, half=6.0, eta=eta, seed=seed)
@@ -323,8 +339,10 @@ def test_homogenization():
         nu_v, E_v = PH.virial_nuE(geo, PH.relax(geo, free, TR.assemble_K_faff))   # virial route
         nu_e, E_e = PH.energy_nuE(geo, free, TR.assemble_K_faff)                  # energy-Hessian route
         prob = DesignProblem.from_geo(geo)
-        c_solver = C.solver_region_C6(prob, torch.as_tensor(k))                   # differentiable solver
-        c_phys = C.sim_region_C6(geo, None)                                       # virial-route ground truth
+        cs = C.solver_region_C6(prob, torch.as_tensor(k))                         # differentiable solver
+        c_solver = np.array([[cs[0], cs[2], cs[1]], [cs[2], cs[5], cs[4]],        # -> Voigt [xx,yy,xy]
+                             [cs[1], cs[4], cs[3]]])
+        c_phys = PH.energy_C(geo, free, TR.assemble_K_faff)          # INDEPENDENT energy-Hessian tensor
         ve = max(abs(nu_v - nu_e), abs(E_v - E_e) / abs(E_v))
         vs = float(np.abs(c_solver - c_phys).max() / np.abs(c_phys).max())
         assert ve < 3e-3, f"virial vs energy-Hessian disagree (phi={phi},psi={psi},eta={eta}): {ve:.2e}"

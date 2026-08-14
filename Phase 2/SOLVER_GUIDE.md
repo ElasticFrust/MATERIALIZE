@@ -145,11 +145,19 @@ nu.backward()              # d(nu)/dk in k.grad — dense (<=600) or adjoint (>6
 ## 6. Verification
 
 - **Unit regression:** `python "Phase 2/test_forward_solver.py"` — checks ν=1/3 crystal, foam
-  finiteness, dense gradients, autograd-vs-finite-diff, the **large-N adjoint** ([6]), and legacy
-  woodbury.
+  finiteness, dense gradients, autograd-vs-finite-diff, the **large-N adjoint** ([6]), legacy
+  woodbury, and **[7] `C_eff` vs the energy Hessian COMPONENT BY COMPONENT on disordered meshes**.
 - **Physical ground truth for sim-vs-solver:** `verification_tools/physical_homog.py`
-  (`sim_nuE` = virial, `energy_nuE`) — the relaxed network's physical ν/E, used by the
-  `verify_*` scripts.
+  (`sim_nuE` = virial, `energy_nuE`, and `energy_C` for the full **tensor**) — the relaxed network's
+  physical response, used by the `verify_*` scripts.
+- **A crystal-anchored check cannot gate the homogenisation.** On the regular uniform-k lattice
+  `W ≡ 0` identically, so `C(s) = A(s)` and *any* error in how `W` is contracted is invisible —
+  ν=1/3, E=2/√3 passes regardless. Scalar ν,E hides it too (they are weakly sensitive to the
+  shear-shear entry). Only a **component-wise tensor** check on a mesh with `W ≠ 0` gates it: that is
+  test [7], and it is why the 2026-08 shear-channel defect survived every earlier check.
+- **The tensor oracle must be `physical_homog.energy_C` (or the virial), never
+  `_common.sim_region_C6`** — the latter routes the sim's relaxation through the solver's own
+  `_compute_actual_elastic_tensor`, so comparing against it is self-verification.
 - **Do not** use the legacy area-weighted metric average — `test_cluster_Ceff.Ceff_nuE` has been
   **removed/tombstoned** (superseded; it biased ν on unequal-area meshes); use the physical
   (virial/energy) ground truth.
@@ -163,6 +171,12 @@ nu.backward()              # d(nu)/dk in k.grad — dense (<=600) or adjoint (>6
   `k/l₀²`, so it *appears* degenerate with `k` — but that is a **flat-gauge (`ḡ=I`, geometry-pinned)
   artefact, not a true degeneracy** (moving `l₀` at fixed `ḡ=I` forces the geometry to change). True
   reference-metric / residual-stress physics (incompatible `l₀`) is not yet implemented.
+- **vec3 → 4-index lift of `W` (implementation convention).** `W` is stored as a vec3 operator,
+  `w[3·loc + k] = ∂δg_loc/∂Δg_k`, basis `[xx,xy,yy]` with **no factor-2 on shear**. Lifting it into
+  the 4-index `W_{ijkl}` of `C = (1+W)ᵀA(1+W)` carries a **½ on a shear INPUT pair** (because
+  `δg_ij = W_{ijkl} Δg_kl` sums over both `k` and `l`), and the identity in `(1+W)` must be the
+  **symmetrised** delta ½(δ_ik δ_jl + δ_il δ_jk). The bare tensor `A` is fully symmetric and so is
+  immune to both. Getting this wrong over-stiffens `C_xyxy` only — which is exactly the 2026-08 bug.
 - `physical_units` E-scale is exact for periodic meshes; on open finite samples the boundary edges
   make it slightly approximate (`ν` is unaffected).
 - Protected core: changes to `forward_solver_torch.py` are gated by `test_forward_solver.py` and

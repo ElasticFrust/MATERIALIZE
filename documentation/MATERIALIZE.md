@@ -678,6 +678,17 @@ Headline cases (each saves a CSV of numbers + figures + designed networks `.npz`
   shield, an auxetic-inclusion bulge, the concentric-ring bullseye, and the **mode-selective** demos
   (strain and stress; different-spots and co-located).
 
+**A third lesson, from the 2026-08 shear-channel defect** (full account:
+`documentation/shear_channel_defect.md`): *the crystal cannot gate the homogenisation.* On the
+regular uniform-$k$ lattice $W\equiv0$ identically, so $C(s)=A(s)$ and any error in how $W$ is
+contracted is invisible — $\nu=1/3,\,E=2/\sqrt3$ passes regardless; scalar $\nu,E$ hides it too,
+being weakly sensitive to the shear-shear entry $C_{xyxy}$. A defect can therefore live in that one
+component, grow with $|W|$, and surface only in $\nu(\theta)$ off-axis and in anisotropic designs.
+Two rules follow: a homogenisation claim needs a **component-wise tensor** check on a mesh with
+$W\neq0$ (`Phase 2/test_forward_solver.py` [7]), and the tensor oracle must be
+`physical_homog.energy_C` or the virial — **never** `_common.sim_region_C6`, which routes the
+simulation's relaxation through the solver's own contraction and is therefore self-verification.
+
 **Two honest lessons, written into the demos:** (i) *stress follows equilibrium load paths* — you
 cannot confine high stress to an isolated blob under a uniaxial load; load-aligned shapes render
 cleanly, shapes across the load grow a feeder streak (so the *stress* mode-selective disc streaks
@@ -687,7 +698,8 @@ readback needs the independent nonlinear check.
 
 Run the regressions:
 ```bash
-python "Phase 2/test_forward_solver.py"     # solver: nu=1/3 crystal, gradients, adjoint, ...
+python "Phase 2/test_forward_solver.py"     # solver: nu=1/3 crystal, gradients, adjoint, and [7]
+                                            # C_eff vs the energy Hessian COMPONENT-WISE (W != 0)
 python "Phase 3/test_inverse_design.py"     # 16 tests: round-trip, auxetic, local, mixed,
                                             # strain/stress, homogenisation, isotropisation, ...
 ```

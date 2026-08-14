@@ -9,6 +9,7 @@ on disordered / anisotropic meshes. This module provides that reference:
 
   - virial stress   σ = (1/A_tot) Σ_b (T_b/ℓ_b) R_b⊗R_b,  T_b = k_b·δℓ_b   → C_eff → ν, E
   - energy Hessian  C_eff = (1/A_tot) ∂²U/∂ε²                              (independent cross-check)
+                    `energy_C` returns that full TENSOR; `energy_nuE` reduces it to ν,E
 
 Both give identical ν/E (they must — the virial is dU/dε). Accepts any assembler with the
 signature assemble(mesh, F) -> (K, f_affine), e.g. test_cluster_rigidity.assemble_K_faff or
@@ -83,8 +84,13 @@ def virial_nuE(mesh, u_modes):
     return _voigt_nuE(Cv / DELTA)
 
 
-def energy_nuE(mesh, free, assemble, h=1e-3):
-    """Physical (ν, E) from the Hessian of the relaxed elastic energy (independent of virial)."""
+def energy_C(mesh, free, assemble, h=1e-3):
+    """Physical stiffness TENSOR from the Hessian of the relaxed elastic energy — Voigt [xx,yy,xy],
+    same convention as the solver's c6 → `[[c0,c2,c1],[c2,c5,c4],[c1,c4,c3]]` assembly.
+
+    The full tensor is the sharper oracle: ν,E are only two contractions of it and are weakly
+    sensitive to the shear-shear entry, so a component-wise comparison against this is what catches
+    a defect confined to one component (see `Phase 2/test_forward_solver.py` [7])."""
     require_healthy_mesh(mesh)                             # self-protect: refuse near-singular geometry
     A = mesh['areas'].sum(); nn = len(mesh['pts'])
     K, _ = assemble(mesh, np.eye(2)); Kff = K[free][:, free].tocsc()
@@ -104,7 +110,12 @@ def energy_nuE(mesh, free, assemble, h=1e-3):
         for b in range(a + 1, 3):
             g = np.zeros(3); g[a] = h; g[b] = h
             C[a, b] = C[b, a] = (2 * e(g) / h ** 2 - C[a, a] - C[b, b]) / 2
-    return _voigt_nuE(C)
+    return C
+
+
+def energy_nuE(mesh, free, assemble, h=1e-3):
+    """Physical (ν, E) from the Hessian of the relaxed elastic energy (independent of virial)."""
+    return _voigt_nuE(energy_C(mesh, free, assemble, h))
 
 
 def sim_nuE(mesh, free, assemble):

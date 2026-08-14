@@ -216,6 +216,18 @@ Three DISTINCT quantities — keep them separate:
   to be completed; tracked todo.)*
 - **Sanity gate first.** Regular triangular lattice → **ν=1/3, E=2/√3** on *both* solver and sim
   (`Phase 5/verifications/sanity.py`); run before trusting any run.
+- **BUT the crystal gate is structurally blind to the homogenisation.** On the regular uniform-k
+  lattice **W ≡ 0 identically**, so C(s)=A(s) and *any* error in how W is contracted passes it — as
+  does any scalar-ν,E check, since ν,E are weakly sensitive to the **shear-shear** entry. A defect
+  can therefore live in C_xyxy alone, growing with |W|, and show up only in ν(θ) off-axis and in
+  anisotropic designs. **A homogenisation claim needs a COMPONENT-WISE tensor check on a mesh with
+  W≠0** (`Phase 2/test_forward_solver.py` [7]). *(2026-08: exactly this went unseen for months —
+  the shear entry was over-stiff by 29–90% on the anisotropic designs, and reported ν(θ) dips to
+  −0.30 where the truth was +0.13.)*
+- **The tensor oracle is `physical_homog.energy_C` / the virial — NEVER `_common.sim_region_C6`.**
+  `sim_region_C6` takes the sim's relaxation but pushes it through the solver's own
+  `_compute_actual_elastic_tensor`, so it shares the contraction: comparing against it is
+  **self-verification** and hides precisely the defects a tensor check exists to catch.
 - **The sim self-screens near-singular geometry.** The independent sim is dense scipy/LAPACK — a
   near-singular geometry (sliver / near-zero-area triangles) would **hard-crash it (native segfault,
   UNCATCHABLE in Python)**. So the sim entry (`physical_homog.relax` / `energy_nuE`, hence

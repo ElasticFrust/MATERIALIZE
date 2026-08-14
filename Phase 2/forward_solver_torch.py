@@ -1027,51 +1027,53 @@ def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
 
 
 def _compute_actual_elastic_tensor(bare_tensors, Ws):
-    """Compute per-triangle effective elastic tensor via 4-index contraction.
+    """Per-triangle effective elastic tensor  C = (1+W)ᵀ A (1+W)  by 4-index contraction:
 
-        C_{manb} = A_{manb} + A_{minj}W_{iajb} + A_{aibj}W_{imjn} + A_{kilj}W_{iajb}W_{kmln}
+        C_{ijkl} = T_{mnij} A_{mnpq} T_{pqkl},        T = Id + W
+
+    with every contraction over an index PAIR running over both of its indices.
+
+    A is the fully symmetric bare tensor, A_{ijkl} = a[(i+j)+(k+l)] — 5 independent components,
+    and being fully symmetric it is insensitive to the index bookkeeping below.  W is not: it maps
+    symmetric 2-tensors to symmetric 2-tensors, δg_ij = W_{ijkl} Δg_kl summed over BOTH k and l, so
+    lifting the vec3 operator `Ws` (layout w[3·loc + k] = ∂δg_loc/∂Δg_k, basis [xx,xy,yy], NO
+    factor-2 on shear — see `_intrinsic_solve_W`) into 4 indices carries a ½ on a shear INPUT pair:
+
+        W_xxxx Δg_xx + 2·W_xxxy Δg_xy + W_xxyy Δg_yy  =  W3[0,0] Δg_xx + W3[0,1] Δg_xy + W3[0,2] Δg_yy
+
+    and, for the same reason, the identity inside (1+W) is the SYMMETRISED delta ½(δ_ik δ_jl +
+    δ_il δ_jk), not δ_ik δ_jl.  Dropping either double-counts the shear input and over-stiffens
+    C_xyxy on any network with W≠0 (2026-08 fix; the regular lattice has W≡0 identically, so no
+    crystal-anchored check can see it — `test_forward_solver.py` [7] is the gate that does).
 
     Args:
-        bare_tensors: (N, 5)
-        Ws:           (N, 9)
+        bare_tensors: (N, 5) — [a_xxxx, a_xxxy, a_xxyy, a_xyyy, a_yyyy]
+        Ws:           (N, 9) — vec3 strain-concentration operator, entry [3·loc + k]
 
     Returns:
         (N, 6) — [C₁₁₁₁, C₁₁₁₂, C₁₁₂₂, C₂₁₁₂, C₂₁₂₂, C₂₂₂₂]
     """
     N = bare_tensors.shape[0]
     a, w = bare_tensors, Ws
+    dev = a.device
 
-    A_mat = torch.zeros(N, 4, 4, dtype=a.dtype, device=a.device)
-    A_mat[:, 0, 0] = a[:, 0]; A_mat[:, 0, 1] = a[:, 1]
-    A_mat[:, 0, 2] = a[:, 1]; A_mat[:, 0, 3] = a[:, 2]
-    A_mat[:, 1, 0] = a[:, 1]; A_mat[:, 1, 1] = a[:, 2]
-    A_mat[:, 1, 2] = a[:, 2]; A_mat[:, 1, 3] = a[:, 3]
-    A_mat[:, 2, 0] = a[:, 1]; A_mat[:, 2, 1] = a[:, 2]
-    A_mat[:, 2, 2] = a[:, 2]; A_mat[:, 2, 3] = a[:, 3]
-    A_mat[:, 3, 0] = a[:, 2]; A_mat[:, 3, 1] = a[:, 3]
-    A_mat[:, 3, 2] = a[:, 3]; A_mat[:, 3, 3] = a[:, 4]
+    # index maps over the 2×2×2×2 slots (tiny, geometry-independent)
+    e = torch.arange(2, device=dev)
+    I, J, K, L = torch.meshgrid(e, e, e, e, indexing='ij')
+    a_idx = ((I + J) + (K + L)).reshape(-1)              # → one of the 5 bare components
+    w_idx = (3 * (I + J) + (K + L)).reshape(-1)          # → one of the 9 vec3 entries
+    half = 1.0 - 0.5 * (K != L).to(a.dtype)              # ½ on a shear INPUT pair (k≠l)
 
-    W_mat = torch.zeros(N, 4, 4, dtype=w.dtype, device=w.device)
-    W_mat[:, 0, 0] = w[:, 0]; W_mat[:, 0, 1] = w[:, 1]
-    W_mat[:, 0, 2] = w[:, 3]; W_mat[:, 0, 3] = w[:, 4]
-    W_mat[:, 1, 0] = w[:, 1]; W_mat[:, 1, 1] = w[:, 2]
-    W_mat[:, 1, 2] = w[:, 4]; W_mat[:, 1, 3] = w[:, 5]
-    W_mat[:, 2, 0] = w[:, 3]; W_mat[:, 2, 1] = w[:, 4]
-    W_mat[:, 2, 2] = w[:, 6]; W_mat[:, 2, 3] = w[:, 7]
-    W_mat[:, 3, 0] = w[:, 4]; W_mat[:, 3, 1] = w[:, 5]
-    W_mat[:, 3, 2] = w[:, 7]; W_mat[:, 3, 3] = w[:, 8]
+    A4 = a[:, a_idx].reshape(N, 2, 2, 2, 2)
+    W4 = w[:, w_idx].reshape(N, 2, 2, 2, 2) * half
+    I2 = torch.eye(2, dtype=a.dtype, device=dev)
+    Id = 0.5 * (torch.einsum('ik,jl->ijkl', I2, I2) + torch.einsum('il,jk->ijkl', I2, I2))
 
-    A4 = A_mat.reshape(N, 2, 2, 2, 2)
-    W4 = W_mat.reshape(N, 2, 2, 2, 2)
-
-    S2 = torch.einsum('tminj,tiajb->tmanb', A4, W4)
-    S3 = torch.einsum('taibj,timjn->tmanb', A4, W4)
-    S4 = torch.einsum('tkilj,tiajb,tkmln->tmanb', A4, W4, W4)
-
-    C_mat = (A4 + S2 + S3 + S4).reshape(N, 4, 4)
+    T = Id + W4
+    C = torch.einsum('tmnij,tmnpq,tpqkl->tijkl', T, A4, T)
     return torch.stack([
-        C_mat[:, 0, 0], C_mat[:, 0, 1], C_mat[:, 1, 1],
-        C_mat[:, 1, 2], C_mat[:, 2, 3], C_mat[:, 3, 3],
+        C[:, 0, 0, 0, 0], C[:, 0, 0, 0, 1], C[:, 0, 0, 1, 1],
+        C[:, 1, 0, 0, 1], C[:, 1, 0, 1, 1], C[:, 1, 1, 1, 1],
     ], dim=1)
 
 
