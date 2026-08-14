@@ -233,6 +233,8 @@ Three DISTINCT quantities — keep them separate:
   re-verified and blast radius checked.
 - **"Verified" (charter ladder), strongest first:** independent code path (the sim) → prior detailed
   results → a known value (ν=1/3, E=2/√3) → an analytical argument. Passing tests alone ≠ verified.
+- **New functionality gets a test.** Core and any new capability get a structured test — compared vs
+  an alternative code path or a known value — alongside the existing regressions.
 - **Regressions:** `test_forward_solver.py` (crystal ν, **gradients + large-N adjoint**);
   `test_inverse_design.py` (16 tests). Use the anaconda python (see environment subsection).
 
@@ -344,7 +346,10 @@ Complements the global charter's coding style; only the project-specific bits he
 ### Saving / docs habits  *(settled 2026-08-13)*
 
 - **Keep every experiment in-repo** (script + outputs + plot), add-only during active work — never
-  only in scratch/tmp. Each carries provenance (commit / config / seed) + a short `.md`.
+  only in scratch/tmp. Convention: the **script** lives in `Phase 5/verifications/` (or the relevant
+  phase's `verifications/`), **outputs + a results doc** in `Phase 5/results/<exp>/<EXP>.md`. **End
+  every experiment with that doc** — *what · method · key numbers · limitations · figure links* — and
+  carry provenance (commit / config / seed).
 - **Designs: save-then-load** — `save_network` once; figures load, never re-optimise (cf. env/plotting).
 - **Docs in lockstep with code.** Module `.md` updated at the end of every task; project docs
   (`documentation/`) on big changes; papers only after a wide range of experiments. **`.md` + `.pdf`
