@@ -16,21 +16,26 @@ disorder intent — a topology scan); and an anisotropic base lattice (ψ=0.6).
 
 ---
 
-> **What this residual is NOT.** It is *not* solver-vs-sim disagreement. [7]/[8] deliberately feed
-> the contraction the sim's W extracted with the GEOMETRICALLY EXACT strain (Δg = FᵀF − I) and
-> compare against the LINEARISED energy Hessian. Measured on the same relaxed field u (N=10, η=0.30,
-> VD a=+5):
+> **What this residual is NOT.** It is *not* solver-vs-sim disagreement.
 >
-> | W fed to the contraction | per-triangle | bulk |
+> All comparisons here compute the SAME object two ways: C(s) = (1+W)ᵀA(s)(1+W), via the SAME
+> `_compute_actual_elastic_tensor`, with the SAME A(s). They differ only in **where W comes from**,
+> and are scored against the same reference — `energy_C_per_triangle`, the Hessian ∂²U_s/∂g² of
+> triangle s's own relaxed energy. Measured N=10, η=0.30, VD a=+5:
+>
+> | source of W | per-triangle | bulk |
 > |---|---|---|
-> | sim's W, strain read **exactly** | 1.05e-02 | 5.37e-03 |
-> | sim's W, strain read **linearised** | **5.47e-13** | **2.33e-13** |
-> | **solver's own W** (intrinsic solve) | **7.54e-10** | 5.45e-12 |
+> | sim's relaxed **u** → per-triangle F_s → Δg = FᵀF − I (**exact** strain) — *this is what [7]/[8] use* | 1.05e-02 | 5.37e-03 |
+> | the same **u**, same F_s, but Δg = (F−I)+(F−I)ᵀ (**linearised** strain) | **5.47e-13** | **2.33e-13** |
+> | the **solver's own** W — the intrinsic constrained solve over δg. **No displacement field is involved at all** | **7.54e-10** | 5.45e-12 |
 >
-> The two strain measures differ by 5.84e-03 at DELTA=1e-3, which accounts for row 1 exactly. So the
+> Rows 1–2 share a displacement field; **row 3 does not have one** — the solver works in metric
+> space (W is (N,9), per-triangle, no nodal DOF). The two strain measures in rows 1–2 differ by
+> 5.84e-03 at DELTA=1e-3, which accounts for row 1 exactly and scales linearly with DELTA. So the
 > ~1e-2 figures below measure a strain-measure mismatch at finite probe amplitude — a property of
-> the isolation construction, chosen so the check is sensitive to the CONTRACTION. The solver's own
-> end-to-end agreement with the oracle is ~8 orders better. See audit A-15.
+> the isolation construction, chosen to make the check sensitive to the CONTRACTION. Row 3 is the
+> genuine cross-formulation check (metric-space constrained solve vs nodal relaxation) and is ~8
+> orders tighter. See audit A-15.
 
 
 ## 1. Headline
