@@ -228,8 +228,12 @@ Three DISTINCT quantities — keep them separate:
     substantiate "near a mechanism the linear read-back diverges from the true nonlinear relaxation
     — hence every design is checked against the independent simulation": models 2 and 3 are
     tangent-equivalent by construction (verified to ~1e-12 per triangle), so the comparison cannot
-    probe where they part company. Near-mechanism designs are **not** currently validated against
-    finite-displacement kinematics by anything in the repo (audit **A-15**).
+    probe where they part company. **But linearising the kinematics costs NOTHING for C_eff at an
+    unstressed reference** — model 1 vs model 3 differ by O(h) and agree in the limit (measured,
+    `verification_tools/exact_kinematics_check.py`), because the geometric stiffness (T/ℓ)(I − R̂⊗R̂)
+    vanishes at T = 0. It bites only for **prestress** (T ≠ 0), which `assemble_K_faff` cannot even
+    express — it takes no rest length — and that is the residual-stress program, not a defect in
+    today's results (audit **A-15**).
 - **Define the ensemble** (usually natural). Verification quantities are computed over an *explicit*
   ensemble: a **crystal = the single structure** (or a parametric family, e.g. the Bravais sweep) —
   no randomness ⇒ nothing to average; a disordered family = fixed parameters (η, N) over seeds.
