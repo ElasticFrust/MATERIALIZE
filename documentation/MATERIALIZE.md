@@ -778,19 +778,47 @@ constrain(region=None, weight=1.0, *, nu=None, E=None, isotropic=False, tensor=N
           nu_theta=None, E_theta=None, thetas=None, nu_scalar=None, E_scalar=None)
 isotropic_c6(nu, E)                                    # the isotropic 2D physical 6-vector
 
-optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80, n_restarts=1, reg=1e-4, seed=0)
-#   -> dict(k, l0, loss, history)
+optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80, n_restarts=1, seed=0,
+         reg=0.0, verbose=True)
+#   -> dict(k, l0, loss, history, raw)
+#   NB reg DEFAULTS TO 0.0 — regularisation is OFF unless you pass it. You almost always want
+#   reg ≈ 0.01–0.05 (penalises k-VARIANCE, not deviation from 1): at reg=0 the optimiser drifts
+#   k into soft channels and lands on near-mechanism designs, where the linear solver mispredicts
+#   and the result is bistable between runs. The one legitimate exception is a round-trip test
+#   recovering a known k_true, where a k-variance penalty biases k away from the answer.
 validate(prob, k, l0, objectives)                      # achieved-vs-target per objective
 
 per_triangle_strain_stress(bare, W, load)              # (I+W)@load and A:strain, differentiable
 region_mean_vec3(field, region)                        # region-mean of an (N,3) field
 ```
 
-**Independent verification** (`Phase 3/verifications/_common.py`, `verification_tools/physical_homog.py`)
+**Verification** (`verification_tools/physical_homog.py`, `Phase 3/verifications/_common.py`)
+
+> **Read this before picking a routine.** Only the BULK reductions below are genuinely independent
+> of the design path. Everything per-triangle or regional takes the sim's relaxation and pushes it
+> back through the solver's own `_compute_actual_elastic_tensor` — the *same* contraction being
+> tested — so comparing against them is **self-verification**, and it is blind to exactly the class
+> of defect a tensor check exists to catch. This is not hypothetical: it is how the shear-channel
+> defect survived for months (`documentation/shear_channel_defect.md`). Completing the local oracle
+> is open audit finding **A-9**.
+
 ```python
+# GENUINELY INDEPENDENT — no solver code on this path. Use these as ground truth.
+PH.virial_nuE(mesh, u_modes)        # (nu, E) from the macroscopic virial stress
+PH.energy_nuE(mesh, free, assemble) # (nu, E) from the relaxed-energy Hessian (must agree)
+PH.energy_C(mesh, free, assemble)   # the full C_eff TENSOR — the sharp oracle; ν,E are only two
+                                    # contractions of it and are weakly sensitive to shear-shear
+PH.sim_nuE(mesh, free, assemble)    # convenience: relax + virial
+
+# NOT independent — the sim's relaxation reduced through the SHARED homogenisation.
+# Fine for "did the design→realise→simulate loop reproduce the pattern"; NOT a check of the
+# homogenisation itself.
+C.sim_per_triangle_C6(geo)          # per-triangle tensor: sim relaxation -> SOLVER contraction
+C.region_phys_C6(geo, C6, region)   # region mean of the above -> inherits the shared path
+C.sim_region_C6(geo, region)        # ditto
+
+# other tools
 C.make_case(topo, N)                # (DesignProblem, geo)
-C.sim_per_triangle_C6(geo)          # per-triangle physical tensor from ONE PBC relaxation (sim)
-C.region_phys_C6(geo, C6, region)   # region-mean physical 6-vector (INDEPENDENT ground truth)
 C.unit_mode_response(geo)           # per-triangle strain/stress under the 3 unit modes (sim)
 C.local_nuE_angleavg(geo, C6)       # per-triangle angle-averaged (nu, E) material maps
 C.open_stretch(geo, axis=0)         # real open-boundary cut-and-stretch (classical nodal solve)

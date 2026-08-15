@@ -2,20 +2,23 @@
 Shared harness for Phase 3 inverse-design verifications.
 
 For every case we run a matrix of TOPOLOGIES x SIZES, design k with the inverse designer, then
-INDEPENDENTLY simulate the designed network (PBC relaxation → physical per-triangle tensor) and
-check it does as prescribed — globally and per-region. Results are plotted and saved per case in
+simulate the designed network (PBC relaxation) and check it does as prescribed — globally and
+per-region. NB "simulate" is only INDEPENDENT of the design path at BULK level; see below. Results are plotted and saved per case in
 Phase 3/verifications/<case>/.
 
 Topologies (periodic): regular triangular, two non-symmetric (affine-stretched / sheared)
 lattices, two disordered (perturbed) lattices. Sizes span the dense (<=600 tri) and adjoint
 (>600 tri) solver paths.
 
-Verification strength (be explicit in plots):
-  - GLOBAL nu/E: the sim ground truth (energy = virial) is independent of the solver's
-    homogenisation → a genuinely independent check.
-  - LOCAL/regional nu: defined via the region-averaged per-triangle physical tensor; the sim
-    uses the same definition, so it validates the design→realise→simulate loop and the spatial
-    pattern (not a fully independent measurement of a sub-region's modulus).
+Verification strength (be explicit in plots) — the two are NOT the same strength:
+  - GLOBAL nu/E: `physical_homog.virial_nuE` / `energy_nuE` / `energy_C` reduce the relaxed field
+    by virial stress or energy Hessian, touching NO solver code → a genuinely independent check.
+  - LOCAL/regional: `sim_per_triangle_C6` takes the sim's relaxation and pushes it back through
+    the solver's OWN `_compute_actual_elastic_tensor` — the very contraction under test. So it
+    validates the design→realise→simulate loop and the spatial PATTERN, but it is NOT an
+    independent measurement of the homogenisation, and it is blind to precisely the class of
+    defect that a tensor check exists to catch (this is how the shear-channel defect survived;
+    see documentation/shear_channel_defect.md). Completing the local oracle is audit A-9.
 """
 import os, sys
 import numpy as np
@@ -459,9 +462,14 @@ _Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in _Dgt], 1))
 
 
 def sim_per_triangle_C6(geo):
-    """Per-triangle physical-response tensor (nt,6) in INTERNAL units, from one full PBC
-    relaxation of geo (uses geo['tri_k']). Compute once, then query any region with
-    region_phys_C6 (patch / outside / grid cells all share this relaxation)."""
+    """Per-triangle response tensor (nt,6) in INTERNAL units, from one full PBC relaxation of geo
+    (uses geo['tri_k']). Compute once, then query any region with region_phys_C6 (patch / outside /
+    grid cells all share this relaxation).
+
+    **NOT an independent check of the homogenisation.** The relaxation is the sim's, but it is
+    reduced through the solver's own `_compute_actual_elastic_tensor` below — the same contraction
+    being tested. Use it for the spatial pattern and the design→realise→simulate loop; for ground
+    truth use `physical_homog.energy_C` / `virial_nuE` (bulk only, today — audit A-9)."""
     ev, sx = geo['edge_vecs'], geo['simplices']; nn = len(geo['pts']); nt = len(sx)
     u_modes = PH.relax(geo, np.arange(2, 2 * nn), SA.assemble_K_faff)
     D = np.zeros((nt, 3, 3))

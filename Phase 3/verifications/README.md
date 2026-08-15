@@ -27,8 +27,10 @@ python "Phase 3/verifications/<case>/design_and_verify.py"
   `square_frame`/`draw_box`; `mark_region` outlines the target region in lime). The detail figures
   (`design_detail_figure` grid + `design_detail_per_topology` files) show, per design, the designed
   rigidity network alongside its local ν and local E maps.
-- **Independent simulation:** `sim_per_triangle_C6` relaxes the designed network once and returns
-  the physical per-triangle tensors; `region_phys_C6` averages any region; `nu_E_theta` gives the
+- **Simulation of the design** (independent at BULK level only — `sim_per_triangle_C6` reduces the
+  sim's relaxation through the solver's own contraction, so it checks the spatial pattern, not the
+  homogenisation; ground truth is `physical_homog.energy_C`/`virial_nuE`, audit A-9):
+  `sim_per_triangle_C6` relaxes the designed network once and returns the per-triangle tensors; `region_phys_C6` averages any region; `nu_E_theta` gives the
   directional ν(θ)/E(θ); `solver_region_nuE` is the solver's own prediction (plotted beside the sim
   on every summary). A light uniformity regulariser (`reg` in `optimize`) discourages the optimiser
   from exploiting floppy/unstable configurations.
