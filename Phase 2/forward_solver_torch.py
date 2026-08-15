@@ -457,18 +457,40 @@ class ElasticSolver(nn.Module):
             areas = 0.5 * torch.abs(e01[:, 0] * e02[:, 1] - e01[:, 1] * e02[:, 0])
             C = C * (8.0 * areas.shape[0] / areas.sum())
 
-        poisson = (C[2] * C[3] - C[1] * C[4]) / (C[0] * C[3] - C[1] ** 2)
-        young = (
-            C[2] ** 2 * C[3]
-            - 2 * C[1] * C[2] * C[4]
-            + C[1] ** 2 * C[5]
-            + C[0] * (C[4] ** 2 - C[3] * C[5])
-        ) / (C[1] ** 2 - C[0] * C[3])
+        # ---- scalar reduction: DIRECTION-AVERAGED, with an isotropy measure beside it ----------
+        # ν = ½(ν_xy + ν_yx), E = ½(Ex + Ey), from the compliance S = C⁻¹ in Voigt [xx,yy,xy].
+        #
+        # This used to be the closed form (C2·C3 − C1·C4)/(C0·C3 − C1²) etc., which returns **ν_yx
+        # and E_y — the y direction alone**. Identical on an isotropic tensor, so ν=1/3 never saw
+        # it, but on a plain orthotropic tensor it differs by Δν=0.081 / ΔE=21%, and on the ψ=0.6
+        # crystal ν_xy=0.926 vs ν_yx=0.209 — the old value silently reported the smaller of the two
+        # because it happened to be y. It also disagreed with the oracle
+        # (`physical_homog._voigt_nuE`), so every solver-vs-sim ν/E comparison was mixing two
+        # different quantities: measured gaps of 0.079 collapsed to 1.4e-12 once matched.
+        # Audit A-10, changed 2026-08-15 with explicit approval (protected core).
+        #
+        # A scalar is only meaningful when the tensor is near-isotropic, so `anisotropy` travels
+        # with it — 0 = isotropic, and a large value means READ ν(θ)/E(θ) INSTEAD, not this number.
+        Cv = torch.stack([torch.stack([C[0], C[2], C[1]]),
+                          torch.stack([C[2], C[5], C[4]]),
+                          torch.stack([C[1], C[4], C[3]])])
+        S = torch.linalg.inv(Cv)
+        Ex, Ey = 1.0 / S[0, 0], 1.0 / S[1, 1]
+        poisson = 0.5 * (-S[1, 0] * Ex - S[0, 1] * Ey)
+        young = 0.5 * (Ex + Ey)
+        dev = ((C[0] - C[5]) ** 2 + C[1] ** 2 + C[4] ** 2
+               + (C[3] - (C[0] - C[2]) / 2) ** 2)                # deviation from isotropy
+        anisotropy = dev / (C[0] ** 2 + C[5] ** 2 + C[2] ** 2 + C[3] ** 2 + 1e-12)
 
         return {
             'elastic_tensor': C,
             'poisson': poisson,
             'young': young,
+            'anisotropy': anisotropy,       # 0 = isotropic; large ⇒ the scalars above are a poor summary
+            'poisson_xy': -S[1, 0] * Ex,    # the two directional values the average is made of,
+            'poisson_yx': -S[0, 1] * Ey,    # kept so the spread is always available
+            'young_x': Ex,
+            'young_y': Ey,
             'per_triangle': actual,
             'bare': bare,
             'W': W,

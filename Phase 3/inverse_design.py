@@ -56,12 +56,25 @@ def _inv_softplus(k):
 
 
 def c6_to_nuE(C):
-    """ν, E from a 6-component elastic tensor, using the SAME formula the solver's forward uses
-    (so a global-region objective matches out['poisson']/out['young'] exactly). Torch, autograd-safe.
-    C may be (6,) (one tensor) or (...,6) (batched, e.g. per-triangle) -- indexed on the last axis."""
-    nu = (C[..., 2] * C[..., 3] - C[..., 1] * C[..., 4]) / (C[..., 0] * C[..., 3] - C[..., 1] ** 2)
-    E = (C[..., 2] ** 2 * C[..., 3] - 2 * C[..., 1] * C[..., 2] * C[..., 4] + C[..., 1] ** 2 * C[..., 5]
-         + C[..., 0] * (C[..., 4] ** 2 - C[..., 3] * C[..., 5])) / (C[..., 1] ** 2 - C[..., 0] * C[..., 3])
+    """DIRECTION-AVERAGED ν, E from a 6-component elastic tensor — ν = ½(ν_xy+ν_yx), E = ½(Ex+Ey),
+    via the compliance S = C⁻¹ in Voigt [xx,yy,xy]. Matches `forward`'s `poisson`/`young` and
+    `physical_homog._voigt_nuE` exactly, so solver and oracle scalars are the same quantity.
+    Torch, autograd-safe, batched: C may be (6,) or (...,6), indexed on the last axis.
+
+    Changed 2026-08-15 (audit A-10). It previously returned **ν_yx and E_y — the y direction
+    alone**: identical on isotropic tensors, but Δν=0.081 / ΔE=21% on a plain orthotropic one, and
+    it disagreed with the oracle, so every reported solver-vs-sim ν/E gap was mixing two different
+    quantities (0.079 → 1.4e-12 once matched).
+
+    A scalar ν,E is only a fair summary when the tensor is near-isotropic — pair it with
+    `_anisotropy(C)`, and use `c6_to_nu_theta`/`c6_to_E_theta` when it is not."""
+    Cv = torch.stack([torch.stack([C[..., 0], C[..., 2], C[..., 1]], -1),
+                      torch.stack([C[..., 2], C[..., 5], C[..., 4]], -1),
+                      torch.stack([C[..., 1], C[..., 4], C[..., 3]], -1)], -2)
+    S = torch.linalg.inv(Cv)
+    Ex, Ey = 1.0 / S[..., 0, 0], 1.0 / S[..., 1, 1]
+    nu = 0.5 * (-S[..., 1, 0] * Ex - S[..., 0, 1] * Ey)
+    E = 0.5 * (Ex + Ey)
     return nu, E
 
 

@@ -16,6 +16,11 @@ this is immune to the open A-10 convention question):
   (c) solver PER-TRIANGLE C(s) vs the independent oracle   — the quantity gated by [8].
   (d) the same per-triangle comparison WITH the A-0 shear defect — the reference for what a real
       defect looks like, so (c) can be read against something rather than in the abstract.
+  (e)+(f) the SOLVER'S OWN forward — its own W from the intrinsic constrained solve, no displacement
+      field anywhere — vs the same oracle, bulk and per-triangle. **This is the end-to-end
+      "do the solver and the sim agree" number.** (b)/(c) deliberately feed the contraction the
+      SIM's W with the geometrically exact strain, so their residual is a strain-measure mismatch at
+      finite probe amplitude, not solver error; (e)/(f) have no such mismatch.
 
 NINE families, so the answer is not read off one kind of network. Rigidity contrast drives W
 independently of geometry, and the two disorder INTENTS (CLAUDE.md §3) are physically different, so
@@ -56,13 +61,14 @@ import physical_homog as PH
 import sim_assembly as SA
 import metric_ops as MO
 import mesh_build as MB
+import solver_build as SB
 import plotting as P
 # reuse rather than re-derive: the validated contraction (with the A-0 switch) and the 6→3×3 map
 from per_triangle_C_comparison import _contract, _as_mat, G_TO_DG
 
 torch.set_default_dtype(torch.float64)
 OUTDIR = os.path.join(HERE, 'plots', 'accuracy_vs_disorder')
-KEYS = ['oracle_control', 'bulk', 'per_tri', 'per_tri_A0']
+KEYS = ['oracle_control', 'bulk', 'per_tri', 'per_tri_A0', 'own_bulk', 'own_per_tri']
 EXTRA = ['Wmag', 'E_bulk']   # diagnostics, not agreements
 
 
@@ -122,7 +128,17 @@ def one(N, eta, seed, kind):
     def rel(a, b):
         return float(np.abs(a - b).max() / np.abs(b).max())
 
-    return dict(oracle_control=rel(bulk_virial, bulk_energy),
+    # (e)/(f) the solver's OWN forward — intrinsic constrained solve, no nodal DOF at all.
+    # NB per_triangle is NOT rescaled by physical_units (verified); elastic_tensor is.
+    sv = SB.make_solver(mesh, MB.kkt_from_tri_bond(mesh['tri_bond'], mesh['edge_vecs']))
+    o = sv.forward(torch.as_tensor(mesh['tri_k']),
+                   rest_lengths=torch.as_tensor(np.sqrt(mesh['actual_len2'])),
+                   method='intrinsic', physical_units=True)
+    own = _as_mat(o['per_triangle'].detach().numpy())
+    own_bulk = own.mean(0) * (8.0 * nt / mesh['areas'].sum())
+
+    return dict(own_bulk=rel(own_bulk, bulk_energy), own_per_tri=rel(own, C_ind),
+                oracle_control=rel(bulk_virial, bulk_energy),
                 bulk=rel(bulk_solver, bulk_energy),
                 per_tri=rel(ok, C_ind),
                 per_tri_A0=rel(bug, C_ind),
@@ -167,8 +183,10 @@ def main():
     # ---- figure: one panel per family, all four quantities overlaid --------------------------
     import matplotlib.pyplot as plt
     style = [('oracle_control', 'tab:purple', 'o', 'ORACLE CONTROL: virial vs energy (no solver)'),
-             ('bulk', 'tab:green', '^', 'solver BULK vs oracle  (gated by [7])'),
-             ('per_tri', 'tab:blue', 'o', 'solver PER-TRIANGLE vs oracle  (gated by [8])'),
+             ('own_bulk', 'tab:cyan', 'D', "SOLVER'S OWN forward, bulk (END-TO-END)"),
+             ('own_per_tri', 'tab:orange', 'v', "SOLVER'S OWN forward, per-triangle (END-TO-END)"),
+             ('bulk', 'tab:green', '^', 'contraction-isolation, bulk  (gated by [7])'),
+             ('per_tri', 'tab:blue', 'o', 'contraction-isolation, per-triangle  (gated by [8])'),
              ('per_tri_A0', 'tab:red', 's', 'per-triangle WITH the A-0 defect (reference)')]
     ncol = 3
     nrow = int(np.ceil(len(fams) / ncol))
@@ -199,25 +217,25 @@ def main():
         if i % ncol == 0:
             axes_flat[i].set_ylabel('max relative difference')
     h, l = axes_flat[0].get_legend_handles_labels()
-    fig.legend(h, l, loc='lower center', ncol=2, fontsize=10, frameon=False,
+    fig.legend(h, l, loc='lower center', ncol=3, fontsize=9, frameon=False,
                bbox_to_anchor=(0.5, -0.005))
     fig.suptitle(f'Tensor-level accuracy vs disorder, {len(fams)} network families '
                  f'(N={a.N}, {a.seeds} seeds, band = min–max) — η=0 is the degenerate case, '
                  f'not the informative one', fontsize=12)
-    fig.tight_layout(rect=(0, 0.075, 1, 1))
+    fig.tight_layout(rect=(0, 0.085, 1, 1))
     P.save_fig(fig, os.path.join(OUTDIR, 'accuracy_vs_disorder.png'))
 
     # ---- figure 2: the real explanatory variable ---------------------------------------------
     fig2, ax2 = plt.subplots(figsize=(7.4, 5.2))
     cm2 = plt.get_cmap('tab10')
     for i, (fam, _) in enumerate(fams):
-        E = res[fam]['E_bulk'].ravel(); e = res[fam]['per_tri'].ravel()
+        E = res[fam]['E_bulk'].ravel(); e = res[fam]['own_per_tri'].ravel()
         m = np.isfinite(E) & np.isfinite(e) & (E > 0)
         ax2.loglog(E[m], e[m], 'o', ms=4.5, alpha=0.65, color=cm2(i % 10), label=fam)
     ax2.axhline(2e-2, color='k', ls=':', lw=1.3)
     ax2.text(ax2.get_xlim()[0] * 1.4, 2.4e-2, 'gate tolerance 2e-2', fontsize=8)
     ax2.set_xlabel("bulk Young's modulus E of the realisation  (physical units)")
-    ax2.set_ylabel('per-triangle max relative difference')
+    ax2.set_ylabel("per-triangle max relative difference (SOLVER'S OWN forward)")
     ax2.grid(alpha=0.25, which='both'); ax2.legend(fontsize=8, loc='upper right')
     fig2.suptitle('Accuracy is governed by proximity to a MECHANISM, not by η itself — '
                   'the softer the network, the worse the linear read-back', fontsize=11)
