@@ -151,10 +151,14 @@ def main():
     ap.add_argument('--N', type=int, default=8)
     ap.add_argument('--seeds', type=int, default=3)
     ap.add_argument('--eta-step', type=float, default=0.02)
+    # η→0.5 is the SINGULAR limit of frozen-connectivity disorder, not part of the domain: at
+    # η ≥ 0.44 the meshes degenerate (it is also where the sim's own health gate starts refusing
+    # realisations). Sweeping into it measures the construction breaking down, not the solver.
+    ap.add_argument('--eta-max', type=float, default=0.42)
     a = ap.parse_args()
     os.makedirs(OUTDIR, exist_ok=True)
 
-    etas = np.round(np.arange(0.0, 0.5 + 1e-9, a.eta_step), 6)
+    etas = np.round(np.arange(0.0, a.eta_max + 1e-9, a.eta_step), 6)
     fams = [('frozen η, uniform k', ('uniform',)),
             ('VD a=−10', ('vd', -10)), ('VD a=−2', ('vd', -2)), ('VD a=+5', ('vd', 5)),
             ('VD a=+10', ('vd', 10)), ('VD a=+100', ('vd', 100)),
@@ -250,7 +254,7 @@ def main():
     np.savez(os.path.join(OUTDIR, 'raw.npz'), etas=etas,
              **{f'{f}__{k}': res[f][k] for f, _ in fams for k in KEYS + EXTRA})
 
-    print('\n  quantity                         eta=0      eta=0.2    eta=0.4    eta=0.5')
+    print(f'\n  quantity                         eta=0      eta=0.2    eta=0.4    eta={etas[-1]:.2f}')
     ie = [0, int(round(0.2 / a.eta_step)), int(round(0.4 / a.eta_step)), len(etas) - 1]
     for fam, _ in fams:
         print(f'  --- {fam} ---')
