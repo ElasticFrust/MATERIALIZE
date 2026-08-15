@@ -17,15 +17,17 @@ import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
-import test_cluster_rigidity as TR          # k-aware bare_tensor, assemble_K_faff
 import test_cluster_Ceff as CE              # vec3, tri_metric_change, Ceff_nuE, DELTA, MODES
 import test_cluster_Ceff_rigidity as RG     # mf_W3
-import test_cluster_VD as VD                # build_geometry, set_VD
 from test_intrinsic_metric import edge_op, curv_op, mean_op
 # kkt_from_tri_bond MOVED to the core layer by the A-7b re-layering (Phase 2/mesh_build.py):
 # Phase 3/inverse_design.py builds every periodic DesignProblem with it, and the design layer must
-# not depend on this retireable oracle layer. Re-exported so peers keep working unchanged.
-from mesh_build import kkt_from_tri_bond              # noqa: F401
+# not depend on this retireable oracle layer. Imported back here, where this module uses it.
+from mesh_build import kkt_from_tri_bond
+from solver_build import make_solver
+import metric_ops as MO
+import mesh_build as MB
+import sim_assembly as SA
 
 N = 14
 CONTRASTS = [-10, -5, 0, 5, 10]
@@ -58,7 +60,7 @@ def intrinsic_W3(mesh, eps=1e-10):
     nC = C.shape[0]
     KKT = sp.bmat([[Hblk, C.T], [C, -eps*sp.eye(nC)]]).tocsc()
     Fk = [np.eye(2) + DELTA*M for M in MODES]
-    Dg_k = [CE.vec3(F.T@F - np.eye(2)) for F in Fk]
+    Dg_k = [MO.vec3(F.T@F - np.eye(2)) for F in Fk]
     Dinv = np.linalg.inv(np.stack(Dg_k, axis=1))
     D = np.zeros((n_tri, 3, 3))
     for k, dgv in enumerate(Dg_k):
@@ -70,13 +72,16 @@ def intrinsic_W3(mesh, eps=1e-10):
 
 def nuE(mesh):
     """PHYSICAL (nu,E): PBC simulation (virial=energy, truth) vs the production forward solver
-    (forward(method='intrinsic', physical_units=True)). Lazy import of make_solver avoids a
-    circular import with verify_solver_sweep (which imports kkt_from_tri_bond from here)."""
+    (forward(method='intrinsic', physical_units=True)).
+
+    The import of make_solver used to be lazy to break a CIRCULAR import: it came from
+    verify_solver_sweep, which in turn imported kkt_from_tri_bond from this module. The A-7b
+    re-layering dissolved that cycle — both now come from the core layer (Phase 2/solver_build.py,
+    Phase 2/mesh_build.py), which depends on nothing here — so it is a plain top-level import."""
     import torch
     import physical_homog as PH
-    from verify_solver_sweep import make_solver
     free = np.arange(2, 2 * len(mesh['pts']))
-    nu_s, E_s = PH.sim_nuE(mesh, free, TR.assemble_K_faff)
+    nu_s, E_s = PH.sim_nuE(mesh, free, SA.assemble_K_faff)
     kkt = kkt_from_tri_bond(mesh['tri_bond'], mesh['edge_vecs'])
     sv = make_solver(mesh, kkt)
     rl = torch.as_tensor(np.sqrt(mesh['actual_len2']), dtype=torch.float64)
@@ -89,9 +94,9 @@ def main():
     res = {a: {k: [] for k in ['nu_s', 'E_s', 'nu_i', 'E_i']} for a in CONTRASTS}
     print(f"N={N}, VD k=1+tanh(a*(|R|-1)); PHYSICAL forward solver vs physical PBC simulation")
     for eta in ETAS:
-        geo = VD.build_geometry(N, eta, seed=0)
+        geo = MB.build_geometry(N, eta, seed=0)
         for a in CONTRASTS:
-            VD.set_VD(geo, a)
+            MB.set_VD(geo, a)
             ns, Es, ni, Ei = nuE(geo)
             for kk, vv in zip(['nu_s', 'E_s', 'nu_i', 'E_i'], [ns, Es, ni, Ei]):
                 res[a][kk].append(vv)

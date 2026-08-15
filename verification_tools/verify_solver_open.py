@@ -41,18 +41,20 @@ sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
 import forward_solver_torch as fst
 import Disc_2_Cont_optimized as D2C
 import test_cluster_Ceff as CE          # tri_metric_change, vec3, c6_to_nuE, MODES, DELTA
-import test_cluster_rigidity as TR      # assemble_K_faff, bare_tensor
 # clean_tri / build_open_mesh MOVED to the core layer by the A-7b re-layering
 # (Phase 2/mesh_build.py): Phase 3/inverse_design.py's DesignProblem.open is built on them, and the
-# design layer must not depend on this retireable oracle layer. Re-exported so peers keep working.
-from mesh_build import clean_tri, build_open_mesh     # noqa: F401
+# design layer must not depend on this retireable oracle layer. Imported back here, where this
+# module uses them.
+from mesh_build import clean_tri, build_open_mesh
+import metric_ops as MO
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 DELTA = CE.DELTA
 MODES = CE.MODES
 Fk   = [np.eye(2) + DELTA * M for M in MODES]
 Dgt  = [F.T @ F - np.eye(2) for F in Fk]
-Dinv = np.linalg.inv(np.stack([CE.vec3(g) for g in Dgt], 1))
+Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in Dgt], 1))
 OUTDIR = os.path.join(HERE, '..', 'Phase 2', 'verification_open_domain')
 
 
@@ -73,7 +75,7 @@ def boundary_nodes(mesh):
 def homog_C6(mesh, W3):
     """Area-weighted homogenised elastic tensor (6,) from per-triangle response W3 (N,3,3),
     in the SOLVER's internal (bare-tensor /16, metric) convention — for apples-to-apples relC."""
-    W9 = torch.as_tensor(W3.reshape(-1, 9)); A = torch.as_tensor(TR.bare_tensor(mesh))
+    W9 = torch.as_tensor(W3.reshape(-1, 9)); A = torch.as_tensor(MO.bare_tensor(mesh))
     C6 = fst._compute_actual_elastic_tensor(A, W9).numpy()
     w = mesh['areas'] / mesh['areas'].sum()
     return (C6 * w[:, None]).sum(0)
@@ -103,17 +105,17 @@ def sim_strain(mesh, bnd):
     """Affine-clamped boundary (fluctuation=0), relax interior. Returns per-triangle W3(s),
     the internal-convention C6 (for relC vs solver), and PHYSICAL nu,E (virial, real units)."""
     ev, sx = mesh['edge_vecs'], mesh['simplices']; nn = len(mesh['pts']); nt = len(sx)
-    K, _ = TR.assemble_K_faff(mesh, np.eye(2))
+    K, _ = SA.assemble_K_faff(mesh, np.eye(2))
     interior = np.array(sorted(set(range(nn)) - bnd))
     fdof = np.sort(np.concatenate([2 * interior, 2 * interior + 1]))
     Kff = K[fdof][:, fdof].tocsc()
     D = np.zeros((nt, 3, 3)); u_modes = []
     for k, F in enumerate(Fk):
-        fa = TR.assemble_K_faff(mesh, F)[1]
+        fa = SA.assemble_K_faff(mesh, F)[1]
         u = np.zeros(2 * nn)
         u[fdof] = spla.spsolve(Kff, -fa[fdof])
         Uk = u.reshape(nn, 2); u_modes.append(Uk)
-        D[:, :, k] = CE.vec3(CE.tri_metric_change(ev, sx, F, Uk) - Dgt[k])
+        D[:, :, k] = MO.vec3(MO.tri_metric_change(ev, sx, F, Uk) - Dgt[k])
     W3 = D @ Dinv
     C6 = homog_C6(mesh, W3)
     nu, E = phys_nuE_from_modes(mesh, u_modes)             # physical (real units)
@@ -127,7 +129,7 @@ def sim_stress(mesh, eps_ax=1e-3, grip_frac=0.10):
       - stress σ = (1/A_tot) Σ_b (T_b/ℓ_b) R_b⊗R_b  (bond virial), T_b = k_b·δℓ_b, δℓ_b=R_b·Δu_b/ℓ_b.
     ν = −ε_yy/ε_xx, E = σ_xx/ε_xx; also returns σ_yy/σ_xx as a uniaxiality check."""
     pts = mesh['pts']; nn = len(pts)
-    K, _ = TR.assemble_K_faff(mesh, np.eye(2))
+    K, _ = SA.assemble_K_faff(mesh, np.eye(2))
     x, y = pts[:, 0], pts[:, 1]
     xmin, xmax = x.min(), x.max(); W = xmax - xmin
     left  = np.where(x <= xmin + grip_frac * W)[0]

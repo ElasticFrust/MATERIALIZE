@@ -26,15 +26,16 @@ sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2')
 import forward_solver_torch as fst
 import pbc_dg_analysis as pda
 import test_cluster_Ceff as CE
-import test_cluster_rigidity as TR
-import test_cluster_VD as VD
-from test_intrinsic_VD import kkt_from_tri_bond
+from mesh_build import kkt_from_tri_bond
 import physical_homog as PH
-# make_solver / _mount MOVED to the core layer by the A-7b re-layering (Phase 2/solver_build.py):
-# they CONSTRUCT the ElasticSolver, Phase 3/inverse_design.py builds every periodic DesignProblem
-# through them, and the design layer must not depend on this retireable oracle layer. Re-exported
-# here so this script and its peers (verify_soft_region, verify_solver_final, ...) keep working.
-from solver_build import make_solver, _mount         # noqa: F401
+# make_solver MOVED to the core layer by the A-7b re-layering (Phase 2/solver_build.py): it and
+# its helper _mount CONSTRUCT the ElasticSolver, Phase 3/inverse_design.py builds every periodic
+# DesignProblem through them, and the design layer must not depend on this retireable oracle layer.
+# Imported back here, where this module uses it.
+from solver_build import make_solver
+import metric_ops as MO
+import mesh_build as MB
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 DELTA = CE.DELTA
@@ -44,7 +45,7 @@ CASES = ['disordered'] + [f'VD a={a:+d}' for a in CONTRASTS]
 ETAS = np.round(np.arange(0.0, 0.5001, 0.05), 4)      # complete sweep, 11 points
 
 Fk   = [np.eye(2) + DELTA * M for M in MODES]
-Dg_k = [CE.vec3(F.T @ F - np.eye(2)) for F in Fk]
+Dg_k = [MO.vec3(F.T @ F - np.eye(2)) for F in Fk]
 Dinv = np.linalg.inv(np.stack(Dg_k, axis=1))
 
 
@@ -70,17 +71,17 @@ def one_realisation(N, eta, seed):
     s = make_solver(mesh, mesh['kkt_arrays'])
     rl = s.actual_length2.sqrt()
     rig1 = np.ones((len(mesh['simplices']), 3))
-    ns, Es = sim_nuE(mesh, pda._assemble_K_and_faff, CE.bare_tensor(mesh))
+    ns, Es = sim_nuE(mesh, pda._assemble_K_and_faff, MO.bare_tensor(mesh))
     ni, Ei = solver_nuE(s, rig1, rl)
     out['disordered'] = (ns, Es, ni, Ei)
     # ---- VD contrasts (one geometry, constraints reused across contrasts) ----
-    geo = VD.build_geometry(N, float(eta), seed=seed)
+    geo = MB.build_geometry(N, float(eta), seed=seed)
     kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
     sv  = make_solver(geo, kkt)
     rlv = torch.as_tensor(np.sqrt(geo['actual_len2']), dtype=torch.float64)
     for a in CONTRASTS:
-        VD.set_VD(geo, a)
-        ns, Es = sim_nuE(geo, TR.assemble_K_faff, TR.bare_tensor(geo))
+        MB.set_VD(geo, a)
+        ns, Es = sim_nuE(geo, SA.assemble_K_faff, MO.bare_tensor(geo))
         ni, Ei = solver_nuE(sv, geo['tri_k'], rlv)
         out[f'VD a={a:+d}'] = (ns, Es, ni, Ei)
     return out

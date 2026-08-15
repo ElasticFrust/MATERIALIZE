@@ -32,13 +32,13 @@ sys.path.insert(0, os.path.join(ROOT, 'Phase 2'))
 sys.path.insert(0, os.path.join(ROOT, 'verification_tools'))
 sys.path.insert(0, ROOT)
 import forward_solver_torch as fst
-import test_cluster_VD as VD
-import test_cluster_rigidity as TR
-import test_cluster_Ceff as CE
 import physical_homog as PH
 from inverse_design import (DesignProblem, Objective, optimize, validate, c6_to_nuE,
                             c6_to_nu_theta, c6_to_E_theta, ANG, constrain, isotropic_c6,
                             per_triangle_strain_stress, region_mean_vec3)
+import metric_ops as MO
+import mesh_build as MB
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 # ---- topology x size matrix ------------------------------------------------------------------
@@ -80,10 +80,10 @@ def make_topology_affine(topo_id, N, seed=0):
     eta = {'regular': 0.0, 'aniso_str': 0.0, 'aniso_shr': 0.0,
            'disorder_lo': 0.20, 'disorder_hi': 0.35}[topo_id]
     M = _TOPO_M[topo_id]
-    geo = VD.build_geometry(N, eta, seed=seed)
+    geo = MB.build_geometry(N, eta, seed=seed)
     if not np.allclose(M, np.eye(2)):
         geo = _affine(geo, M)
-    VD.set_VD(geo, 0)
+    MB.set_VD(geo, 0)
     geo['BL1'] = M @ (N * _L1); geo['BL2'] = M @ (N * _L2)
     return geo
 
@@ -455,7 +455,7 @@ def apply_k_to_geo(geo, k_bond):
 # ---- independent simulation of the designed network ------------------------------------------
 _Fk = PH.Fk
 _Dgt = [F.T @ F - np.eye(2) for F in _Fk]
-_Dinv = np.linalg.inv(np.stack([CE.vec3(g) for g in _Dgt], 1))
+_Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in _Dgt], 1))
 
 
 def sim_per_triangle_C6(geo):
@@ -463,12 +463,12 @@ def sim_per_triangle_C6(geo):
     relaxation of geo (uses geo['tri_k']). Compute once, then query any region with
     region_phys_C6 (patch / outside / grid cells all share this relaxation)."""
     ev, sx = geo['edge_vecs'], geo['simplices']; nn = len(geo['pts']); nt = len(sx)
-    u_modes = PH.relax(geo, np.arange(2, 2 * nn), TR.assemble_K_faff)
+    u_modes = PH.relax(geo, np.arange(2, 2 * nn), SA.assemble_K_faff)
     D = np.zeros((nt, 3, 3))
     for k, (F, u) in enumerate(zip(_Fk, u_modes)):
-        D[:, :, k] = CE.vec3(CE.tri_metric_change(ev, sx, F, u) - _Dgt[k])
+        D[:, :, k] = MO.vec3(MO.tri_metric_change(ev, sx, F, u) - _Dgt[k])
     W3 = D @ _Dinv
-    bare = TR.bare_tensor(geo)
+    bare = MO.bare_tensor(geo)
     return fst._compute_actual_elastic_tensor(torch.as_tensor(bare),
                                               torch.as_tensor(W3.reshape(-1, 9))).numpy()
 
@@ -604,7 +604,7 @@ def glue_square_hole(geoM, kM, geoI, kI, Lx, Ly, cx, cy):
 
 def bare_stress(bare, eps):
     """Voigt stress sigma = A:eps from the per-triangle bare-tensor 5-vector
-    A=[xxxx,xxxy,xxyy,xyyy,yyyy] (full-symmetric 4-tensor, e.g. from TR.bare_tensor)."""
+    A=[xxxx,xxxy,xxyy,xyyy,yyyy] (full-symmetric 4-tensor, e.g. from MO.bare_tensor)."""
     A0, A1, A2, A3, A4 = (bare[:, i] for i in range(5))
     exx, eyy, exy = eps[:, 0, 0], eps[:, 1, 1], eps[:, 0, 1]
     s = np.zeros_like(eps)
@@ -625,9 +625,9 @@ def unit_mode_response(geo):
     ACTUAL simulated response, not the homogenised tensor. Any macro forcing (c0,c1,c2) is
     c0*eps[0]+c1*eps[1]+c2*eps[2] (and the same combination of sig, by linearity of bare_stress)."""
     ev, sx = geo['edge_vecs'], geo['simplices']
-    u = PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), TR.assemble_K_faff)
-    eps = [CE.tri_metric_change(ev, sx, PH.Fk[k], u[k]) / PH.DELTA for k in range(3)]
-    bare = TR.bare_tensor(geo)
+    u = PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), SA.assemble_K_faff)
+    eps = [MO.tri_metric_change(ev, sx, PH.Fk[k], u[k]) / PH.DELTA for k in range(3)]
+    bare = MO.bare_tensor(geo)
     sig = [bare_stress(bare, e) for e in eps]
     return eps, sig
 
@@ -678,7 +678,7 @@ def reference_C6(kind, half=8):
     """Physical 6-vector of a uniform-k reference lattice: 'iso' = regular triangular (nu=1/3),
     'aniso' = compressed-row lattice. Size-independent (bulk value); used as design targets."""
     geo = make_topology({'iso': 'regular', 'aniso': 'aniso_str'}[kind], half)
-    VD.set_VD(geo, 0)                                    # uniform k=1 (sets bond_k / tri_k)
+    MB.set_VD(geo, 0)                                    # uniform k=1 (sets bond_k / tri_k)
     return sim_region_C6(geo, None)
 
 

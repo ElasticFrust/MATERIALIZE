@@ -19,6 +19,7 @@ sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2')
 import forward_solver_torch as fst
 import pbc_dg_analysis as pda
 import test_cluster_Ceff as CE
+import metric_ops as MO
 torch.set_default_dtype(torch.float64)
 
 
@@ -39,16 +40,16 @@ def make_solver(mesh):
 
 def sim_nuE(mesh):
     ev, sx = mesh['edge_vecs'], mesh['simplices']; nn = len(mesh['pts']); nt = len(sx)
-    bare = CE.bare_tensor(mesh)
+    bare = MO.bare_tensor(mesh)
     Fk = [np.eye(2) + CE.DELTA*M for M in CE.MODES]
-    Dg_k = [CE.vec3(F.T@F - np.eye(2)) for F in Fk]
+    Dg_k = [MO.vec3(F.T@F - np.eye(2)) for F in Fk]
     Dinv = np.linalg.inv(np.stack(Dg_k, axis=1))
     K, _ = pda._assemble_K_and_faff(mesh, np.eye(2)); free = np.arange(2, 2*nn)
     Ds = np.zeros((nt, 3, 3))
     for k, F in enumerate(Fk):
         fa = pda._assemble_K_and_faff(mesh, F)[1]
         u = np.zeros(2*nn); u[free] = spla.spsolve(K[free][:, free].tocsc(), -fa[free])
-        Ds[:, :, k] = CE.vec3(CE.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - (F.T@F-np.eye(2)))
+        Ds[:, :, k] = MO.vec3(MO.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - (F.T@F-np.eye(2)))
     return CE.Ceff_nuE(mesh, Ds @ Dinv, bare)
 
 

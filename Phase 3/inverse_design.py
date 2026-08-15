@@ -27,13 +27,15 @@ import torch
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, 'Phase 2'))
-sys.path.insert(0, os.path.join(ROOT, 'verification_tools'))
 sys.path.insert(0, ROOT)
+# Design layer -> core layer ONLY. `verification_tools/` is deliberately NOT on the path here:
+# it is the temporary, retireable validation oracle (CLAUDE.md §1-2), and the design layer must
+# not depend on it (audit AUDIT_2026-08.md A-7b). Until the A-7b re-layering, this module
+# imported its mesh construction, its constraint topology and its SOLVER CONSTRUCTION from four
+# scripts in there (verify_solver_open, test_cluster_VD, test_intrinsic_VD, verify_solver_sweep).
 import forward_solver_torch as fst
-from verify_solver_open import clean_tri, build_open_mesh
-import test_cluster_VD as VD
-from test_intrinsic_VD import kkt_from_tri_bond
-from verify_solver_sweep import make_solver
+from mesh_build import (build_geometry, set_VD, clean_tri, build_open_mesh, kkt_from_tri_bond)
+from solver_build import make_solver
 torch.set_default_dtype(torch.float64)
 
 BETA = 5.0                       # softplus sharpness (k ≈ raw for moderate raw)
@@ -290,7 +292,7 @@ class DesignProblem:
         areas, tri_bond, actual_len2; bond_k/tri_k set to 1 if absent). Use this for custom
         topologies (e.g. affine-transformed anisotropic lattices)."""
         if 'tri_k' not in geo:
-            VD.set_VD(geo, 0)                                    # default uniform k=1
+            set_VD(geo, 0)                                       # default uniform k=1
         kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
         solver = make_solver(geo, kkt)
         bond_len = np.sqrt((geo['bond_R'] ** 2).sum(1))
@@ -302,7 +304,7 @@ class DesignProblem:
     def periodic(cls, N=14, eta=0.3, seed=0):
         """Build a PERIODIC unit-cell problem: a triangular lattice of half-size `N`, positionally
         perturbed by disorder `eta` (0 = perfect crystal), with uniform starting stiffness k=1."""
-        geo = VD.build_geometry(N, eta, seed=seed); VD.set_VD(geo, 0)
+        geo = build_geometry(N, eta, seed=seed); set_VD(geo, 0)
         return cls.from_geo(geo)
 
     @classmethod

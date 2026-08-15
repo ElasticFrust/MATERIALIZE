@@ -24,9 +24,9 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
-import test_cluster_VD as VD
-import test_cluster_rigidity as TR
 import physical_homog as PH
+import mesh_build as MB
+import sim_assembly as SA
 
 N, ALPHA = 14, 5.0
 ETAS = np.round(np.arange(0.0, 0.491, 0.02), 3)
@@ -35,17 +35,17 @@ SEEDS = [0, 1, 2, 3, 4]
 
 def sim_nu_E(eta, seed):
     """Return nu,E for the SAME VD k on (regular geometry [spec], deformed geometry [original])."""
-    reg = VD.build_geometry(N, 0.0, seed)                  # real regular lattice (l0 = 1)
+    reg = MB.build_geometry(N, 0.0, seed)                  # real regular lattice (l0 = 1)
     free = np.arange(2, 2 * len(reg['pts']))
     if eta == 0.0:
         k = np.ones(len(reg['bond_u'])); virt = reg
     else:
-        virt = VD.build_geometry(N, eta, seed)             # virtual copy, SAME connectivity (no retriangulation)
-        VD.set_VD(virt, ALPHA)                             # k = 1 + tanh(alpha*(l_virt - 1))
+        virt = MB.build_geometry(N, eta, seed)             # virtual copy, SAME connectivity (no retriangulation)
+        MB.set_VD(virt, ALPHA)                             # k = 1 + tanh(alpha*(l_virt - 1))
         k = virt['bond_k']
     gr = dict(reg); gr['bond_k'] = k; gr['tri_k'] = k[reg['tri_bond']]     # k on REGULAR geometry (spec)
     gd = dict(virt); gd['bond_k'] = k; gd['tri_k'] = k[virt['tri_bond']]   # k on DEFORMED geometry (original)
-    return (PH.sim_nuE(gr, free, TR.assemble_K_faff), PH.sim_nuE(gd, free, TR.assemble_K_faff))
+    return (PH.sim_nuE(gr, free, SA.assemble_K_faff), PH.sim_nuE(gd, free, SA.assemble_K_faff))
 
 
 def main():

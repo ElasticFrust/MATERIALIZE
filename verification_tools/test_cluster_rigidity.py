@@ -21,9 +21,9 @@ import forward_solver_torch as fst
 # MOVED by the A-7b re-layering: bare_tensor -> the core layer (Phase 2/metric_ops.py), since the
 # design layer needs it and must not depend on this retireable oracle layer; assemble_K_faff ->
 # verification_tools/sim_assembly.py, staying oracle-side (it feeds physical_homog) but out of an
-# experiment script whose main() runs a 30x3-seed sweep. Re-exported so peers keep working.
-from metric_ops import bare_tensor            # noqa: F401
-from sim_assembly import assemble_K_faff      # noqa: F401
+# experiment script whose main() runs a 30x3-seed sweep. Imported back here, where main() uses them.
+from metric_ops import bare_tensor
+from sim_assembly import assemble_K_faff
 import torch
 torch.set_default_dtype(torch.float64)
 DELTA = 1e-3

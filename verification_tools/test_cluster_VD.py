@@ -11,14 +11,15 @@ import torch
 import _bootstrap
 import matplotlib.pyplot as plt
 
-import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
 import test_cluster_Ceff_rigidity as RG
 # build_geometry / set_VD MOVED to the core layer by the A-7b re-layering
 # (Phase 2/mesh_build.py): Phase 3/inverse_design.py's DesignProblem.periodic is built on them,
-# and the design layer must not depend on this retireable oracle layer. Re-exported here so this
-# script and its peers keep working unchanged.
-from mesh_build import build_geometry, set_VD        # noqa: F401
+# and the design layer must not depend on this retireable oracle layer. Imported back here, where
+# main() still uses them.
+from mesh_build import build_geometry, set_VD
+import metric_ops as MO
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 HERE = _bootstrap.HERE
@@ -33,12 +34,12 @@ MODES = CE.MODES
 
 def nuE_all(mesh, Fk, Dgt, Dinv):
     ev, sx = mesh['edge_vecs'], mesh['simplices']; nn = len(mesh['pts']); nt = len(sx)
-    bare = TR.bare_tensor(mesh)
-    K, _ = TR.assemble_K_faff(mesh, np.eye(2)); faff = [TR.assemble_K_faff(mesh, F)[1] for F in Fk]
+    bare = MO.bare_tensor(mesh)
+    K, _ = SA.assemble_K_faff(mesh, np.eye(2)); faff = [SA.assemble_K_faff(mesh, F)[1] for F in Fk]
     free = np.arange(2, 2*nn); Ds = np.zeros((nt, 3, 3))
     for k, F in enumerate(Fk):
         u = np.zeros(2*nn); u[free] = spla.spsolve(K[free][:, free].tocsc(), -faff[k][free])
-        Ds[:, :, k] = CE.vec3(CE.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - Dgt[k])
+        Ds[:, :, k] = MO.vec3(MO.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - Dgt[k])
     nu_s, E_s = CE.Ceff_nuE(mesh, Ds @ Dinv, bare)
     nu_m, E_m = CE.Ceff_nuE(mesh, RG.mf_W3(bare), bare)
     adj = [set() for _ in range(nn)]
@@ -59,14 +60,14 @@ def nuE_all(mesh, Fk, Dgt, Dinv):
         Kff = K[fdof][:, fdof].tocsc()
         for k, F in enumerate(Fk):
             u = np.zeros((nn, 2)); u.ravel()[fdof] = spla.spsolve(Kff, -faff[k][fdof])
-            Dc[c, :, k] = CE.vec3(RG.central_dg(ev, c, F, u, n0, n1, n2, Dgt[k]))
+            Dc[c, :, k] = MO.vec3(RG.central_dg(ev, c, F, u, n0, n1, n2, Dgt[k]))
     nu_c, E_c = CE.Ceff_nuE(mesh, Dc @ Dinv, bare)
     return nu_s, E_s, nu_m, E_m, nu_c, E_c
 
 
 def main():
     Fk = [np.eye(2)+DELTA*M for M in MODES]; Dgt = [F.T@F-np.eye(2) for F in Fk]
-    Dinv = np.linalg.inv(np.stack([CE.vec3(g) for g in Dgt], 1))
+    Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in Dgt], 1))
     # res[a] = dict of lists over eta
     res = {a: {k: [] for k in ['nu_s', 'E_s', 'nu_m', 'E_m', 'nu_c', 'E_c']} for a in CONTRASTS}
     print(f"N={N}, VD rigidity k=1+tanh(a*(|R|-1)), cluster d={DCL}")

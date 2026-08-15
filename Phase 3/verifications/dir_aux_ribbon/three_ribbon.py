@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 import _common as C
 from inverse_design import Objective
-import test_cluster_Ceff as CE
+import metric_ops as MO
 
 TOPO = 'aniso_str'
 # aniso_str (psi=0.6, rows compressed in y) is ~1.7x denser per unit area than the regular topology
@@ -48,7 +48,7 @@ RUNS = [(0.0, 'ordered'), (0.08, 'disordered')]
 def strain(geo, u):
     tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
     ev = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    eps = CE.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
+    eps = MO.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
     return eps[:, 0, 0], eps[:, 1, 1]           # exx, eyy per triangle
 
 

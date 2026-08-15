@@ -19,8 +19,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import test_cluster_Ceff as CE
-import test_cluster_rigidity as TR
+import metric_ops as MO
 
 TOPOS = ['regular', 'disorder_hi']
 NCELL = 22
@@ -76,7 +75,7 @@ def main():
         nwb, _ = C.nonwrap_mask(geo); RE, RN = meta['region']
         # full-sheet edge stretch -> coarse regional nu
         u, _ = C.open_stretch(geo, axis=0)
-        eps = CE.tri_metric_change(geo['edge_vecs'], geo['simplices'], np.eye(2), u)
+        eps = MO.tri_metric_change(geo['edge_vecs'], geo['simplices'], np.eye(2), u)
         epsC = coarse(geo, eps); cen = np.asarray(geo['centroids'])
         for name, spec in [('R_E stiff', RE), ('R_nu aux', RN)]:
             idx = np.where(((cen - spec['center']) ** 2).sum(1) < spec['radius'] ** 2)[0]

@@ -33,6 +33,7 @@ import pbc_dg_analysis as pda
 import test_angle_response as AR
 import test_cluster_Ceff as CE
 from test_mean_isolation import Hblocks
+import metric_ops as MO
 
 DATA = os.path.join(HERE, 'dg_analysis_data')
 
@@ -86,7 +87,7 @@ def intrinsic_solve(mesh, Dg_vec, weighted=True, eps=1e-10):
 def main():
     # ---------- Part A: per-triangle delta_g vs sim, on stored N=40 data ----------
     def cc(a3, dg2):
-        b = CE.vec3(dg2).ravel(); a = a3.ravel()
+        b = MO.vec3(dg2).ravel(); a = a3.ravel()
         m = np.isfinite(a) & np.isfinite(b)
         return np.corrcoef(a[m], b[m])[0, 1]
     print("Part A: intrinsic metric solve (no B) vs PBC sim, per-triangle delta_g  (stored N=40)")
@@ -95,7 +96,7 @@ def main():
         s = np.load(os.path.join(DATA, f'sample_eta{eta:.2f}_trial0.npz'), allow_pickle=True)
         mesh = dict(edge_vecs=s['edge_vecs'], simplices=s['simplices'], pts=s['pts'],
                     areas=s['areas'], kkt_arrays=(s['kkt_s1'], s['kkt_s2'], s['kkt_q']))
-        Dg_vec = CE.vec3(pda.macroscopic_dg(s['F']))
+        Dg_vec = MO.vec3(pda.macroscopic_dg(s['F']))
         dgi_w = intrinsic_solve(mesh, Dg_vec, weighted=True)
         dgi_p = intrinsic_solve(mesh, Dg_vec, weighted=False)
         print(f"{eta:>5.1f} | {cc(dgi_w, s['dg_sim']):>19.4f} | {cc(dgi_p, s['dg_sim']):>11.4f}")
@@ -106,21 +107,21 @@ def main():
     N = 16
     ETAS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
     Fk = [np.eye(2) + CE.DELTA*M for M in CE.MODES]
-    Dg_k = [CE.vec3(F.T @ F - np.eye(2)) for F in Fk]
+    Dg_k = [MO.vec3(F.T @ F - np.eye(2)) for F in Fk]
     Dgmat_inv = np.linalg.inv(np.stack(Dg_k, axis=1))
     out = {k: [] for k in ['nu_s', 'nu_i', 'nu_m', 'E_s', 'E_i', 'E_m']}
     for eta in ETAS:
         mesh = pda.build_periodic_tf_mesh(N, eta, seed=0)
         ev, sx = mesh['edge_vecs'], mesh['simplices']
-        n_node = len(mesh['pts']); n_tri = len(sx); bare = CE.bare_tensor(mesh)
+        n_node = len(mesh['pts']); n_tri = len(sx); bare = MO.bare_tensor(mesh)
         K, _ = pda._assemble_K_and_faff(mesh, np.eye(2)); free = np.arange(2, 2*n_node)
         # sim: relax whole network, 3 modes
         D_sim = np.zeros((n_tri, 3, 3)); D_int = np.zeros((n_tri, 3, 3))
         for k, F in enumerate(Fk):
             fa = pda._assemble_K_and_faff(mesh, F)[1]
             u = np.zeros(2*n_node); u[free] = spla.spsolve(K[free][:, free].tocsc(), -fa[free])
-            dg = CE.tri_metric_change(ev, sx, F, u.reshape(n_node, 2)) - (F.T@F - np.eye(2))
-            D_sim[:, :, k] = CE.vec3(dg)
+            dg = MO.tri_metric_change(ev, sx, F, u.reshape(n_node, 2)) - (F.T@F - np.eye(2))
+            D_sim[:, :, k] = MO.vec3(dg)
             D_int[:, :, k] = intrinsic_solve(mesh, Dg_k[k], weighted=True)   # metric-only
         W3_s = D_sim @ Dgmat_inv; W3_i = D_int @ Dgmat_inv
         W3_m = pda.woodbury_W(mesh, area_weighted=False, use_kkt=False).reshape(n_tri, 3, 3)

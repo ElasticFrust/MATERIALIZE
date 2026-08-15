@@ -18,11 +18,11 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
-import test_cluster_VD as VD
-import test_cluster_rigidity as TR
 import physical_homog as PH
-from test_intrinsic_VD import kkt_from_tri_bond
-from verify_solver_sweep import make_solver
+from mesh_build import kkt_from_tri_bond
+from solver_build import make_solver
+import mesh_build as MB
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 N = 14
@@ -37,8 +37,8 @@ def main():
         nus = np.zeros((len(ALPHAS), len(SEEDS))); Es = np.zeros_like(nus)         # simulation
         nuo = np.zeros_like(nus); Eo = np.zeros_like(nus)                          # solver
         for j, s in enumerate(SEEDS):
-            reg = VD.build_geometry(N, 0.0, s)                # real regular lattice (l0 = 1)
-            virt = VD.build_geometry(N, eta, s)              # virtual copy, SAME connectivity
+            reg = MB.build_geometry(N, 0.0, s)                # real regular lattice (l0 = 1)
+            virt = MB.build_geometry(N, eta, s)              # virtual copy, SAME connectivity
             Lv = np.sqrt((virt['bond_R'] ** 2).sum(1))
             free = np.arange(2, 2 * len(reg['pts']))
             sv = make_solver(reg, kkt_from_tri_bond(reg['tri_bond'], reg['edge_vecs']))
@@ -46,7 +46,7 @@ def main():
             for i, a in enumerate(ALPHAS):
                 k = 1.0 + np.tanh(a * (Lv - 1.0))
                 g = dict(reg); g['bond_k'] = k; g['tri_k'] = k[reg['tri_bond']]
-                nus[i, j], Es[i, j] = PH.sim_nuE(g, free, TR.assemble_K_faff)
+                nus[i, j], Es[i, j] = PH.sim_nuE(g, free, SA.assemble_K_faff)
                 out = sv.forward(torch.as_tensor(k[reg['tri_bond']]), rest_lengths=rl,
                                  method='intrinsic', physical_units=True)
                 nuo[i, j], Eo[i, j] = float(out['poisson']), float(out['young'])

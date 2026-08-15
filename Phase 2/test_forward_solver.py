@@ -131,42 +131,42 @@ def test_elastic_tensor_vs_energy_hessian():
     """
     import scipy.sparse.linalg as spla
     import forward_solver_torch as fst
-    import physical_homog as PH
-    import test_cluster_rigidity as TR
-    import test_cluster_Ceff as CE
-    import test_cluster_VD as VD
+    import metric_ops as MO                    # core-adjacent: vec3, tri_metric_change, bare_tensor
+    import mesh_build as MB                    # core-adjacent: build_geometry, set_VD
+    import physical_homog as PH                # ORACLE side of this comparison
+    import sim_assembly as SA                  # ORACLE side: the sim's assembler
 
     Dgt = [F.T @ F - np.eye(2) for F in PH.Fk]                      # the 3 macro metric-change modes
-    Dinv = np.linalg.inv(np.stack([CE.vec3(g) for g in Dgt], 1))    # vec3 mode matrix, inverted once
+    Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in Dgt], 1))    # vec3 mode matrix, inverted once
 
     # (N, eta, seed, VD contrast or None for uniform k); eta=0 uniform is the BLIND control (W=0)
     cases = [(8, 0.00, 0, None), (8, 0.20, 1, None), (8, 0.20, 1, 5),
              (8, 0.35, 2, None), (12, 0.30, 3, 10)]
     worst = 0.0
     for N, eta, seed, vd in cases:
-        mesh = VD.build_geometry(N, eta, seed)
+        mesh = MB.build_geometry(N, eta, seed)
         if vd is None:
             mesh['bond_k'] = np.ones(len(mesh['bond_R']))
             mesh['tri_k'] = mesh['bond_k'][mesh['tri_bond']]
         else:
-            VD.set_VD(mesh, vd)                                     # k = 1 + tanh(a·(|R|−1))
+            MB.set_VD(mesh, vd)                                     # k = 1 + tanh(a·(|R|−1))
         nn, nt = len(mesh['pts']), len(mesh['simplices'])
         free = np.arange(2, 2 * nn)                                 # pin node 0
 
         # W measured from the SIM's relaxation: delta_g(s) = W(s) Delta_g  ->  W3 = D · Dinv
-        u_modes = PH.relax(mesh, free, TR.assemble_K_faff)
+        u_modes = PH.relax(mesh, free, SA.assemble_K_faff)
         D = np.zeros((nt, 3, 3))
         for j, (F, u) in enumerate(zip(PH.Fk, u_modes)):
-            D[:, :, j] = CE.vec3(
-                CE.tri_metric_change(mesh['edge_vecs'], mesh['simplices'], F, u) - Dgt[j])
+            D[:, :, j] = MO.vec3(
+                MO.tri_metric_change(mesh['edge_vecs'], mesh['simplices'], F, u) - Dgt[j])
         W3 = D @ Dinv
 
         c6 = fst._compute_actual_elastic_tensor(
-            torch.as_tensor(TR.bare_tensor(mesh)),
+            torch.as_tensor(MO.bare_tensor(mesh)),
             torch.as_tensor(W3.reshape(-1, 9))).numpy()
         c = c6.mean(0) * (8.0 * nt / mesh['areas'].sum())           # unweighted mean → physical units
         C_solver = np.array([[c[0], c[2], c[1]], [c[2], c[5], c[4]], [c[1], c[4], c[3]]])
-        C_phys = PH.energy_C(mesh, free, TR.assemble_K_faff)        # INDEPENDENT oracle
+        C_phys = PH.energy_C(mesh, free, SA.assemble_K_faff)        # INDEPENDENT oracle
 
         err = np.abs(C_solver - C_phys).max() / np.abs(C_phys).max()
         worst = max(worst, err)

@@ -103,8 +103,8 @@ sys.path.insert(0, os.path.join(_ROOT, 'verification_tools'))
 sys.path.insert(0, os.path.join(_ROOT, 'Phase 2'))
 sys.path.insert(0, os.path.join(_ROOT, 'Phase 3', 'verifications'))
 
-from verify_solver_sweep import make_solver          # mounts the protected Phase 2 ElasticSolver
-from test_intrinsic_VD import kkt_from_tri_bond       # periodic interior-edge topology
+from solver_build import make_solver          # mounts the protected Phase 2 ElasticSolver
+from mesh_build import kkt_from_tri_bond       # periodic interior-edge topology
 import _common as _C                                  # nu_E_theta, _compliance_tensor
 torch.set_default_dtype(torch.float64)
 

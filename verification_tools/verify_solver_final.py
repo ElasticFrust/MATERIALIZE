@@ -21,11 +21,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-import test_cluster_VD as VD
-import test_cluster_rigidity as TR
-import test_cluster_Ceff as CE
-from test_intrinsic_VD import kkt_from_tri_bond
-import verify_solver_sweep as svs       # make_solver, _mount, sim_nuE, solver_nuE
+from mesh_build import kkt_from_tri_bond
+import verify_solver_sweep as svs       # sim_nuE, solver_nuE (make_solver now: solver_build)
+import metric_ops as MO
+import mesh_build as MB
+import sim_assembly as SA
+import solver_build as SB
 torch.set_default_dtype(torch.float64)
 
 
@@ -112,13 +113,13 @@ CASES = [
 
 def run_case(name, N, eta, seed, kfun):
     rng = np.random.default_rng(seed)
-    geo = VD.build_geometry(N, eta, seed=seed)
+    geo = MB.build_geometry(N, eta, seed=seed)
     geo['bond_k'] = kfun(geo, rng)
     geo['tri_k'] = geo['bond_k'][geo['tri_bond']]
     kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
-    sv = svs.make_solver(geo, kkt)
+    sv = SB.make_solver(geo, kkt)
     rl = torch.as_tensor(np.sqrt(geo['actual_len2']), dtype=torch.float64)
-    ns, Es = svs.sim_nuE(geo, TR.assemble_K_faff, TR.bare_tensor(geo))
+    ns, Es = svs.sim_nuE(geo, SA.assemble_K_faff, MO.bare_tensor(geo))
     ni, Ei = svs.solver_nuE(sv, geo['tri_k'], rl)
     return ns, Es, ni, Ei, geo['bond_k']
 

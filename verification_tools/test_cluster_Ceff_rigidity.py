@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
 import forward_solver_torch as fst
+import metric_ops as MO
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 HERE = _bootstrap.HERE
@@ -43,7 +45,7 @@ def central_dg(ev, c, F, u, n0, n1, n2, Dg_t):
 def main():
     Fk = [np.eye(2) + DELTA * M for M in MODES]
     Dg_t = [F.T @ F - np.eye(2) for F in Fk]
-    Dgmat_inv = np.linalg.inv(np.stack([CE.vec3(g) for g in Dg_t], axis=1))
+    Dgmat_inv = np.linalg.inv(np.stack([MO.vec3(g) for g in Dg_t], axis=1))
     out = {k: [] for k in ['nu_s', 'E_s', 'nu_m', 'E_m'] + [f'nu_d{d}' for d in DS] + [f'E_d{d}' for d in DS]}
 
     for ratio in RATIOS:
@@ -55,9 +57,9 @@ def main():
             e01, e02 = ev[:, 0], ev[:, 1]
             mesh['areas'] = 0.5 * np.abs(e01[:, 0]*e02[:, 1] - e01[:, 1]*e02[:, 0])
             nn = len(mesh['pts']); nt = len(sx)
-            bare = TR.bare_tensor(mesh)
-            K, _ = TR.assemble_K_faff(mesh, np.eye(2))
-            faff = [TR.assemble_K_faff(mesh, F)[1] for F in Fk]
+            bare = MO.bare_tensor(mesh)
+            K, _ = SA.assemble_K_faff(mesh, np.eye(2))
+            faff = [SA.assemble_K_faff(mesh, F)[1] for F in Fk]
 
             # sim (relax all)
             free = np.arange(2, 2*nn)
@@ -65,8 +67,8 @@ def main():
             for k, F in enumerate(Fk):
                 u = np.zeros(2*nn)
                 u[free] = spla.spsolve(K[free][:, free].tocsc(), -faff[k][free])
-                dg = CE.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - Dg_t[k]
-                Ds[:, :, k] = CE.vec3(dg)
+                dg = MO.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - Dg_t[k]
+                Ds[:, :, k] = MO.vec3(dg)
             nu_s, E_s = CE.Ceff_nuE(mesh, Ds @ Dgmat_inv, bare)
 
             # MF
@@ -95,7 +97,7 @@ def main():
                     for k, F in enumerate(Fk):
                         u = np.zeros((nn, 2))
                         u.ravel()[fdof] = spla.spsolve(Kff, -faff[k][fdof])
-                        Dc[c, :, k] = CE.vec3(central_dg(ev, c, F, u, n0, n1, n2, Dg_t[k]))
+                        Dc[c, :, k] = MO.vec3(central_dg(ev, c, F, u, n0, n1, n2, Dg_t[k]))
                 nuE_d[d] = CE.Ceff_nuE(mesh, Dc @ Dgmat_inv, bare)
 
             acc['nu_s'].append(nu_s); acc['E_s'].append(E_s)

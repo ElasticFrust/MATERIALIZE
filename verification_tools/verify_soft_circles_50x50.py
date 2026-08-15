@@ -26,11 +26,12 @@ import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
-import test_cluster_VD as VD
-import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
-from test_intrinsic_VD import kkt_from_tri_bond
-import verify_solver_sweep as svs       # make_solver, _mount
+from mesh_build import kkt_from_tri_bond
+import metric_ops as MO
+import mesh_build as MB
+import sim_assembly as SA
+import solver_build as SB
 torch.set_default_dtype(torch.float64)
 
 N = 50
@@ -39,7 +40,7 @@ CIRCLE_FRAC_DX = 0.15     # circle-centre offset from box centre, as a fraction 
 CIRCLE_FRAC_R = 0.05      # circle radius, as a fraction of box width
 Fk   = [np.eye(2) + CE.DELTA * M for M in CE.MODES]
 Dgt  = [F.T @ F - np.eye(2) for F in Fk]
-Dinv = np.linalg.inv(np.stack([CE.vec3(g) for g in Dgt], 1))
+Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in Dgt], 1))
 
 
 def build_poisson_geometry(N, seed):
@@ -106,19 +107,19 @@ def soft_circles_mask(geo):
 
 def sim_W3(geo):
     ev, sx = geo['edge_vecs'], geo['simplices']; nn = len(geo['pts']); nt = len(sx)
-    K, _ = TR.assemble_K_faff(geo, np.eye(2)); free = np.arange(2, 2 * nn)
+    K, _ = SA.assemble_K_faff(geo, np.eye(2)); free = np.arange(2, 2 * nn)
     Kff = K[free][:, free].tocsc()
     D = np.zeros((nt, 3, 3))
     for k, F in enumerate(Fk):
-        fa = TR.assemble_K_faff(geo, F)[1]
+        fa = SA.assemble_K_faff(geo, F)[1]
         u = np.zeros(2 * nn); u[free] = spla.spsolve(Kff, -fa[free])
-        D[:, :, k] = CE.vec3(CE.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - Dgt[k])
+        D[:, :, k] = MO.vec3(MO.tri_metric_change(ev, sx, F, u.reshape(nn, 2)) - Dgt[k])
     return D @ Dinv
 
 
 def solver_W3(geo):
     kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
-    sv = svs.make_solver(geo, kkt)
+    sv = SB.make_solver(geo, kkt)
     rl = torch.as_tensor(np.sqrt(geo['actual_len2']), dtype=torch.float64)
     out = sv.forward(torch.as_tensor(geo['tri_k'], dtype=torch.float64),
                      rest_lengths=rl, method='intrinsic')
@@ -128,8 +129,8 @@ def solver_W3(geo):
 def main():
     os.makedirs(os.path.join(HERE, 'plots'), exist_ok=True)
     cases = [
-        ('perfect lattice (eta=0.0)', lambda: VD.build_geometry(N, 0.0, seed=0)),
-        ('disordered lattice (eta=0.3)', lambda: VD.build_geometry(N, 0.3, seed=0)),
+        ('perfect lattice (eta=0.0)', lambda: MB.build_geometry(N, 0.0, seed=0)),
+        ('disordered lattice (eta=0.3)', lambda: MB.build_geometry(N, 0.3, seed=0)),
         ('Poisson Delaunay (N*N pts)', lambda: build_poisson_geometry(N, seed=0)),
     ]
 

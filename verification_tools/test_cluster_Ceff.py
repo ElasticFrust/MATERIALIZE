@@ -20,11 +20,11 @@ sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(ROOT, 'Phase 2'))
 import pbc_dg_analysis as pda
 import forward_solver_torch as fst
 # vec3 / tri_metric_change / bare_tensor MOVED to the core layer by the A-7b re-layering
-# (Phase 2/metric_ops.py) — the design layer must not depend on this retireable oracle layer.
-# Re-exported here so this script and its peers keep working unchanged. NB the single
+# (Phase 2/metric_ops.py) — the design layer needs them and must not depend on this retireable
+# oracle layer. Imported (not re-implemented) here, where main() still uses them. NB the single
 # metric_ops.bare_tensor subsumes the k-less variant that used to live here: it reads `tri_k` if
 # the mesh carries one and defaults to 1, and pbc_dg_analysis meshes carry none — bit-identical.
-from metric_ops import vec3, tri_metric_change, bare_tensor    # noqa: F401
+from metric_ops import vec3, tri_metric_change, bare_tensor
 torch.set_default_dtype(torch.float64)
 
 DELTA = 1e-3

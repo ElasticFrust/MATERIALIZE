@@ -19,9 +19,9 @@ import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
-import test_cluster_VD as VD
 from verify_soft_circles_50x50 import (
     N, SOFT_K, build_poisson_geometry, soft_circles_mask, sim_W3, solver_W3)
+import mesh_build as MB
 
 RESPONSES = [
     ('dilation resp. to e_xx (g_xx+g_yy)', lambda W: W[:, 0, 0] + W[:, 2, 0]),
@@ -32,8 +32,8 @@ RESPONSES = [
 
 def main():
     cases = [
-        ('perfect lattice (eta=0.0)', lambda: VD.build_geometry(N, 0.0, seed=0)),
-        ('disordered lattice (eta=0.3)', lambda: VD.build_geometry(N, 0.3, seed=0)),
+        ('perfect lattice (eta=0.0)', lambda: MB.build_geometry(N, 0.0, seed=0)),
+        ('disordered lattice (eta=0.3)', lambda: MB.build_geometry(N, 0.3, seed=0)),
         ('Poisson Delaunay (N*N pts)', lambda: build_poisson_geometry(N, seed=0)),
     ]
 

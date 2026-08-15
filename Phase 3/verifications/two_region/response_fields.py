@@ -15,8 +15,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import test_cluster_Ceff as CE
-import test_cluster_rigidity as TR
+import metric_ops as MO
 
 DESIGNS = [('bar', 'BAR: top auxetic / bottom regular'),
            ('inclusion_stiff', 'STIFF auxetic disc in soft matrix'),
@@ -32,8 +31,8 @@ def cut_stretch(geo):
 def fields(geo, u):
     tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
     ev = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    eps = CE.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
-    bare = TR.bare_tensor({**geo, 'edge_vecs': ev, 'actual_len2': (ev ** 2).sum(2)})
+    eps = MO.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
+    bare = MO.bare_tensor({**geo, 'edge_vecs': ev, 'actual_len2': (ev ** 2).sum(2)})
     A0, A1, A2, A3, A4 = (bare[:, i] for i in range(5))
     exx, eyy, exy = eps[:, 0, 0], eps[:, 1, 1], eps[:, 0, 1]
     sxx = A0 * exx + 2 * A1 * exy + A2 * eyy; sxy = A1 * exx + 2 * A2 * exy + A3 * eyy

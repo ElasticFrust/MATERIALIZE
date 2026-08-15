@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.join(REPO, 'Phase 3', 'verifications'))
 import _common as C                      # wires the rest of sys.path + the solver stack
 from inverse_design import DesignProblem, ANG
 import physical_homog as PH
-import test_cluster_rigidity as TR
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 EPS_NU = 0.05                            # designer.verify's nu floor (CLAUDE.md 3)
@@ -58,7 +58,7 @@ def one(path):
 
     try:                                             # the sim self-screens near-singular geometry
         nu_sim, E_sim = C.nu_E_theta(C.region_phys_C6(geo, C.sim_per_triangle_C6(geo), None), ANG)
-        c6_phys = voigt_to_c6(PH.energy_C(geo, free, TR.assemble_K_faff))
+        c6_phys = voigt_to_c6(PH.energy_C(geo, free, SA.assemble_K_faff))
         nu_phy, E_phy = C.nu_E_theta(c6_phys, ANG)
     except PH.UnhealthyGeometryError:
         return None

@@ -16,8 +16,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
 import _common as C
-import test_cluster_Ceff as CE
-import test_cluster_rigidity as TR
+import metric_ops as MO
 
 TOPOS = ['regular', 'disorder_hi']
 
@@ -40,8 +39,8 @@ def main():
     for r, topo in enumerate(TOPOS):
         geo, k, C6, meta = C.load_network(os.path.join(HERE, 'networks', f'patch__{topo}.npz'))
         u, nwt = C.open_stretch(geo, axis=0)
-        eps = CE.tri_metric_change(geo['edge_vecs'], geo['simplices'], np.eye(2), u)  # (N,2,2)
-        sig = stress(TR.bare_tensor(geo), eps)
+        eps = MO.tri_metric_change(geo['edge_vecs'], geo['simplices'], np.eye(2), u)  # (N,2,2)
+        sig = stress(MO.bare_tensor(geo), eps)
         cen = np.asarray(geo['centroids']); RE, RN = meta['region']
         inRE = ((cen - RE['center']) ** 2).sum(1) < RE['radius'] ** 2
         inRN = ((cen - RN['center']) ** 2).sum(1) < RN['radius'] ** 2

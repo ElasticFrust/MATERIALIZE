@@ -19,6 +19,7 @@ from matplotlib.collections import PolyCollection
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import _common as C
+import metric_ops as MO
 
 N, NITER, REG = 14, 150, 1e-4
 
@@ -42,10 +43,9 @@ def draw_deformed(ax, geo, u, nwt, facecolors, scale, title):
 
 
 def eyy_of(geo, u, sel):
-    import test_cluster_Ceff as CE
     tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
     ev = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    eps = CE.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
+    eps = MO.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
     return eps[sel, 1, 1].mean(), eps[sel, 0, 0].mean()
 
 

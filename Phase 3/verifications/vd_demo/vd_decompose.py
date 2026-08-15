@@ -25,9 +25,9 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'verification_tools'))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'Phase 2'))
-import test_cluster_VD as VD
-import test_cluster_rigidity as TR
 import physical_homog as PH
+import mesh_build as MB
+import sim_assembly as SA
 
 N, ETA, A, SEED = 14, 0.45, 5.0, 0
 
@@ -35,13 +35,13 @@ N, ETA, A, SEED = 14, 0.45, 5.0, 0
 def homog(geo, k):
     g = dict(geo); g['bond_k'] = k; g['tri_k'] = k[g['tri_bond']]
     free = np.arange(2, 2 * len(g['pts']))
-    return PH.sim_nuE(g, free, TR.assemble_K_faff)
+    return PH.sim_nuE(g, free, SA.assemble_K_faff)
 
 
 def main():
-    geo_reg = VD.build_geometry(N, 0.0, seed=SEED)              # regular geometry (|R|=1)
-    geo_dis = VD.build_geometry(N, ETA, seed=SEED)             # disordered geometry, SAME connectivity
-    VD.set_VD(geo_dis, A)                                       # k = 1+tanh(A*(|R_dis|-1))
+    geo_reg = MB.build_geometry(N, 0.0, seed=SEED)              # regular geometry (|R|=1)
+    geo_dis = MB.build_geometry(N, ETA, seed=SEED)             # disordered geometry, SAME connectivity
+    MB.set_VD(geo_dis, A)                                       # k = 1+tanh(A*(|R_dis|-1))
     k_vd = geo_dis['bond_k'].copy()
     k_1 = np.ones_like(k_vd)
     Lreg = np.sqrt((geo_reg['bond_R'] ** 2).sum(1))

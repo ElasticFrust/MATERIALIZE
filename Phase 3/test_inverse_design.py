@@ -18,6 +18,7 @@ from inverse_design import (DesignProblem, Objective, optimize, validate,
                             per_triangle_strain_stress, region_mean_vec3)
 import _common as C
 import physical_homog as PH
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 
@@ -309,14 +310,13 @@ def test_homogenization():
     COMPONENT, since ν,E are only two contractions of the tensor and are weakly sensitive to its
     shear-shear entry. Across regular + disordered + anisotropic topologies with a random per-bond k,
     plus the analytic regular-lattice value ν=1/3, E=2/√3 at uniform k."""
-    import test_cluster_rigidity as TR
 
     def free_of(geo):
         return np.arange(2, 2 * len(geo['pts']))
 
     geo = C.make_lattice(1.0, 1.0, half=6.0)                      # regular, uniform k=1
     geo['bond_k'] = np.ones(len(geo['bond_u'])); geo['tri_k'] = geo['bond_k'][geo['tri_bond']]
-    nu0, E0 = PH.virial_nuE(geo, PH.relax(geo, free_of(geo), TR.assemble_K_faff))
+    nu0, E0 = PH.virial_nuE(geo, PH.relax(geo, free_of(geo), SA.assemble_K_faff))
     assert abs(nu0 - 1 / 3) < 0.02 and abs(E0 - 2 / np.sqrt(3)) < 0.05, \
         f"regular lattice analytic: nu={nu0:.4f} (~0.3333), E={E0:.4f} (~{2/np.sqrt(3):.4f})"
 
@@ -336,13 +336,13 @@ def test_homogenization():
         k = 0.5 + rng.random(len(geo['bond_u']))
         geo['bond_k'] = k; geo['tri_k'] = k[geo['tri_bond']]
         free = free_of(geo)
-        nu_v, E_v = PH.virial_nuE(geo, PH.relax(geo, free, TR.assemble_K_faff))   # virial route
-        nu_e, E_e = PH.energy_nuE(geo, free, TR.assemble_K_faff)                  # energy-Hessian route
+        nu_v, E_v = PH.virial_nuE(geo, PH.relax(geo, free, SA.assemble_K_faff))   # virial route
+        nu_e, E_e = PH.energy_nuE(geo, free, SA.assemble_K_faff)                  # energy-Hessian route
         prob = DesignProblem.from_geo(geo)
         cs = C.solver_region_C6(prob, torch.as_tensor(k))                         # differentiable solver
         c_solver = np.array([[cs[0], cs[2], cs[1]], [cs[2], cs[5], cs[4]],        # -> Voigt [xx,yy,xy]
                              [cs[1], cs[4], cs[3]]])
-        c_phys = PH.energy_C(geo, free, TR.assemble_K_faff)          # INDEPENDENT energy-Hessian tensor
+        c_phys = PH.energy_C(geo, free, SA.assemble_K_faff)          # INDEPENDENT energy-Hessian tensor
         ve = max(abs(nu_v - nu_e), abs(E_v - E_e) / abs(E_v))
         vs = float(np.abs(c_solver - c_phys).max() / np.abs(c_phys).max())
         assert ve < 3e-3, f"virial vs energy-Hessian disagree (phi={phi},psi={psi},eta={eta}): {ve:.2e}"

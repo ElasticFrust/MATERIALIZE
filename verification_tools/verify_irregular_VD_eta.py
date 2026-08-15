@@ -20,11 +20,11 @@ import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'Phase 2'))
-import test_cluster_VD as VD              # build_geometry, set_VD, assemble via test_cluster_rigidity
-import test_cluster_rigidity as TR        # assemble_K_faff
 import physical_homog as PH               # physical (virial/energy) reference
-from test_intrinsic_VD import kkt_from_tri_bond
-from verify_solver_sweep import make_solver
+from mesh_build import kkt_from_tri_bond
+from solver_build import make_solver
+import mesh_build as MB
+import sim_assembly as SA
 torch.set_default_dtype(torch.float64)
 
 CONTRASTS = [-2, 2, 5]
@@ -45,11 +45,11 @@ def main():
     res = {a: {k: [] for k in ['nu_s', 'E_s', 'nu_i', 'E_i']} for a in CONTRASTS}
     print(f"N={N}, irregular lattice, VD k=1+tanh(a*(|R|-1)); PHYSICAL solver vs PHYSICAL sim")
     for eta in ETAS:
-        geo = VD.build_geometry(N, eta, seed=0)
+        geo = MB.build_geometry(N, eta, seed=0)
         free = np.arange(2, 2 * len(geo['pts']))
         for a in CONTRASTS:
-            VD.set_VD(geo, a)
-            ns, Es = PH.sim_nuE(geo, free, TR.assemble_K_faff)
+            MB.set_VD(geo, a)
+            ns, Es = PH.sim_nuE(geo, free, SA.assemble_K_faff)
             ni, Ei = solver_nuE(geo)
             for kk, vv in zip(['nu_s', 'E_s', 'nu_i', 'E_i'], [ns, Es, ni, Ei]):
                 res[a][kk].append(vv)
