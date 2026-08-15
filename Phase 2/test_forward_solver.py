@@ -117,6 +117,48 @@ def test_adjoint_large_N():
           f"vs FD={g_fd:.4e}  OK")
 
 
+# Tolerance for the tensor gates [7] and [8], under the PER-COMPONENT metric `_rel_err`.
+# NOT a loosened version of the old 1e-2/2e-2: those were calibrated for the weaker max-normalised
+# measure, and a stricter metric needs its own threshold. Placed from the measured separation
+# between a clean run and the A-0 shear defect over the five gate meshes (2026-08-15):
+#
+#            clean      with A-0     separation
+#   bulk     1.65e-02   5.82e+00     353x
+#   per-tri  9.74e-03   2.67e+00     275x
+#   regional 1.67e-02   7.61e+00     455x
+#
+# 5e-2 sits ~3x above the clean worst and 50-150x below the defect signal. The clean numbers are
+# dominated by components with SMALL |C| (absolute errors stay <=8.4e-4 against a tensor scale of
+# 0.1-1.3) — which is the point of normalising each component by its own magnitude.
+TOL_C = 5e-2
+
+
+def _rel_err(A, B, floor=0.05):
+    """PER-COMPONENT relative error between tensors A and B, max over components.
+
+    `A`, `B` are (...,3,3) Voigt [xx,yy,xy] (a bulk tensor, or a stack over triangles). Each
+    component is normalised by ITS OWN scale, not by the largest component of the tensor:
+
+        err = max_c  max|A_c − B_c| / max( max|B_c| , floor·max|B| )
+
+    Why not the simpler max|A−B|/max|B|: that normalises everything by the LARGEST component, so a
+    small component could be badly wrong and barely register — the same shape of blindness as the
+    ν=1/3 gate. Measured 2026-08-15, the difference is up to ~1.3× on real meshes (e.g. per-triangle
+    η=0.30 VD+10: 7.74e-3 by the old measure, 9.74e-3 per-component), so it is a real if bounded
+    understatement.
+
+    Why not plain element-wise (A−B)/B: tensor components genuinely pass through zero (C_xxxy and
+    C_yyxy change sign, and per-triangle values span both signs), where that ratio is undefined and
+    explodes. The `floor` — 5% of the tensor's largest component, matching the eps_nu convention in
+    CLAUDE.md §3 — bounds the denominator for components that are small everywhere, while leaving
+    significant components at their true relative error."""
+    A = np.asarray(A); B = np.asarray(B)
+    ax = tuple(range(A.ndim - 2))                       # reduce over triangles, keep (3,3)
+    num = np.abs(A - B).max(axis=ax) if ax else np.abs(A - B)
+    den = np.abs(B).max(axis=ax) if ax else np.abs(B)
+    return float((num / np.maximum(den, floor * np.abs(B).max())).max())
+
+
 def test_elastic_tensor_vs_energy_hessian():
     """[7] The homogenisation contraction vs an INDEPENDENT physical oracle, COMPONENT BY COMPONENT.
 
@@ -168,10 +210,10 @@ def test_elastic_tensor_vs_energy_hessian():
         C_solver = np.array([[c[0], c[2], c[1]], [c[2], c[5], c[4]], [c[1], c[4], c[3]]])
         C_phys = PH.energy_C(mesh, free, SA.assemble_K_faff)        # INDEPENDENT oracle
 
-        err = np.abs(C_solver - C_phys).max() / np.abs(C_phys).max()
+        err = _rel_err(C_solver, C_phys)                            # PER-COMPONENT (see _rel_err)
         worst = max(worst, err)
         tag = f"eta={eta}" + (f" VD{vd:+d}" if vd else " k=1")
-        assert err < 1e-2, (f"C_eff disagrees with the energy Hessian ({tag}, N={N}): {err:.3e}\n"
+        assert err < TOL_C, (f"C_eff disagrees with the energy Hessian ({tag}, N={N}): {err:.3e}\n"
                             f"  solver:\n{C_solver}\n  physical:\n{C_phys}")
     print(f"  [7] C_eff vs energy Hessian (component-wise, {len(cases)} disordered/VD meshes): "
           f"worst {worst:.2e}  OK")
@@ -210,8 +252,8 @@ def test_per_triangle_C_vs_energy_hessian():
     Tolerance: the residual is O(DELTA), from the strain measure — `tri_metric_change` is
     geometrically exact while the energy uses the linearised bond extension. Verified to scale
     LINEARLY in DELTA (7.74e-3 → 2.32e-3 → 7.73e-4 → 2.32e-4 for DELTA 1e-3 → 3e-4 → 1e-4 → 3e-5).
-    Worst at the default DELTA=1e-3 is 7.7e-3, so 2e-2 leaves headroom while staying far below any
-    real defect: the A-0 shear bug this class of check exists to catch was 29–90%.
+    Worst at the default DELTA=1e-3 is 9.7e-3 under the per-component metric; see TOL_C above for
+    how the threshold is placed against the A-0 defect signal.
     """
     import forward_solver_torch as fst
     import physical_homog as PH
@@ -283,10 +325,10 @@ def test_per_triangle_C_vs_energy_hessian():
                              np.stack([c6[:, 1], c6[:, 4], c6[:, 3]], -1)], -2)   # (N,3,3) [xx,yy,xy]
         C_ind = PH.energy_C_per_triangle(mesh, free, SA.assemble_K_faff) / _G_TO_DG  # INDEPENDENT
 
-        err = np.abs(C_solver - C_ind).max() / np.abs(C_ind).max()
+        err = _rel_err(C_solver, C_ind)                             # PER-COMPONENT (see _rel_err)
         worst = max(worst, err)
         tag = f"eta={eta}" + (f" VD{vd:+d}" if vd else " k=1")
-        assert err < 2e-2, (f"per-triangle C(s) disagrees with the energy Hessian ({tag}, N={N}): "
+        assert err < TOL_C, (f"per-triangle C(s) disagrees with the energy Hessian ({tag}, N={N}): "
                             f"{err:.3e}")
 
         # ---- (d) genuine SUB-REGIONS -------------------------------------------------------
@@ -308,9 +350,9 @@ def test_per_triangle_C_vs_energy_hessian():
                                  [c6r[1], c6r[4], c6r[3]]])
             R_ind = PH.energy_C_region(mesh, free, SA.assemble_K_faff,
                                        region=idx, C_s=C_s_ind)
-            e_r = np.abs(R_solver - R_ind).max() / np.abs(R_ind).max()
+            e_r = _rel_err(R_solver, R_ind)
             worst_r = max(worst_r, e_r)
-            assert e_r < 2e-2, (f"regional C disagrees with the energy Hessian "
+            assert e_r < TOL_C, (f"regional C disagrees with the energy Hessian "
                                 f"({tag}, N={N}, region {r}, {len(idx)} tri): {e_r:.3e}")
     print(f"  [8] per-triangle C(s) vs energy Hessian (component-wise, {len(cases)} meshes): "
           f"worst {worst:.2e}; regional (3 sub-regions each): worst {worst_r:.2e}  OK")

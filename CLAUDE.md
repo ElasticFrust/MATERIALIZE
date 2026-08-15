@@ -202,9 +202,23 @@ Full suite: `documentation/MATERIALIZE.md §9`, `Phase 3/verifications/README.md
 Three DISTINCT quantities — keep them separate:
 
 - **Two different code paths — never self-verify.** Design path = the differentiable *linear* metric
-  solve `forward()`; verification path = an **independent** NumPy periodic *nonlinear* relaxation →
+  solve `forward()`; verification path = an **independent** NumPy periodic relaxation →
   virial/energy homogenisation (`verification_tools/physical_homog.py`: `virial_nuE`, `energy_nuE`,
   which must agree).
+- **The oracle is LINEAR too — it is an independent IMPLEMENTATION, not independent PHYSICS**
+  *(corrected 2026-08-15; this used to say "nonlinear relaxation", which is false).*
+  `physical_homog.relax` is a single `spsolve` of Ku = −f_aff with the linearised bond extension
+  (R·δu)/ℓ — no iteration, no Newton, no minimisation, and there is no nonlinear relaxation anywhere
+  in the repo. Consequences, both important:
+  - **What it does check, and checks strongly:** that the solver's algebra is right. The solver's own
+    `forward()` agrees with it to **1e-13–1e-11** on healthy disordered/VD networks — the intrinsic
+    constrained solve is numerically equivalent to the nodal solve. This is what catches
+    contraction-class bugs like A-0.
+  - **What it CANNOT check:** anything second-order in the deformation. In particular it cannot
+    substantiate "near a mechanism the linear read-back diverges from the true nonlinear relaxation
+    — hence every design is checked against the independent simulation": the sim is linear as well,
+    so it diverges in exactly the same way. Near-mechanism designs are **not** currently validated
+    against nonlinear physics by anything in the repo (audit **A-15**).
 - **Define the ensemble** (usually natural). Verification quantities are computed over an *explicit*
   ensemble: a **crystal = the single structure** (or a parametric family, e.g. the Bravais sweep) —
   no randomness ⇒ nothing to average; a disordered family = fixed parameters (η, N) over seeds.
