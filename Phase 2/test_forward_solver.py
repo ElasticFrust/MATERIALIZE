@@ -177,6 +177,121 @@ def test_elastic_tensor_vs_energy_hessian():
           f"worst {worst:.2e}  OK")
 
 
+# per-triangle C(s) [xx,yy,xy] (acting on g, F = I + [[g0,g2/2],[g2/2,g1]])
+#   = 16 × the solver's per-triangle tensor (acting on Δg = FᵀF − I, vec3 [xx,xy,yy]).
+# The two differ by the change of variables Δg ≈ (2g0, g2, 2g1) plus the Voigt reordering, which is
+# a congruence and NOT obviously a scalar — so this constant is not asserted from algebra. It is
+# CALIBRATED on crystals where W ≡ 0 and therefore C(s) = A(s) exactly, and test [8] re-derives it
+# from `metric_ops.bare_tensor` on every run rather than trusting the literal.
+_G_TO_DG = 16.0
+
+
+def test_per_triangle_C_vs_energy_hessian():
+    """[8] PER-TRIANGLE C(s), component-wise, against an INDEPENDENT per-triangle energy Hessian.
+
+    The one-level-down analogue of [7], and the close of audit A-9. Until this existed, every LOCAL
+    quantity (`_common.sim_per_triangle_C6`, `region_phys_C6`) was obtained by taking the sim's
+    relaxation and pushing it back through the solver's own `_compute_actual_elastic_tensor` — the
+    very contraction under test. `physical_homog.energy_C_per_triangle` instead differentiates each
+    triangle's own relaxed spring energy twice w.r.t. the macro strain: it never forms W, never does
+    the 4-index contraction, and touches no solver code.
+
+    Structure mirrors [7]: `_compute_actual_elastic_tensor` is fed the SIMULATION's measured W, so
+    the check isolates the contraction — same A(s), same W, two independent routes to C(s).
+
+    Three parts:
+      (a) CONVENTION — on crystals (W≡0 ⇒ C(s)=A(s)) the oracle must reproduce `bare_tensor` up to
+          the single constant `_G_TO_DG`, re-derived here. Includes SHEARED crystals, without which
+          the shear-coupling entries are 0/0 and the constant is not pinned there.
+      (b) INTERNAL CONSISTENCY — `energy_C_region(None)` must reproduce the already-trusted bulk
+          `energy_C` exactly (the ½ undoing the double-counting of shared bonds).
+      (c) THE GATE — per-triangle agreement on DISORDERED / VD meshes, where W ≠ 0.
+
+    Tolerance: the residual is O(DELTA), from the strain measure — `tri_metric_change` is
+    geometrically exact while the energy uses the linearised bond extension. Verified to scale
+    LINEARLY in DELTA (7.74e-3 → 2.32e-3 → 7.73e-4 → 2.32e-4 for DELTA 1e-3 → 3e-4 → 1e-4 → 3e-5).
+    Worst at the default DELTA=1e-3 is 7.7e-3, so 2e-2 leaves headroom while staying far below any
+    real defect: the A-0 shear bug this class of check exists to catch was 29–90%.
+    """
+    import forward_solver_torch as fst
+    import physical_homog as PH
+    import sim_assembly as SA
+    import metric_ops as MO
+    import mesh_build as MB
+
+    # ---- (a) convention, on crystals where W ≡ 0 so C(s) = A(s) exactly --------------------
+    for tag, aff in [('regular', None),
+                     ('sheared', np.array([[1.0, 0.45], [0.0, 1.0]])),
+                     ('stretch+shear', np.array([[1.3, 0.35], [0.15, 0.8]]))]:
+        geo = MB.build_geometry(8, 0.0, 0); MB.set_VD(geo, 0)
+        if aff is not None:                       # affine keeps every triangle congruent ⇒ W still 0
+            geo['pts'] = geo['pts'] @ aff.T
+            geo['edge_vecs'] = geo['edge_vecs'] @ aff.T
+            geo['bond_R'] = geo['bond_R'] @ aff.T
+            geo['actual_len2'] = (geo['edge_vecs'] ** 2).sum(2)
+            e01, e02 = geo['edge_vecs'][:, 0], geo['edge_vecs'][:, 1]
+            geo['areas'] = 0.5 * np.abs(e01[:, 0] * e02[:, 1] - e01[:, 1] * e02[:, 0])
+            MB.set_VD(geo, 0)
+        a = MO.bare_tensor(geo)
+        assert np.allclose(a, a[0], rtol=1e-12), f"{tag}: A(s) not uniform, so W≠0 — bad calibration case"
+        A_mat = np.array([[a[0, 0], a[0, 2], a[0, 1]],
+                          [a[0, 2], a[0, 4], a[0, 3]],
+                          [a[0, 1], a[0, 3], a[0, 2]]])                     # A(s) in [xx,yy,xy]
+        Cs = PH.energy_C_per_triangle(geo, np.arange(2, 2 * len(geo['pts'])), SA.assemble_K_faff)
+        # compare against _G_TO_DG·A rather than forming a ratio: the REGULAR crystal has exact
+        # zeros in the shear-coupling entries, where a ratio is 0/0.
+        err_c = np.abs(Cs[0] - _G_TO_DG * A_mat).max() / np.abs(_G_TO_DG * A_mat).max()
+        assert err_c < 1e-8, (f"{tag}: per-triangle oracle != {_G_TO_DG}·A(s) where W≡0 "
+                              f"(rel {err_c:.3e}) — CONVENTION WRONG, do not tune the constant")
+        assert np.allclose(Cs, Cs[0], rtol=1e-9), f"{tag}: C(s) not uniform on a crystal"
+
+    # ---- (b) internal consistency: the region form must reproduce the trusted bulk oracle ----
+    geo = MB.build_geometry(8, 0.20, 1); MB.set_VD(geo, 5)
+    free = np.arange(2, 2 * len(geo['pts']))
+    C_bulk = PH.energy_C(geo, free, SA.assemble_K_faff)
+    C_s = PH.energy_C_per_triangle(geo, free, SA.assemble_K_faff)
+    err_b = np.abs(PH.energy_C_region(geo, free, SA.assemble_K_faff, None, C_s=C_s)
+                   - C_bulk).max() / np.abs(C_bulk).max()
+    assert err_b < 1e-12, f"energy_C_region(None) != energy_C: {err_b:.3e}"
+
+    # ---- (c) the gate: per-triangle, component-wise, on W ≠ 0 meshes -------------------------
+    Dgt = [F.T @ F - np.eye(2) for F in PH.Fk]
+    Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in Dgt], 1))
+    cases = [(8, 0.00, 0, None), (8, 0.20, 1, None), (8, 0.20, 1, 5),
+             (8, 0.35, 2, None), (12, 0.30, 3, 10)]
+    worst = 0.0
+    for N, eta, seed, vd in cases:
+        mesh = MB.build_geometry(N, eta, seed)
+        if vd is None:
+            mesh['bond_k'] = np.ones(len(mesh['bond_R']))
+            mesh['tri_k'] = mesh['bond_k'][mesh['tri_bond']]
+        else:
+            MB.set_VD(mesh, vd)
+        nn, nt = len(mesh['pts']), len(mesh['simplices'])
+        free = np.arange(2, 2 * nn)
+
+        u_modes = PH.relax(mesh, free, SA.assemble_K_faff)          # the SIM's relaxation
+        D = np.zeros((nt, 3, 3))
+        for j, (F, u) in enumerate(zip(PH.Fk, u_modes)):
+            D[:, :, j] = MO.vec3(
+                MO.tri_metric_change(mesh['edge_vecs'], mesh['simplices'], F, u) - Dgt[j])
+        c6 = fst._compute_actual_elastic_tensor(
+            torch.as_tensor(MO.bare_tensor(mesh)),
+            torch.as_tensor((D @ Dinv).reshape(-1, 9))).numpy()
+        C_solver = np.stack([np.stack([c6[:, 0], c6[:, 2], c6[:, 1]], -1),
+                             np.stack([c6[:, 2], c6[:, 5], c6[:, 4]], -1),
+                             np.stack([c6[:, 1], c6[:, 4], c6[:, 3]], -1)], -2)   # (N,3,3) [xx,yy,xy]
+        C_ind = PH.energy_C_per_triangle(mesh, free, SA.assemble_K_faff) / _G_TO_DG  # INDEPENDENT
+
+        err = np.abs(C_solver - C_ind).max() / np.abs(C_ind).max()
+        worst = max(worst, err)
+        tag = f"eta={eta}" + (f" VD{vd:+d}" if vd else " k=1")
+        assert err < 2e-2, (f"per-triangle C(s) disagrees with the energy Hessian ({tag}, N={N}): "
+                            f"{err:.3e}")
+    print(f"  [8] per-triangle C(s) vs energy Hessian (component-wise, {len(cases)} meshes): "
+          f"worst {worst:.2e}  OK")
+
+
 def test_woodbury_legacy_runs():
     np.random.seed(4)
     tri = D2C.generate_foam_points((3, 3), 0.2)
@@ -196,6 +311,7 @@ if __name__ == '__main__':
         test_adjoint_large_N,
         test_woodbury_legacy_runs,
         test_elastic_tensor_vs_energy_hessian,
+        test_per_triangle_C_vs_energy_hessian,
     ]
     print("forward_solver_torch regression test")
     failed = 0
