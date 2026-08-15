@@ -34,15 +34,15 @@ CASE, REG, HALF, NITER = 'strain_stress', 1e-4, 42, 130               # HALF=42 
 TOPOS = ['regular', 'disorder_hi']
 S = 0.5                                                               # active-shape stress target
 I2 = np.eye(2)
-LOAD_X = C.CE.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA       # PULL +x  (ε_xx)
-LOAD_Y = C.CE.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA       # PULL +y  (ε_yy)
+LOAD_X = C.MO.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA       # PULL +x  (ε_xx)
+LOAD_Y = C.MO.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA       # PULL +y  (ε_yy)
 
 
 def independent_stress(geo):
     """Non-autograd ground-truth stress under the two PULLS (+x, +y) via _common.unit_mode_response:
     ε_xx stress = mode-0, ε_yy stress = mode-1 (both positive; a separate NumPy PBC sim)."""
     _, sig = C.unit_mode_response(geo)
-    return C.CE.vec3(sig[0]), C.CE.vec3(sig[1])
+    return C.MO.vec3(sig[0]), C.MO.vec3(sig[1])
 
 
 def plot_stress(geo, disc_spec, tri_spec, sig_x_full, sig_y_full, bars, topo, path, mark=True):

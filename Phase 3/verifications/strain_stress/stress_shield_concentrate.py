@@ -21,7 +21,7 @@ CASE, HALF, REG, NITER = 'strain_stress', 16, 3e-4, 260
 TOPO = sys.argv[1] if len(sys.argv) > 1 else 'regular'
 S_HI = 1.0                                                             # triangle: concentrate to this ‖σ‖
 I2 = np.eye(2)
-LOAD_X = C.CE.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA        # uniaxial pull +x (ε_xx)
+LOAD_X = C.MO.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA        # uniaxial pull +x (ε_xx)
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
     C.apply_k_to_geo(geo, r['k'])
 
     _, sig = C.unit_mode_response(geo)
-    m = mag3(C.CE.vec3(sig[0]))                                        # ‖σ‖ under +x
+    m = mag3(C.MO.vec3(sig[0]))                                        # ‖σ‖ under +x
     bg = np.setdiff1d(np.arange(prob.n_tri), np.concatenate([disc, tri]))
 
     def rm(idx):

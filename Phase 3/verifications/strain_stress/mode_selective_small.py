@@ -25,8 +25,8 @@ TOPO = sys.argv[1] if len(sys.argv) > 1 else 'disorder_hi'   # pass 'regular' to
 # value + same, WEAK uniformity), so both carry the same heterogeneity and the off-shape blends in.
 MEAN_DIL, DIL = 1.0, 1.25           # active shape dilates above the pull-fixed mean
 I2 = np.eye(2)
-LOAD_X = C.CE.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA
-LOAD_Y = C.CE.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA
+LOAD_X = C.MO.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA
+LOAD_Y = C.MO.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA
 
 
 def dilation(v):
@@ -64,7 +64,7 @@ def main():
     C.apply_k_to_geo(geo, r['k'])
 
     eps, _ = C.unit_mode_response(geo)
-    dx, dy = dilation(C.CE.vec3(eps[0])), dilation(C.CE.vec3(eps[1]))
+    dx, dy = dilation(C.MO.vec3(eps[0])), dilation(C.MO.vec3(eps[1]))
 
     def stats(d, idx):
         v = d[idx]; v = v[np.isfinite(v)]

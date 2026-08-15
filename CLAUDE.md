@@ -67,9 +67,10 @@ above it.** Phase numbering is historical, *not* a clean ladder: the live arc is
 | layer | dir | role | stability |
 |---|---|---|---|
 | **Core (protected)** | `Phase 2/forward_solver_torch.py` | differentiable geometric homogeniser: (k, ℓ₀, geometry) → C(s), C_eff, ν, E, W; adjoint above 600 tri | **never modify without explicit approval**; gated by `test_forward_solver.py` + the physical `verify_*` suite |
+| Core-adjacent | `Phase 2/metric_ops.py`, `mesh_build.py`, `solver_build.py` | the NumPy side of the core: metric/tensor ops in the solver's conventions (`vec3`, `tri_metric_change`, `bare_tensor`); periodic + open mesh construction (`build_geometry`, `set_VD`, `kkt_from_tri_bond`, `clean_tri`, `build_open_mesh`); `make_solver`/`_mount` | same layer & same gate as the core, **not** the protected file; `DesignProblem`'s constructors are built on them, so treat as verified truth |
 | Inverse design | `Phase 3/` | objectives, `optimize` (L-BFGS), differentiable/adjoint path | verified truth; change with care |
 | Designer (current) | `Phase 5/` | M1 search-based designer (topology + positions + k), **built on Phase 3's `inverse_design`**; M2 **GNN edit-policy prototyped** in `Phase 5/m2/` (model + trained checkpoint); VAE / interpreter still roadmap | active work |
-| **Independent oracle** | `verification_tools/`, `Phase */verifications/` | full-PBC relaxation sim (`_common.sim_per_triangle_C6`, `physical_homog`) — a *different code path* from the solver | temporary validation oracle (see §1); retireable once the solver is trusted |
+| **Independent oracle** | `verification_tools/physical_homog.py` + `sim_assembly.py`; `Phase */verifications/` | full-PBC relaxation sim (`physical_homog`, fed by `sim_assembly.assemble_K_faff`) — a *different code path* from the solver. The rest of `verification_tools/` is **experiment scripts, not a library** | temporary validation oracle (see §1); retireable once the solver is trusted |
 | Topology remnant | `Phase 4/` | **legacy, not a development stage**; its topology / point-cloud generators are reused (e.g. by `Phase 5/seeds.py: seed_from_phase4`). Directory name kept by deliberate decision | frozen remnant |
 | Docs | `documentation/` | canonical `MATERIALIZE.md` (+pdf), `FUTURE_DIRECTIONS`, residual-stress & reference-metric notes | lockstep with code |
 | Foundations (repo root) | `/` | theory backbone (`THEORY_NOTES.md`, `INTRINSIC_METRIC_SOLVE.md`, `derivation_edge_compatibility.pdf`, `ANALYTICAL_MODEL_STATUS.md`, `Tutorial.md`) and the D2C origin / legacy numpy path (`Disc_2_Cont_optimized.py`, also foam-mesh helpers) the Phase 2 core was ported from | foundational; legacy code frozen |
@@ -78,6 +79,16 @@ Principles specific here:
 
 - **Protected core + independent oracle** are the two load-bearing invariants *for now*: the solver
   is the fast path, the simulation the truth it is checked against while being validated.
+- **Dependencies point inward, and the oracle is off to the side.** `Phase 5 → Phase 3 → Phase 2`;
+  nothing in Phase 2/3 may import from `verification_tools/`, which is *temporary and retireable* —
+  a design layer rooted in it could not survive its retirement. `verification_tools/` is
+  deliberately **not** on `Phase 3/inverse_design.py`'s `sys.path`, so the inversion cannot return
+  silently. *(A-7b, fixed 2026-08-15: `inverse_design.py` had been importing its mesh construction,
+  its constraint topology and its **solver construction** from four scripts in there.)*
+  Corollary, and the deeper reason: **the oracle must share NO code with the design path** —
+  otherwise "checked against the sim" degrades into checking the code against itself (cf. the shear
+  defect, §3 verification discipline). `physical_homog` therefore keeps its own `DELTA`/`MODES`
+  rather than importing them; that duplication is **deliberate — do not "fix" it**.
 - **Compute separated from render:** designed networks are **saved**; figures *load* them and never
   re-optimise (random restarts ⇒ non-reproducible otherwise).
 - **Artifacts live per-phase** with provenance (seed, config, commit); scratch stays disposable.

@@ -380,8 +380,15 @@ the framework.
 MATERIALIZE/
 ├── plotting.py                  SINGLE source of truth for all figures (see project CLAUDE.md §3)
 ├── Disc_2_Cont_optimized.py     D2C origin / legacy numpy mean-field path + foam-mesh helpers
-├── Phase 2/                     the differentiable FORWARD solver (protected core)
+├── Phase 2/                     the CORE layer: differentiable forward solver + core-adjacent support
 │   ├── forward_solver_torch.py  ElasticSolver: network -> C_eff, nu, E, W  (differentiable)
+│   │                            THE PROTECTED FILE (see below); the three modules under it are
+│   │                            core-ADJACENT: same layer, same gate, not the protected file
+│   ├── metric_ops.py            NumPy metric/tensor ops in the solver's conventions:
+│   │                            vec3, tri_metric_change, bare_tensor A(s)
+│   ├── mesh_build.py            periodic + open mesh construction: build_geometry, set_VD,
+│   │                            kkt_from_tri_bond (C1 topology), clean_tri, build_open_mesh
+│   ├── solver_build.py          make_solver/_mount: ElasticSolver from a periodic geometry dict
 │   ├── SOLVER_GUIDE.md          canonical usage/API guide for the solver
 │   └── test_forward_solver.py   regression tests (nu=1/3 crystal, gradients, adjoint, ...)
 ├── Phase 3/                     INVERSE design (k on a fixed topology)
@@ -396,8 +403,12 @@ MATERIALIZE/
 │   ├── designer.py seeds.py positions.py triangulation.py gallery.py plot_responses.py
 │   ├── m2/                       M2 learned edit-policy (GNN) — prototyped (model + trained checkpoint)
 │   └── verifications/ networks/ results/
-├── verification_tools/          physical ground truth (physical_homog.py — SELF-SCREENS near-singular
-│                                geometry, raising a catchable UnhealthyGeometryError) + analysis
+├── verification_tools/          the temporary, retireable INDEPENDENT ORACLE + analysis scripts
+│   ├── physical_homog.py        virial / energy-Hessian ground truth; SELF-SCREENS near-singular
+│   │                            geometry, raising a catchable UnhealthyGeometryError
+│   ├── sim_assembly.py          assemble_K_faff — the nodal assembler physical_homog is handed
+│   └── test_*.py, verify_*.py   EXPERIMENT scripts (not a library). Since A-7b they import DOWN
+│                                into Phase 2; nothing above imports up out of here
 ├── THEORY_NOTES.md              why the intrinsic metric solve is correct (derivation)
 ├── INTRINSIC_METRIC_SOLVE.md    the intrinsic KKT formulation in full (Section 3.4 in detail)
 └── documentation/              THIS document (.md + .pdf) + FUTURE_DIRECTIONS + figures
@@ -405,6 +416,17 @@ MATERIALIZE/
 
 **Protected core:** `Phase 2/forward_solver_torch.py` is gated by `test_forward_solver.py` and the
 physical `verify_*` suite; it is not modified without an explicit request and a passing regression.
+`metric_ops.py`, `mesh_build.py` and `solver_build.py` are **core-adjacent**: the same layer and the
+same gate (the design layer's `DesignProblem` constructors are built directly on them), but they are
+not the protected file.
+
+**Dependency direction (A-7b, 2026-08-15).** Dependencies point inward: `Phase 5 → Phase 3 → Phase 2`,
+and the oracle (`verification_tools/{physical_homog, sim_assembly}`) hangs off to the side sharing
+**no code** with that chain — which is what makes it an independent check rather than
+self-verification. Until A-7b this was inverted: `Phase 3/inverse_design.py` imported its mesh
+construction, its constraint topology and its *solver construction* from four scripts inside
+`verification_tools/`. `verification_tools/` is no longer on `inverse_design.py`'s `sys.path` at all,
+so the inversion cannot quietly return.
 
 ---
 

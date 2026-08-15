@@ -49,20 +49,22 @@ tri = D2C.generate_foam_points(size=(6, 6), eta=0.2)     # scipy Delaunay-like o
 solver, k, l0 = from_triangulation(tri)                  # k=(N,3) ones, l0=reference lengths
 ```
 
-**Periodic unit cell** (via the verification helper, which mounts periodic-correct geometry):
+**Periodic unit cell** (`mesh_build` + `solver_build` mount periodic-correct geometry — both live
+here in Phase 2, alongside the solver):
 ```python
-import sys; sys.path.insert(0, 'verification_tools')
-import test_cluster_VD as VD
-from test_intrinsic_VD import kkt_from_tri_bond
-from verify_solver_sweep import make_solver
+from mesh_build import build_geometry, set_VD, kkt_from_tri_bond
+from solver_build import make_solver
 import numpy as np, torch
 
-geo = VD.build_geometry(N=14, eta=0.3, seed=0); VD.set_VD(geo, 0)   # periodic lattice, k=1
+geo = build_geometry(N=14, eta=0.3, seed=0); set_VD(geo, 0)   # periodic lattice, k=1
 kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
 solver = make_solver(geo, kkt)
 k  = torch.as_tensor(geo['tri_k'])                       # (N,3) per-triangle-edge stiffness
 l0 = torch.as_tensor(np.sqrt(geo['actual_len2']))       # reference edge lengths
 ```
+*(Until the A-7b re-layering these came from `verification_tools/test_cluster_VD.py`,
+`test_intrinsic_VD.py` and `verify_solver_sweep.py` — i.e. the design layer built its solver out of
+the temporary, retireable oracle layer. See `documentation/AUDIT_2026-08.md` A-7b.)*
 
 ---
 

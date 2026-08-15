@@ -35,8 +35,8 @@ TOPOS = ['regular', 'disorder_hi']
 S, SBG = 0.5, 0.15                                                # active-shape target; suppressed background
 I2 = np.eye(2)
 # Two DIFFERENT applied macro loads, same vec3=[xx,xy,yy] convention as the other demos:
-LOAD_X = C.CE.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA   # STRETCH +x  (xx unit mode)
-LOAD_Y = -C.CE.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA  # COMPRESS -y (negated yy unit mode)
+LOAD_X = C.MO.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA   # STRETCH +x  (xx unit mode)
+LOAD_Y = -C.MO.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA  # COMPRESS -y (negated yy unit mode)
 
 
 def mag3(v):
@@ -49,7 +49,7 @@ def independent_stress(geo):
     separate NumPy PBC sim). By linearity, +x stress = mode-0 stress, -y stress = -(mode-1 stress).
     Returns (sig_x_vec3, sig_y_vec3), each (nt,3)."""
     _, sig = C.unit_mode_response(geo)
-    return C.CE.vec3(sig[0]), -C.CE.vec3(sig[1])
+    return C.MO.vec3(sig[0]), -C.MO.vec3(sig[1])
 
 
 def _finite_pct(a, q):

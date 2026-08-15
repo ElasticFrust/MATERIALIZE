@@ -2,7 +2,8 @@
 
 Working notes (June 2026 session). Companion to `derivation_edge_compatibility.pdf` and the
 diagnostics in `verification_tools/` (`pbc_dg_analysis.py`, `compat_projection.py`,
-`test_cluster_rigidity.py`).
+`test_cluster_rigidity.py` — whose `bare_tensor`/`assemble_K_faff` moved out to
+`Phase 2/metric_ops.py` and `verification_tools/sim_assembly.py` in the A-7b re-layering).
 
 ## 1. What the derivation actually computes
 

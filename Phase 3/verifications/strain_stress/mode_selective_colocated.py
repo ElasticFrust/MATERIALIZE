@@ -41,8 +41,8 @@ TOPOS = ['regular', 'disorder_hi']
 KINDS = ['cross_bars', 'disc_triangle']
 S, SBG = 0.5, 0.12                                               # active-shape target; suppressed background
 I2 = np.eye(2)
-LOAD_X = C.CE.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA   # STRETCH +x
-LOAD_Y = -C.CE.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA  # COMPRESS -y
+LOAD_X = C.MO.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA   # STRETCH +x
+LOAD_Y = -C.MO.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA  # COMPRESS -y
 
 
 def make_shapes(kind, prob, geo):
@@ -73,7 +73,7 @@ def mag3(v):
 def independent_stress(geo):
     """+x stress = mode-0 stress, −y stress = -(mode-1 stress), by linearity (separate NumPy sim)."""
     _, sig = C.unit_mode_response(geo)
-    return C.CE.vec3(sig[0]), -C.CE.vec3(sig[1])
+    return C.MO.vec3(sig[0]), -C.MO.vec3(sig[1])
 
 
 def _finite_pct(a, q):

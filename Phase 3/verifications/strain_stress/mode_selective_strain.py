@@ -43,8 +43,8 @@ DIL = 1.25                                                        # active shape
 # inclusion, not a mechanism), at the cost of a gentler dilation contrast -- the tradeoff the user asked
 # for. MEAN_DIL below is the fixed cell-mean the pull imposes.
 I2 = np.eye(2)
-LOAD_X = C.CE.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA   # PULL +x  (xx unit mode)
-LOAD_Y = C.CE.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA   # PULL +y  (yy unit mode)
+LOAD_X = C.MO.vec3(C.PH.Fk[0].T @ C.PH.Fk[0] - I2) / C.PH.DELTA   # PULL +x  (xx unit mode)
+LOAD_Y = C.MO.vec3(C.PH.Fk[1].T @ C.PH.Fk[1] - I2) / C.PH.DELTA   # PULL +y  (yy unit mode)
 
 
 def dilation(v):
@@ -56,7 +56,7 @@ def independent_strain(geo):
     """Non-autograd ground-truth strain under the two pulls, via _common.unit_mode_response (separate
     NumPy PBC sim): +x strain = mode-0, +y strain = mode-1. Returns (eps_x_vec3, eps_y_vec3)."""
     eps, _ = C.unit_mode_response(geo)
-    return C.CE.vec3(eps[0]), C.CE.vec3(eps[1])
+    return C.MO.vec3(eps[0]), C.MO.vec3(eps[1])
 
 
 def _finite_pct(a, q):

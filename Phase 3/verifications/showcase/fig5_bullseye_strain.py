@@ -33,7 +33,7 @@ def main():
     _, E_avg = C.local_nuE_angleavg(geo, C6)
     # strain response: dilation under the isotropic (ε_xx+ε_yy) stretch, from the NumPy PBC sim
     eps, _ = C.unit_mode_response(geo)
-    eps_iso = C.CE.vec3(eps[0] + eps[1])
+    eps_iso = C.MO.vec3(eps[0] + eps[1])
     dil = 0.5 * (eps_iso[:, 0] + eps_iso[:, 2])
 
     plt.rcParams.update({'font.size': 12})

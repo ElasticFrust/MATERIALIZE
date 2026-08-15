@@ -35,7 +35,7 @@ def main():
     print(f"  [mode_selective_stress_response {TOPO}] tri={nt} disc={len(disc)} triangle={len(tri)}", flush=True)
 
     eps, sig = C.unit_mode_response(geo)
-    S = {mk: C.CE.vec3(sig[mk]) for mk in (0, 1)}                      # (nt,3) stress under +x, +y
+    S = {mk: C.MO.vec3(sig[mk]) for mk in (0, 1)}                      # (nt,3) stress under +x, +y
     mag = {mk: mag3(S[mk]) for mk in (0, 1)}                           # ‖σ‖
     press = {mk: 0.5 * (S[mk][:, 0] + S[mk][:, 2]) for mk in (0, 1)}   # mean stress (pressure)
 

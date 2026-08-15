@@ -76,12 +76,12 @@ def main():
 
     # relax the loaded network under the 3 macro modes -> node fluctuation fields; keep the RESIDUAL
     # (non-affine) part, which carries the selective breathing.
-    u_modes = C.PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), C.TR.assemble_K_faff)
+    u_modes = C.PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), C.SA.assemble_K_faff)
     resid = {mk: residual_field(geo['pts'], u_modes[mk]) for mk in (0, 1)}
 
     # TRUE physical dilation (per unit strain) from the linear response -> honest excess-over-background
     eps, _ = C.unit_mode_response(geo)
-    dil = {mk: 0.5 * (C.CE.vec3(eps[mk])[:, 0] + C.CE.vec3(eps[mk])[:, 2]) for mk in (0, 1)}
+    dil = {mk: 0.5 * (C.MO.vec3(eps[mk])[:, 0] + C.MO.vec3(eps[mk])[:, 2]) for mk in (0, 1)}
 
     def excess(mk, idx):                                  # region mean dilation minus background mean
         v = dil[mk][idx]; v = v[np.isfinite(v)]

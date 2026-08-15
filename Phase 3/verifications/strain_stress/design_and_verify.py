@@ -74,14 +74,14 @@ TOPO = 'disorder_hi'
 # exactly this unit mode means the independent check can reuse unit_mode_response's mode-0 output
 # directly, with no new ground-truth machinery needed.
 _Dgt0 = C.PH.Fk[0].T @ C.PH.Fk[0] - np.eye(2)
-LOAD = C.CE.vec3(_Dgt0) / C.PH.DELTA
+LOAD = C.MO.vec3(_Dgt0) / C.PH.DELTA
 
 # Isotropic (equi-biaxial) load for the CONCENTRIC RINGS demo -- xx unit mode + yy unit mode. By
 # linearity of the underlying elastic solve (see unit_mode_response's docstring), this is exactly
 # the response to a pure dilation, with no preferred x/y direction -- matching the ring pattern's
 # own rotational symmetry, unlike a uniaxial pull.
 _Dgt1 = C.PH.Fk[1].T @ C.PH.Fk[1] - np.eye(2)
-LOAD_ISO = LOAD + C.CE.vec3(_Dgt1) / C.PH.DELTA
+LOAD_ISO = LOAD + C.MO.vec3(_Dgt1) / C.PH.DELTA
 
 
 def independent_check(geo):
@@ -89,14 +89,14 @@ def independent_check(geo):
     genuinely separate NumPy PBC simulation, not the differentiable forward() path. Returns
     (eps_vec3, sig_vec3), each (nt,3)."""
     eps_ref, sig_ref = C.unit_mode_response(geo)
-    return C.CE.vec3(eps_ref[0]), C.CE.vec3(sig_ref[0])
+    return C.MO.vec3(eps_ref[0]), C.MO.vec3(sig_ref[0])
 
 
 def independent_check_iso(geo):
     """Non-autograd ground truth for the isotropic (xx+yy) load -- same linearity argument as
     LOAD_ISO, applied to the simulated per-mode fields instead of the applied Delta_g."""
     eps_ref, sig_ref = C.unit_mode_response(geo)
-    return C.CE.vec3(eps_ref[0] + eps_ref[1]), C.CE.vec3(sig_ref[0] + sig_ref[1])
+    return C.MO.vec3(eps_ref[0] + eps_ref[1]), C.MO.vec3(sig_ref[0] + sig_ref[1])
 
 
 def mag3(v):
@@ -204,7 +204,7 @@ def strain_field(geo, u):
     tiny helper rather than importing a sibling directory's module)."""
     tv = np.asarray(geo['tri_verts']); p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
     ev = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    eps = C.CE.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
+    eps = C.MO.tri_metric_change(ev, np.asarray(geo['simplices']), np.eye(2), u)
     return eps[:, 0, 0], eps[:, 1, 1]
 
 

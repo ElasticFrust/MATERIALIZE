@@ -31,7 +31,7 @@ def replot(topo):
 
     # (1) STRAIN response: dilation under the ISOTROPIC (ε_xx+ε_yy) stretch, from the separate NumPy sim
     eps, _ = C.unit_mode_response(geo)
-    eps_iso = C.CE.vec3(eps[0] + eps[1])
+    eps_iso = C.MO.vec3(eps[0] + eps[1])
     dil = 0.5 * (eps_iso[:, 0] + eps_iso[:, 2])
     fig, ax = plt.subplots(figsize=(7.5, 7))
     v = _finite_pct(dil, 97)

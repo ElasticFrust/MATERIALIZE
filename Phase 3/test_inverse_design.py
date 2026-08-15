@@ -181,9 +181,9 @@ def test_strain_stress_equivalence():
     Dgt = [F.T @ F - np.eye(2) for F in PH.Fk]
     maxrel = 0.0
     for mode in range(3):
-        load_dg = C.CE.vec3(Dgt[mode]) / PH.DELTA              # linear-normalised, matches eps_ref's scale
+        load_dg = C.MO.vec3(Dgt[mode]) / PH.DELTA              # linear-normalised, matches eps_ref's scale
         strain_t, stress_t = per_triangle_strain_stress(bare, W, load_dg)
-        eps_ref_vec3 = C.CE.vec3(eps_ref[mode])
+        eps_ref_vec3 = C.MO.vec3(eps_ref[mode])
         sig_ref_vec3 = np.stack([sig_ref[mode][:, 0, 0], sig_ref[mode][:, 0, 1], sig_ref[mode][:, 1, 1]], -1)
         de = np.abs(strain_t.detach().numpy() - eps_ref_vec3).max() / np.abs(eps_ref_vec3).max()
         ds = np.abs(stress_t.detach().numpy() - sig_ref_vec3).max() / np.abs(sig_ref_vec3).max()

@@ -30,7 +30,7 @@ def main():
     bg = np.setdiff1d(np.arange(nt), np.concatenate([disc, tri]))
 
     eps, _ = C.unit_mode_response(geo)
-    dil = {mk: 0.5 * (C.CE.vec3(eps[mk])[:, 0] + C.CE.vec3(eps[mk])[:, 2]) for mk in (0, 1)}  # per unit strain
+    dil = {mk: 0.5 * (C.MO.vec3(eps[mk])[:, 0] + C.MO.vec3(eps[mk])[:, 2]) for mk in (0, 1)}  # per unit strain
 
     def rm(a, idx):
         v = a[idx]; v = v[np.isfinite(v)]
