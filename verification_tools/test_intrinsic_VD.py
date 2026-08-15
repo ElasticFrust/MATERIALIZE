@@ -22,6 +22,10 @@ import test_cluster_Ceff as CE              # vec3, tri_metric_change, Ceff_nuE,
 import test_cluster_Ceff_rigidity as RG     # mf_W3
 import test_cluster_VD as VD                # build_geometry, set_VD
 from test_intrinsic_metric import edge_op, curv_op, mean_op
+# kkt_from_tri_bond MOVED to the core layer by the A-7b re-layering (Phase 2/mesh_build.py):
+# Phase 3/inverse_design.py builds every periodic DesignProblem with it, and the design layer must
+# not depend on this retireable oracle layer. Re-exported so peers keep working unchanged.
+from mesh_build import kkt_from_tri_bond              # noqa: F401
 
 N = 14
 CONTRASTS = [-10, -5, 0, 5, 10]
@@ -29,20 +33,6 @@ ETAS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
 DELTA = CE.DELTA
 MODES = CE.MODES
 
-
-def kkt_from_tri_bond(tri_bond, edge_vecs):
-    """Interior-edge (s1,s2,q) arrays from the triangle->bond map (torus: every bond shared)."""
-    occ = {}
-    for ti in range(len(tri_bond)):
-        for ei in range(3):
-            occ.setdefault(int(tri_bond[ti, ei]), []).append((ti, ei))
-    s1, s2, q = [], [], []
-    for b, lst in occ.items():
-        if len(lst) == 2:
-            (t1, e1), (t2, e2) = lst
-            v = edge_vecs[t1, e1]
-            s1.append(t1); s2.append(t2); q.append([v[0]**2, 2*v[0]*v[1], v[1]**2])
-    return np.array(s1, np.int64), np.array(s2, np.int64), np.array(q, float)
 
 
 def Hblocks_vd(ev, tri_k):

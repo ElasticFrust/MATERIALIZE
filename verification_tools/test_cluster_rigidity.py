@@ -12,13 +12,18 @@ whether the local cluster recovers the simulation as it did for geometric disord
 """
 import os, sys
 import numpy as np
-import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, '..')
-sys.path.insert(0, os.path.join(ROOT, 'Phase 2'))
+sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(ROOT, 'Phase 2'))
 import forward_solver_torch as fst
+# MOVED by the A-7b re-layering: bare_tensor -> the core layer (Phase 2/metric_ops.py), since the
+# design layer needs it and must not depend on this retireable oracle layer; assemble_K_faff ->
+# verification_tools/sim_assembly.py, staying oracle-side (it feeds physical_homog) but out of an
+# experiment script whose main() runs a 30x3-seed sweep. Re-exported so peers keep working.
+from metric_ops import bare_tensor            # noqa: F401
+from sim_assembly import assemble_K_faff      # noqa: F401
 import torch
 torch.set_default_dtype(torch.float64)
 DELTA = 1e-3
@@ -76,32 +81,6 @@ def build_mesh_k(N, ratio, seed):
     tri_k = bond_k[tri_bond]                                        # (n_tri,3)
     return dict(N=N, pts=pts, simplices=simp, edge_vecs=edge_vecs, actual_len2=l2,
                 bond_u=bu, bond_v=bv, bond_R=bR, bond_k=bond_k, tri_k=tri_k)
-
-
-def assemble_K_faff(mesh, F):
-    bu, bv, R, k = mesh['bond_u'], mesh['bond_v'], mesh['bond_R'], mesh['bond_k']
-    Nn = len(mesh['pts']); l2 = (R**2).sum(1)
-    S = k[:, None, None]*np.einsum('bp,bq->bpq', R, R)/l2[:, None, None]   # k * Rhat⊗Rhat
-    nb = len(bu); pp = np.array([0, 0, 1, 1]); qq = np.array([0, 1, 0, 1])
-    def blk(i, j, sg):
-        return ((2*i[:, None]+pp).ravel(), (2*j[:, None]+qq).ravel(),
-                (sg*S.reshape(nb, 4)).ravel())
-    R_, C_, V_ = [], [], []
-    for ia, ja, sg in [(bu, bu, 1.), (bv, bv, 1.), (bu, bv, -1.), (bv, bu, -1.)]:
-        r, c, v = blk(ia, ja, sg); R_.append(r); C_.append(c); V_.append(v)
-    K = sp.coo_matrix((np.concatenate(V_), (np.concatenate(R_), np.concatenate(C_))),
-                      shape=(2*Nn, 2*Nn)).tocsc()
-    HR = R @ (F-np.eye(2)).T
-    fb = np.einsum('bpq,bq->bp', S, HR)
-    faff = np.zeros((Nn, 2)); np.add.at(faff, bv, fb); np.add.at(faff, bu, -fb)
-    return K, faff.ravel()
-
-
-def bare_tensor(mesh):
-    ev, k, l2 = mesh['edge_vecs'], mesh['tri_k'], mesh['actual_len2']
-    vx, vy = ev[:, :, 0], ev[:, :, 1]; fac = k/np.maximum(l2, 1e-30)/16.0
-    return np.stack([(fac*vx**4).sum(1), (fac*vx**3*vy).sum(1), (fac*vx**2*vy**2).sum(1),
-                     (fac*vx*vy**3).sum(1), (fac*vy**4).sum(1)], 1)
 
 
 def mf_dg(mesh, Dg):

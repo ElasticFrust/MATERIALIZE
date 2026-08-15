@@ -19,6 +19,12 @@ ROOT = os.path.join(HERE, '..')
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(ROOT, 'Phase 2'))
 import pbc_dg_analysis as pda
 import forward_solver_torch as fst
+# vec3 / tri_metric_change / bare_tensor MOVED to the core layer by the A-7b re-layering
+# (Phase 2/metric_ops.py) — the design layer must not depend on this retireable oracle layer.
+# Re-exported here so this script and its peers keep working unchanged. NB the single
+# metric_ops.bare_tensor subsumes the k-less variant that used to live here: it reads `tri_k` if
+# the mesh carries one and defaults to 1, and pbc_dg_analysis meshes carry none — bit-identical.
+from metric_ops import vec3, tri_metric_change, bare_tensor    # noqa: F401
 torch.set_default_dtype(torch.float64)
 
 DELTA = 1e-3
@@ -27,26 +33,6 @@ MODES = [np.array([[1., 0.], [0., 0.]]), np.array([[0., 0.], [0., 1.]]),
 ETAS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
 N = 16
 DRAD = 2
-
-
-def bare_tensor(mesh):
-    ev, l2 = mesh['edge_vecs'], mesh['actual_len2']
-    vx, vy = ev[:, :, 0], ev[:, :, 1]; fac = 1.0 / np.maximum(l2, 1e-30) / 16.0
-    return np.stack([(fac*vx**4).sum(1), (fac*vx**3*vy).sum(1), (fac*vx**2*vy**2).sum(1),
-                     (fac*vx*vy**3).sum(1), (fac*vy**4).sum(1)], 1)
-
-
-def tri_metric_change(ev, sx, F, u):
-    e01, e02 = ev[:, 0], ev[:, 1]
-    du01 = u[sx[:, 1]] - u[sx[:, 0]]; du02 = u[sx[:, 2]] - u[sx[:, 0]]
-    Edef = np.stack([e01 @ F.T + du01, e02 @ F.T + du02], -1)
-    Eref = np.stack([e01, e02], -1)
-    Fs = Edef @ np.linalg.inv(Eref)
-    return np.einsum('nki,nkj->nij', Fs, Fs) - np.eye(2)          # (N,2,2)
-
-
-def vec3(g):
-    return np.stack([g[..., 0, 0], g[..., 0, 1], g[..., 1, 1]], -1)
 
 
 def W3_to_W9(W3):

@@ -1,0 +1,329 @@
+{
+ "fingerprint": {
+  "_resolved_from": "new",
+  "assemble_K_faff": {
+   "faff": [
+    -0.0017807995620570099,
+    -0.0008951737253140546,
+    0.0012789746775989455,
+    0.0010424276115365947
+   ],
+   "hash": "e37e0454580599035a61769592a9d125e85aec2573f46f3c78b43b77147d86fb"
+  },
+  "bare_tensor_no_tri_k": {
+   "hash": "0dd72f9bc1f057b01ecce195d6ce240c2ac70d6606ff3d9efa34ba3687100b78",
+   "peek": [
+    0.059501337674412035,
+    0.012917432099332642,
+    0.025295867489999495,
+    0.015598381624366806
+   ]
+  },
+  "bare_tensor_with_tri_k": {
+   "hash": "9c24e739d4f3915c52ad26efa9e942956c146256901489597759e876bf945ba9",
+   "peek": [
+    0.1144272300432833,
+    0.04080424331796045,
+    0.040991656338266846,
+    0.034458899914343116
+   ]
+  },
+  "build_geometry": {
+   "areas": [
+    0.4342082150915844,
+    0.441619308685631,
+    0.5251954563602695,
+    0.33314951986050817
+   ],
+   "hash": "35e1ab95bbd1801a6672769530b119f3ccafb686450d7f3c11d79fac92b5cdb1",
+   "n_bond": 192,
+   "n_tri": 128,
+   "pts": [
+    -0.19944853952442437,
+    -0.014841835519036463,
+    0.6903905592888078,
+    0.8047764451508834
+   ]
+  },
+  "build_open_mesh": {
+   "hash": "aa2e794b03e617295eb051a57c8e20c9bc92c3a64cbd70b187c4574d00ccf3a7",
+   "n_bond": 400,
+   "n_tri": 252
+  },
+  "clean_tri": {
+   "hash": "b7577cb74f5af3dfe19d5c63019aaaf616ee89de79b4d45730d6990f9e607584",
+   "n_pts": 149
+  },
+  "design_path": {
+   "open_foam_5x5": {
+    "hash": "b66f6a77d7e631f2b5f023522d0cb4feccd61e983becc5b8506a5633fa34bd03",
+    "n_bond": 400,
+    "n_tri": 252,
+    "~per_tri_absmax": 0.17033898415275636,
+    "~per_tri_sum": 38.611125006402446,
+    "~poisson": 0.2935981124706226,
+    "~young": 0.9816548529395877
+   },
+   "periodic_N10_eta0.30": {
+    "hash": "5b77af5451571788873016cf92d684d2765c366d2299500f97018acb481c4962|ec7d3ab9c3e07549124f75881d644094d3450409b956a6aa3e9302fa6e54c46c",
+    "n_bond": 300,
+    "n_tri": 200,
+    "~C_eff": [
+     0.947292454696155,
+     0.021898947981558198,
+     0.20779359624391625,
+     0.36201613851568,
+     0.0008184788184349679,
+     0.903495775913337
+    ],
+    "~per_tri_absmax": 0.11134702472194358,
+    "~per_tri_sum": 26.449664988449534,
+    "~poisson": 0.2196101133309727,
+    "~young": 0.8578712233448768
+   },
+   "periodic_N14_eta0.00": {
+    "hash": "3cac3aaf32ab19637c4d21d1d9d8dfd2793ef97a10eb58741f4f4dee8b2eb4f3|3f7e87bbfee8981b791cb2735a18994b7e2d24a146264d38f840e7215143cdf1",
+    "n_bond": 588,
+    "n_tri": 392,
+    "~C_eff": [
+     1.1562344269583278,
+     0.009102192216983114,
+     0.372131456505112,
+     0.3937134332023868,
+     -0.01690335165986,
+     1.2093922828203012
+    ],
+    "~per_tri_absmax": 0.09942205120612839,
+    "~per_tri_sum": 66.27685987613529,
+    "~poisson": 0.32224438572899733,
+    "~young": 1.088623367864839
+   },
+   "periodic_N8_eta0.20": {
+    "hash": "deaba03e4167330e19f8a7ccefb4380003641c6aaa4653488c5ce1cb2c94b70a|4eb5d8fc07a80d1e41fbd07e41ba1ff3912b76958c55fa630a4501e6680a1274",
+    "n_bond": 192,
+    "n_tri": 128,
+    "~C_eff": [
+     1.085914291830345,
+     0.016860107894445576,
+     0.311991961639108,
+     0.37886892256636046,
+     -0.0033024070388670743,
+     1.0925383911793065
+    ],
+    "~per_tri_absmax": 0.10505676338066207,
+    "~per_tri_sum": 19.973118031915867,
+    "~poisson": 0.28764216592107983,
+    "~young": 1.0027252900190875
+   }
+  },
+  "kkt_from_tri_bond": {
+   "hash": "732271d8036c6a1be19e3ad7a09535edc84da5058787f1e1382361c18faccede",
+   "n_interior_edges": 192
+  },
+  "make_solver": {
+   "hash": "0021c322c8b13861aedde6935fe619a81a003df392307b53efe7cef9a8ff3f04",
+   "~C_eff": [
+    1.0895146210711097,
+    0.011547002061812013,
+    0.2858979060133287,
+    0.3878877166956385,
+    -0.009016414135695568,
+    1.0578701616294133
+   ],
+   "~poisson": 0.26273775812328737,
+   "~young": 0.9824738798599363
+  },
+  "oracle_energy_C": {
+   "hash": "959e83429126a1e9081c14c2f3bf00f4ac7ada32ddddacd4a44ff29664628140",
+   "peek": [
+    0.6998889807334655,
+    -0.0331174015256937,
+    -0.007155289391158004,
+    -0.0331174015256937,
+    0.6610045331047236,
+    -0.002230382738807102,
+    -0.007155289391158004,
+    -0.002230382738807102,
+    0.3071117601113207
+   ]
+  },
+  "set_VD": {
+   "bond_k": [
+    1.0507054243373435,
+    1.7813945082033227,
+    0.44285691391880255,
+    1.9126448191036176
+   ],
+   "hash": "7032acafce484361f4ad4796bb40c4f8d8ac7b9606cf7f5d4688cc6ef17dc3ce"
+  },
+  "tri_metric_change": {
+   "hash": "59cb26171e0ea6dd796b75bd06ac294d45267d4c4c045d118d70e3099506c8cd",
+   "peek": [
+    0.0017798025886130997,
+    0.0007619631013694647,
+    0.0007619631013694647,
+    -0.0010068127815809902
+   ]
+  },
+  "vec3": {
+   "hash": "fd06f7e60a3464ea9e05ea10a0773408b2ed0c41fb70a3f050be06382fef7ec9",
+   "peek": [
+    0.0,
+    1.0,
+    3.0,
+    4.0
+   ]
+  }
+ },
+ "imports": {
+  "Disc_2_Cont_optimized.py": "ok",
+  "Phase 2/forward_solver_torch.py": "ok",
+  "Phase 2/mesh_build.py": "ok",
+  "Phase 2/metric_ops.py": "ok",
+  "Phase 2/solver_build.py": "ok",
+  "Phase 2/test_forward_solver.py": "ok",
+  "Phase 3/inverse_design.py": "ok",
+  "Phase 3/test_inverse_design.py": "ok",
+  "Phase 3/verifications/_common.py": "ok",
+  "Phase 3/verifications/anisotropy/convergence_check.py": "ok",
+  "Phase 3/verifications/anisotropy/crystal_grid.py": "ok",
+  "Phase 3/verifications/anisotropy/crystal_pointy.py": "ok",
+  "Phase 3/verifications/anisotropy/crystal_response.py": "ok",
+  "Phase 3/verifications/anisotropy/design_and_verify.py": "ok",
+  "Phase 3/verifications/anisotropy/diagnostics/seed_robustness.py": "ok",
+  "Phase 3/verifications/anisotropy/effective_superlattice.py": "ok",
+  "Phase 3/verifications/anisotropy/honeycomb_nu.py": "ok",
+  "Phase 3/verifications/anisotropy/make_maps.py": "ok",
+  "Phase 3/verifications/anisotropy/push_4fold.py": "ok",
+  "Phase 3/verifications/anisotropy/recreate_pointy.py": "ok",
+  "Phase 3/verifications/anisotropy/recreate_pointy_regular.py": "ok",
+  "Phase 3/verifications/anisotropy/rot_target_seed_probe.py": "FAIL: ModuleNotFoundError: No module named '_common'",
+  "Phase 3/verifications/anisotropy/triangular_nu.py": "ok",
+  "Phase 3/verifications/anisotropy/triangular_nu_maps.py": "ok",
+  "Phase 3/verifications/anisotropy/triangular_nu_param.py": "ok",
+  "Phase 3/verifications/auxetic_patch/design_all.py": "ok",
+  "Phase 3/verifications/auxetic_patch/design_and_verify.py": "ok",
+  "Phase 3/verifications/auxetic_patch/make_maps.py": "ok",
+  "Phase 3/verifications/auxetic_sweep/design_and_verify.py": "ok",
+  "Phase 3/verifications/dir_aux_ribbon/boundary_layer_check.py": "ok",
+  "Phase 3/verifications/dir_aux_ribbon/find_profile.py": "ok",
+  "Phase 3/verifications/dir_aux_ribbon/three_ribbon.py": "ok",
+  "Phase 3/verifications/graded_nu/design_and_verify.py": "ok",
+  "Phase 3/verifications/large16k/large_designs.py": "ok",
+  "Phase 3/verifications/large16k/make_curves.py": "ok",
+  "Phase 3/verifications/large16k/make_cut_stretch.py": "ok",
+  "Phase 3/verifications/large16k/make_local_response.py": "ok",
+  "Phase 3/verifications/large16k/make_patch_isolate.py": "ok",
+  "Phase 3/verifications/large16k/make_patch_response.py": "ok",
+  "Phase 3/verifications/large16k/make_patch_response_coarse.py": "ok",
+  "Phase 3/verifications/large16k/make_rigidity_hist.py": "ok",
+  "Phase 3/verifications/large16k/make_rigidity_maps.py": "ok",
+  "Phase 3/verifications/large16k/make_verify_auxetic.py": "ok",
+  "Phase 3/verifications/reference_metric/cov_poisson.py": "ok",
+  "Phase 3/verifications/reference_metric/forward_solver_dgbar.py": "ok",
+  "Phase 3/verifications/reference_metric/random_ref_compare.py": "ok",
+  "Phase 3/verifications/reference_metric/recover_old_results.py": "ok",
+  "Phase 3/verifications/reference_metric/sphere_reference.py": "ok",
+  "Phase 3/verifications/reference_metric/sphere_response_compare.py": "ok",
+  "Phase 3/verifications/reference_metric/sphere_sim_compare.py": "ok",
+  "Phase 3/verifications/reference_metric/test_forward_solver_dgbar.py": "ok",
+  "Phase 3/verifications/regimes/working_regimes.py": "ok",
+  "Phase 3/verifications/relayer_a7b.py": "ok",
+  "Phase 3/verifications/showcase/fig1_recreate_pointy.py": "ok",
+  "Phase 3/verifications/showcase/fig1b_recreate_pointy_regular.py": "ok",
+  "Phase 3/verifications/showcase/fig1cd_rotated_substrate.py": "ok",
+  "Phase 3/verifications/showcase/fig2_triangular_nu.py": "ok",
+  "Phase 3/verifications/showcase/fig3_isotropize.py": "ok",
+  "Phase 3/verifications/showcase/fig4_uniform_nu.py": "ok",
+  "Phase 3/verifications/showcase/fig5_bullseye_strain.py": "ok",
+  "Phase 3/verifications/showcase/fig6_different_nu.py": "ok",
+  "Phase 3/verifications/strain_stress/design_and_verify.py": "ok",
+  "Phase 3/verifications/strain_stress/large16k_rings.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective_colocated.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective_colocated_stress.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective_deform.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective_dilation_field.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective_small.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective_strain.py": "ok",
+  "Phase 3/verifications/strain_stress/mode_selective_stress_response.py": "ok",
+  "Phase 3/verifications/strain_stress/replot_bullseye.py": "ok",
+  "Phase 3/verifications/strain_stress/replot_clean.py": "ok",
+  "Phase 3/verifications/strain_stress/stress_shield_concentrate.py": "ok",
+  "Phase 3/verifications/topologies_overview.py": "ok",
+  "Phase 3/verifications/two_region/demo.py": "ok",
+  "Phase 3/verifications/two_region/inclusion_rigidity_only.py": "ok",
+  "Phase 3/verifications/two_region/inclusion_square.py": "ok",
+  "Phase 3/verifications/two_region/inclusion_square_fields.py": "ok",
+  "Phase 3/verifications/two_region/response_fields.py": "ok",
+  "Phase 3/verifications/two_region/ribbon.py": "ok",
+  "Phase 3/verifications/two_region/ribbon_fields.py": "ok",
+  "Phase 3/verifications/vd_demo/vd_alpha_sweep.py": "ok",
+  "Phase 3/verifications/vd_demo/vd_big.py": "ok",
+  "Phase 3/verifications/vd_demo/vd_decompose.py": "ok",
+  "Phase 3/verifications/vd_demo/vd_regular.py": "ok",
+  "Phase 3/verifications/vd_demo/vd_sweep_sim.py": "ok",
+  "Phase 3/verifications/verify_lattice.py": "ok",
+  "Phase 4/data/__init__.py": "ok",
+  "Phase 4/data/rigidity_patterns.py": "ok",
+  "Phase 4/data/topology_generators.py": "ok",
+  "Phase 4/show_topologies.py": "ok",
+  "Phase 4/tests/__init__.py": "ok",
+  "Phase 4/tests/test_rigidity_patterns.py": "ok",
+  "Phase 4/tests/test_topology_generators.py": "ok",
+  "Phase 5/dataset.py": "ok",
+  "Phase 5/demo.py": "ok",
+  "Phase 5/design_iso.py": "ok",
+  "Phase 5/designer.py": "ok",
+  "Phase 5/gallery.py": "ok",
+  "Phase 5/m2/build_dataset.py": "ok",
+  "Phase 5/m2/model.py": "ok",
+  "Phase 5/m2/train.py": "ok",
+  "Phase 5/phys_targets.py": "ok",
+  "Phase 5/plot_responses.py": "ok",
+  "Phase 5/positions.py": "ok",
+  "Phase 5/seeds.py": "ok",
+  "Phase 5/triangulation.py": "ok",
+  "Phase 5/verifications/blast_radius_shear_fix.py": "ok",
+  "Phase 5/verifications/dhex_family.py": "ok",
+  "Phase 5/verifications/plot_g1_2.py": "ok",
+  "Phase 5/verifications/plot_goal1.py": "ok",
+  "Phase 5/verifications/reentrant_family.py": "ok",
+  "Phase 5/verifications/reentrant_move.py": "ok",
+  "Phase 5/verifications/run_anisotropic.py": "ok",
+  "Phase 5/verifications/run_anisotropic4.py": "ok",
+  "Phase 5/verifications/run_anisotropic4_pos.py": "ok",
+  "Phase 5/verifications/run_g1_2.py": "ok",
+  "Phase 5/verifications/run_goal1.py": "ok",
+  "Phase 5/verifications/run_goal2.py": "ok",
+  "Phase 5/verifications/run_goal2_attempts.py": "ok",
+  "Phase 5/verifications/sanity.py": "ok",
+  "Phase 5/verifications/verify_positions.py": "ok",
+  "documentation/_build_pdf.py": "ok",
+  "make_pdf.py": "FAIL: ModuleNotFoundError: No module named 'markdown2'",
+  "plotting.py": "ok",
+  "verification_tools/_bootstrap.py": "ok",
+  "verification_tools/compat_projection.py": "ok",
+  "verification_tools/pbc_dg_analysis.py": "ok",
+  "verification_tools/physical_homog.py": "ok",
+  "verification_tools/sim_assembly.py": "ok",
+  "verification_tools/test_angle_response.py": "ok",
+  "verification_tools/test_cluster_Ceff.py": "ok",
+  "verification_tools/test_cluster_Ceff_rigidity.py": "ok",
+  "verification_tools/test_cluster_VD.py": "ok",
+  "verification_tools/test_cluster_rigidity.py": "ok",
+  "verification_tools/test_curvature_operator.py": "ok",
+  "verification_tools/test_intrinsic_VD.py": "ok",
+  "verification_tools/test_intrinsic_metric.py": "ok",
+  "verification_tools/test_mean_isolation.py": "ok",
+  "verification_tools/verify_gb_formulation.py": "ok",
+  "verification_tools/verify_intrinsic_solver.py": "ok",
+  "verification_tools/verify_irregular_VD_eta.py": "ok",
+  "verification_tools/verify_soft_circles_50x50.py": "ok",
+  "verification_tools/verify_soft_circles_50x50_directions.py": "ok",
+  "verification_tools/verify_soft_region.py": "ok",
+  "verification_tools/verify_solver_final.py": "ok",
+  "verification_tools/verify_solver_open.py": "ok",
+  "verification_tools/verify_solver_sweep.py": "ok"
+ }
+}

@@ -14,6 +14,11 @@ import matplotlib.pyplot as plt
 import test_cluster_rigidity as TR
 import test_cluster_Ceff as CE
 import test_cluster_Ceff_rigidity as RG
+# build_geometry / set_VD MOVED to the core layer by the A-7b re-layering
+# (Phase 2/mesh_build.py): Phase 3/inverse_design.py's DesignProblem.periodic is built on them,
+# and the design layer must not depend on this retireable oracle layer. Re-exported here so this
+# script and its peers keep working unchanged.
+from mesh_build import build_geometry, set_VD        # noqa: F401
 torch.set_default_dtype(torch.float64)
 
 HERE = _bootstrap.HERE
@@ -24,54 +29,6 @@ ETAS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
 DCL = 3
 DELTA = CE.DELTA
 MODES = CE.MODES
-
-
-def build_geometry(N, eta, seed):
-    """Perturbed periodic triangular lattice; returns geometry + tri->bond map (no rigidity)."""
-    rng = np.random.default_rng(seed)
-    L1 = np.array([1.0, 0.0]); L2 = np.array([0.5, np.sqrt(3)/2]); BL1, BL2 = N*L1, N*L2
-    nn, mm = np.meshgrid(np.arange(N), np.arange(N), indexing='ij')
-    ref = nn.ravel()[:, None]*L1 + mm.ravel()[:, None]*L2
-    ang = rng.uniform(0, 2*np.pi, N*N)
-    pts = ref + eta*np.stack([np.cos(ang), np.sin(ang)], 1)
-    idx = lambda a, b: (a % N)*N + (b % N)
-    simp, img = [], []
-    for a in range(N):
-        for b in range(N):
-            simp.append([idx(a, b), idx(a+1, b), idx(a, b+1)])
-            img.append([[0, 0], [1 if a+1 >= N else 0, 0], [0, 1 if b+1 >= N else 0]])
-            simp.append([idx(a+1, b), idx(a+1, b+1), idx(a, b+1)])
-            img.append([[1 if a+1 >= N else 0, 0],
-                        [1 if a+1 >= N else 0, 1 if b+1 >= N else 0], [0, 1 if b+1 >= N else 0]])
-    simp = np.array(simp, np.int64); img = np.array(img, np.int64); n_tri = len(simp)
-    vpos = lambda k: pts[simp[:, k]] + img[:, k, 0:1]*BL1 + img[:, k, 1:2]*BL2
-    p0, p1, p2 = vpos(0), vpos(1), vpos(2)
-    edge_vecs = np.stack([p1-p0, p2-p0, p2-p1], 1); l2 = (edge_vecs**2).sum(2)
-    pairs = [(0, 1, 0), (0, 2, 1), (1, 2, 2)]; keymap = {}; tri_bond = np.zeros((n_tri, 3), np.int64); bonds = []
-    for ti in range(n_tri):
-        for ka, kb, ei in pairs:
-            va, vb = int(simp[ti, ka]), int(simp[ti, kb])
-            d = img[ti, ka]-img[ti, kb]; dp = (int(d[0]), int(d[1]))
-            if (va, dp[0], dp[1]) <= (vb, -dp[0], -dp[1]):
-                key, R = (va, vb, dp[0], dp[1]), edge_vecs[ti, ei]
-            else:
-                key, R = (vb, va, -dp[0], -dp[1]), -edge_vecs[ti, ei]
-            if key not in keymap:
-                keymap[key] = len(bonds); bonds.append((key[0], key[1], R))
-            tri_bond[ti, ei] = keymap[key]
-    e01, e02 = edge_vecs[:, 0], edge_vecs[:, 1]
-    return dict(N=N, pts=pts, simplices=simp, edge_vecs=edge_vecs, actual_len2=l2,
-                bond_u=np.array([b[0] for b in bonds], np.int64),
-                bond_v=np.array([b[1] for b in bonds], np.int64),
-                bond_R=np.array([b[2] for b in bonds], float),
-                tri_bond=tri_bond,
-                areas=0.5*np.abs(e01[:, 0]*e02[:, 1] - e01[:, 1]*e02[:, 0]))
-
-
-def set_VD(mesh, a):
-    dl = np.sqrt((mesh['bond_R']**2).sum(1)) - 1.0          # |R| - ideal spacing
-    mesh['bond_k'] = 1.0 + np.tanh(a*dl)
-    mesh['tri_k'] = mesh['bond_k'][mesh['tri_bond']]
 
 
 def nuE_all(mesh, Fk, Dgt, Dinv):

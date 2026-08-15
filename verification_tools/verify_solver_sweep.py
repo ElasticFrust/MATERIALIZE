@@ -30,6 +30,11 @@ import test_cluster_rigidity as TR
 import test_cluster_VD as VD
 from test_intrinsic_VD import kkt_from_tri_bond
 import physical_homog as PH
+# make_solver / _mount MOVED to the core layer by the A-7b re-layering (Phase 2/solver_build.py):
+# they CONSTRUCT the ElasticSolver, Phase 3/inverse_design.py builds every periodic DesignProblem
+# through them, and the design layer must not depend on this retireable oracle layer. Re-exported
+# here so this script and its peers (verify_soft_region, verify_solver_final, ...) keep working.
+from solver_build import make_solver, _mount         # noqa: F401
 torch.set_default_dtype(torch.float64)
 
 DELTA = CE.DELTA
@@ -41,23 +46,6 @@ ETAS = np.round(np.arange(0.0, 0.5001, 0.05), 4)      # complete sweep, 11 point
 Fk   = [np.eye(2) + DELTA * M for M in MODES]
 Dg_k = [CE.vec3(F.T @ F - np.eye(2)) for F in Fk]
 Dinv = np.linalg.inv(np.stack(Dg_k, axis=1))
-
-
-def _mount(solver, ev, l2, areas, kkt, sx):
-    """Override an ElasticSolver's geometry buffers with periodic-correct arrays."""
-    solver.edge_vecs      = torch.as_tensor(ev, dtype=torch.float64)
-    solver.actual_length2 = torch.as_tensor(l2, dtype=torch.float64)
-    solver.area_weights   = torch.as_tensor(areas / areas.sum(), dtype=torch.float64)
-    solver.kkt_arrays     = kkt
-    solver._build_intrinsic_constraints(np.asarray(sx))
-    return solver
-
-
-def make_solver(geo, kkt):
-    pts, sx, ev = geo['pts'], geo['simplices'], geo['edge_vecs']
-    edges = np.stack([sx[:, [1, 0]], sx[:, [2, 0]], sx[:, [2, 1]]], axis=1)   # (e01,e02,e12)
-    s = fst.ElasticSolver(pts, sx, edges)
-    return _mount(s, ev, (ev ** 2).sum(2), geo['areas'], kkt, sx)
 
 
 def sim_nuE(mesh, assemble, bare=None):

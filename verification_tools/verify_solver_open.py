@@ -29,7 +29,6 @@ import os, sys
 import numpy as np
 import scipy.sparse.linalg as spla
 from collections import Counter
-from types import SimpleNamespace
 import torch
 import matplotlib
 matplotlib.use('Agg')
@@ -43,6 +42,10 @@ import forward_solver_torch as fst
 import Disc_2_Cont_optimized as D2C
 import test_cluster_Ceff as CE          # tri_metric_change, vec3, c6_to_nuE, MODES, DELTA
 import test_cluster_rigidity as TR      # assemble_K_faff, bare_tensor
+# clean_tri / build_open_mesh MOVED to the core layer by the A-7b re-layering
+# (Phase 2/mesh_build.py): Phase 3/inverse_design.py's DesignProblem.open is built on them, and the
+# design layer must not depend on this retireable oracle layer. Re-exported so peers keep working.
+from mesh_build import clean_tri, build_open_mesh     # noqa: F401
 torch.set_default_dtype(torch.float64)
 
 DELTA = CE.DELTA
@@ -51,47 +54,6 @@ Fk   = [np.eye(2) + DELTA * M for M in MODES]
 Dgt  = [F.T @ F - np.eye(2) for F in Fk]
 Dinv = np.linalg.inv(np.stack([CE.vec3(g) for g in Dgt], 1))
 OUTDIR = os.path.join(HERE, '..', 'Phase 2', 'verification_open_domain')
-
-
-def clean_tri(tri):
-    """Drop points not referenced by simplices (generators keep the full cloud) and reindex,
-    so no isolated nodes make the stiffness singular. Returns .points/.simplices namespace."""
-    simp = np.asarray(tri.simplices, np.int64)
-    used = np.unique(simp)
-    remap = -np.ones(np.asarray(tri.points).shape[0], np.int64)
-    remap[used] = np.arange(len(used))
-    return SimpleNamespace(points=np.asarray(tri.points, float)[used], simplices=remap[simp])
-
-
-def build_open_mesh(tri, vd_a=None):
-    """clean triangulation -> non-periodic mesh dict (bonds = unique edges, no wrap).
-    vd_a: if not None, per-bond k = 1 + tanh(vd_a*(|R|-1)); else uniform k=1."""
-    pts  = np.asarray(tri.points, float)
-    simp = np.asarray(tri.simplices, np.int64)
-    nt = len(simp)
-    p0, p1, p2 = pts[simp[:, 0]], pts[simp[:, 1]], pts[simp[:, 2]]
-    edge_vecs = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)               # edges (0,1),(0,2),(1,2)
-    l2 = (edge_vecs ** 2).sum(2)
-    areas = 0.5 * np.abs((p1 - p0)[:, 0] * (p2 - p0)[:, 1]
-                         - (p1 - p0)[:, 1] * (p2 - p0)[:, 0])
-    pairs = [(0, 1, 0), (0, 2, 1), (1, 2, 2)]
-    keymap = {}; bu, bv, bR = [], [], []; tri_bond = np.zeros((nt, 3), np.int64)
-    for ti in range(nt):
-        for ka, kb, ei in pairs:
-            va, vb = int(simp[ti, ka]), int(simp[ti, kb])
-            key = (va, vb) if va < vb else (vb, va)
-            if key not in keymap:
-                keymap[key] = len(bu)
-                bu.append(key[0]); bv.append(key[1]); bR.append(pts[key[1]] - pts[key[0]])
-            tri_bond[ti, ei] = keymap[key]
-    bu = np.array(bu, np.int64); bv = np.array(bv, np.int64); bR = np.array(bR, float)
-    if vd_a is None:
-        bond_k = np.ones(len(bu))
-    else:
-        bond_k = 1.0 + np.tanh(vd_a * (np.sqrt((bR ** 2).sum(1)) - 1.0))
-    return dict(pts=pts, simplices=simp, edge_vecs=edge_vecs, actual_len2=l2, areas=areas,
-                bond_u=bu, bond_v=bv, bond_R=bR, bond_k=bond_k, tri_bond=tri_bond,
-                tri_k=bond_k[tri_bond])
 
 
 def boundary_nodes(mesh):
