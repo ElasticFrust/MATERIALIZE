@@ -34,7 +34,7 @@ def main():
     nu_avg, E_avg = C.local_nuE_angleavg(geo, C6_per)           # each (nt,)
 
     # --- directional E(θ) from the region-homogenised physical tensor (same tensor design fits) ---
-    C6_reg = C.region_phys_C6(geo, C6_per, None)               # whole-cell physical 6-vector
+    C6_reg = C.sim_bulk_C6(geo)               # whole-cell physical 6-vector
     nu_theta, E_theta = C.nu_E_theta(C6_reg, th)
 
     print(f"  [triangular_nu_maps] tri={len(nu_avg)}", flush=True)

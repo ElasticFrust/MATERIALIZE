@@ -46,7 +46,7 @@ def iso_regime():
             prob, geo = C.make_case(topo, N)
             r = C.optimize(prob, [C.Objective('nu', n)], mode='k', n_iter=NITER, reg=REG, verbose=False)
             C.apply_k_to_geo(geo, r['k']); C6 = C.sim_per_triangle_C6(geo)
-            nu = C.nu_E_theta(C.region_phys_C6(geo, C6, None), TH)[0]
+            nu = C.nu_E_theta(C.sim_bulk_C6(geo), TH)[0]
             row.append((n, float(nu.mean()), float(np.abs(nu - nu.mean()).max())))
             C.save_network(os.path.join(nd(), f'iso_{topo}_nu{n:+.2f}.npz'), geo, r['k'], C6,
                            regime='isotropize', topo=topo, nu0=float(n), mean=float(nu.mean()))
@@ -82,7 +82,7 @@ def aniso_regime():
         prob, geo = C.make_case(topo, N)
         r = C.optimize(prob, [C.Objective('tensor', tgt)], mode='k', n_iter=NITER, reg=REG, verbose=False)
         C.apply_k_to_geo(geo, r['k']); C6 = C.sim_per_triangle_C6(geo)
-        nu = C.nu_E_theta(C.region_phys_C6(geo, C6, None), TH)[0]
+        nu = C.nu_E_theta(C.sim_bulk_C6(geo), TH)[0]
         err = np.abs(nu - tgt_nu).max()
         csv.append(('anisotropic', topo, 'aniso_tensor', f'{err:.3f}', ''))
         C.save_network(os.path.join(nd(), f'aniso_{topo}.npz'), geo, r['k'], C6, regime='anisotropic',
@@ -113,7 +113,7 @@ def indep_regime():
                                   C.Objective('E_theta', E_t, weight=4.0 if flatq == 'nu' else we)],
                            mode='k', n_iter=NITER, reg=REG, verbose=False)
             C.apply_k_to_geo(geo, r['k']); C6 = C.sim_per_triangle_C6(geo)
-            snu, sE = C.nu_E_theta(C.region_phys_C6(geo, C6, None), TH)
+            snu, sE = C.nu_E_theta(C.sim_bulk_C6(geo), TH)
             flat = np.ptp(snu) if flatq == 'nu' else np.ptp(sE)
             csv.append(('independent', f'regular:{label}', f'wflat={w}', f'{flat:.3f}', ''))
             an.plot(DEG, snu, '-', lw=1.5, label=f'wflat={w:g} (νspan {np.ptp(snu):.2f})')

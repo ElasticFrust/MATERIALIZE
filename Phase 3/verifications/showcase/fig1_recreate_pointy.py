@@ -64,7 +64,7 @@ def main():
 
     geo, k, C6, prob = design_or_load(nu_t, NETPATH)
     nu_d, E_d = C.nu_E_theta(C.solver_region_C6(prob, torch.as_tensor(k, dtype=torch.float64)), TH)  # solver
-    nu_s, E_s = C.nu_E_theta(C.region_phys_C6(geo, C6, None), TH)                                     # sim
+    nu_s, E_s = C.nu_E_theta(C.sim_bulk_C6(geo), TH)                                     # sim
     print(f"  {'loaded' if os.path.exists(NETPATH) else 'designed'} net: target ν∈[{nu_t.min():+.2f},"
           f"{nu_t.max():+.2f}]  solver ν[{nu_d.min():+.2f},{nu_d.max():+.2f}]  sim ν[{nu_s.min():+.2f},"
           f"{nu_s.max():+.2f}]  kmed={np.median(k):.2f}", flush=True)

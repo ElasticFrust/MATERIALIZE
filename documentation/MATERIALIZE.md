@@ -724,7 +724,7 @@ readback needs the independent nonlinear check.
 
 Run the regressions:
 ```bash
-python "Phase 2/test_forward_solver.py"     # solver: nu=1/3 crystal, gradients, adjoint, and [7]
+python "Phase 2/test_forward_solver.py"     # solver: nu=1/3 crystal, gradients, adjoint, [7] and [8]
                                             # C_eff vs the energy Hessian COMPONENT-WISE (W != 0)
 python "Phase 3/test_inverse_design.py"     # 16 tests: round-trip, auxetic, local, mixed,
                                             # strain/stress, homogenisation, isotropisation, ...
@@ -804,11 +804,18 @@ region_mean_vec3(field, region)                        # region-mean of an (N,3)
 
 ```python
 # GENUINELY INDEPENDENT — no solver code on this path. Use these as ground truth.
+#   BULK
 PH.virial_nuE(mesh, u_modes)        # (nu, E) from the macroscopic virial stress
 PH.energy_nuE(mesh, free, assemble) # (nu, E) from the relaxed-energy Hessian (must agree)
 PH.energy_C(mesh, free, assemble)   # the full C_eff TENSOR — the sharp oracle; ν,E are only two
                                     # contractions of it and are weakly sensitive to shear-shear
+PH.virial_C(mesh, u_modes)          # the same TENSOR from the virial — only 3 solves (vs 6)
 PH.sim_nuE(mesh, free, assemble)    # convenience: relax + virial
+C.sim_bulk_C6(geo, u_modes=None)    # bulk 6-vector, independent; sim_region_C6(geo, None) routes here
+#   LOCAL (added 2026-08-15, audit A-9 — the Hessian of each triangle's OWN relaxed energy;
+#   never forms W, never does the 4-index contraction; costs the same 6 solves as energy_C)
+PH.energy_C_per_triangle(mesh, free, assemble)            # C(s), (N_tri,3,3), Voigt [xx,yy,xy]
+PH.energy_C_region(mesh, free, assemble, region, C_s=...) # regional C; region=None == energy_C
 
 # NOT independent — the sim's relaxation reduced through the SHARED homogenisation.
 # Fine for "did the design→realise→simulate loop reproduce the pattern"; NOT a check of the

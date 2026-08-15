@@ -127,7 +127,7 @@ def ingest_designs():
         try:
             geo, kb, C6_per, meta = C.load_network(f)
             if C6_per is not None and np.size(C6_per) > 0:
-                C6 = C.region_phys_C6(geo, np.asarray(C6_per), None)
+                C6 = C.sim_bulk_C6(geo)
                 nu_th, E_th = C.nu_E_theta(C6, ANG)               # sim directional response
                 src = 'design_sim'
             else:

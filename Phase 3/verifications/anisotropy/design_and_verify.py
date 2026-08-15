@@ -60,7 +60,7 @@ def design(topo, objectives):
     snu, sE = C.nu_E_theta(C.solver_region_C6(prob, r['k']), TH)
     C.apply_k_to_geo(geo, r['k'])
     C6_per = C.sim_per_triangle_C6(geo)
-    mnu, mE = C.nu_E_theta(C.region_phys_C6(geo, C6_per, None), TH)
+    mnu, mE = C.nu_E_theta(C.sim_bulk_C6(geo), TH)
     return r['k'], geo, C6_per, dict(solv_nu=snu, solv_E=sE, sim_nu=mnu, sim_E=mE)
 
 

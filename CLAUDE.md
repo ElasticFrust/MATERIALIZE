@@ -225,6 +225,31 @@ Three DISTINCT quantities — keep them separate:
   not yet for incompatible-ḡ / curved designs). Per-triangle for local objectives, bulk for global.
 - **Per-triangle checks by default, but watch for redundancy** — in both A and B, resolve the
   per-triangle field where it adds information beyond bulk; drop it where it proves redundant.
+- **INVARIANT: the oracle must share NO code with the design path** *(settled 2026-08-15, A-9)*.
+  Otherwise "checked against the sim" degrades into checking the code against itself, and the check
+  goes blind to exactly the defect class it exists to catch — that is not hypothetical, it is how the
+  shear defect survived for months. Consequences: `physical_homog` depends on nothing but
+  NumPy/SciPy and keeps its **own** `DELTA`/`MODES` (**deliberate duplication — do not "fix" it**);
+  the oracle is the self-contained pair `physical_homog` + `sim_assembly`, so its boundary is
+  checkable. Tests and verification scripts *should* import the oracle — that is their job; the rule
+  is about which way **production** code depends.
+  **Keep this coverage table current — it is the answer to "is this actually independent?":**
+
+  | quantity | independent? | routine | gated by |
+  |---|---|---|---|
+  | bulk `C_eff` | **yes** | `physical_homog.energy_C` (energy Hessian, 6 solves) / `virial_C` (virial stress, 3 solves) | `test_forward_solver` **[7]** |
+  | bulk ν, E | **yes** | `virial_nuE` / `energy_nuE` (must agree) | `test_inverse_design` [15] |
+  | directional ν(θ), E(θ) | yes | algebra on the independent bulk tensor | — |
+  | per-triangle strain/stress | yes | `_common.unit_mode_response` | `test_inverse_design` [10] |
+  | **per-triangle `C(s)`** | **yes** *(since 2026-08-15)* | `physical_homog.energy_C_per_triangle` | `test_forward_solver` **[8]** |
+  | **regional `C(region)`** | **yes** *(since 2026-08-15)* | `physical_homog.energy_C_region` | `test_forward_solver` **[8]** |
+  | open-boundary response | partial | separate nodal solve | suite incomplete (**A-8**) |
+
+  **NOT independent, by construction:** `_common.sim_per_triangle_C6` and `region_phys_C6` push the
+  sim's relaxation back through the solver's own `_compute_actual_elastic_tensor`. They are fine for
+  the spatial *pattern* and the design→realise→simulate loop; they are **not** a check of the
+  homogenisation. `_common.sim_bulk_C6` (and `sim_region_C6(geo, None)`) route to the independent
+  virial instead.
 - **The oracle is TEMPORARY & LIMITED.** Retireable once the solver is trusted; **flat-compatible
   only** (sim assembles from stress-free ḡ=I, no δḡ — *not* a ground truth for residual-stress /
   incompatible-ḡ / curved designs, which need a generalised prestressed virial, FUTURE_DIRECTIONS #1,

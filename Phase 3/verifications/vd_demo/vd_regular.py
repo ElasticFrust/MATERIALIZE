@@ -42,7 +42,7 @@ def main():
 
     C.apply_k_to_geo(geo, k)
     C6 = C.sim_per_triangle_C6(geo)
-    nu_g, E_g = C.c6_nuE(C.region_phys_C6(geo, C6, None))
+    nu_g, E_g = C.c6_nuE(C.sim_bulk_C6(geo))
     print(f"homogenised (regular geometry + VD rigidity): nu={nu_g:+.3f}  E={E_g:.3f}")
 
     C.save_network(os.path.join(HERE, 'vd_regular.npz'), geo, k, C6, kind='VD_on_regular',

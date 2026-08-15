@@ -3,8 +3,8 @@ Shared harness for Phase 3 inverse-design verifications.
 
 For every case we run a matrix of TOPOLOGIES x SIZES, design k with the inverse designer, then
 simulate the designed network (PBC relaxation) and check it does as prescribed — globally and
-per-region. NB "simulate" is only INDEPENDENT of the design path at BULK level; see below. Results are plotted and saved per case in
-Phase 3/verifications/<case>/.
+per-region. NB "simulate" is only INDEPENDENT of the design path at BULK level; see below.
+Results are plotted and saved per case in Phase 3/verifications/<case>/.
 
 Topologies (periodic): regular triangular, two non-symmetric (affine-stretched / sheared)
 lattices, two disordered (perturbed) lattices. Sizes span the dense (<=600 tri) and adjoint
@@ -461,17 +461,26 @@ _Dgt = [F.T @ F - np.eye(2) for F in _Fk]
 _Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in _Dgt], 1))
 
 
-def sim_per_triangle_C6(geo):
+def sim_relax(geo):
+    """The sim's relaxed fluctuation fields for the 3 unit modes — ONE relaxation (3 solves).
+
+    Pass the result to `sim_per_triangle_C6` and/or `sim_bulk_C6` to get both the per-triangle
+    tensor and the INDEPENDENT bulk tensor without relaxing twice."""
+    return PH.relax(geo, np.arange(2, 2 * len(geo['pts'])), SA.assemble_K_faff)
+
+
+def sim_per_triangle_C6(geo, u_modes=None):
     """Per-triangle response tensor (nt,6) in INTERNAL units, from one full PBC relaxation of geo
     (uses geo['tri_k']). Compute once, then query any region with region_phys_C6 (patch / outside /
-    grid cells all share this relaxation).
+    grid cells all share this relaxation). Pass `u_modes` from `sim_relax` to reuse a relaxation.
 
     **NOT an independent check of the homogenisation.** The relaxation is the sim's, but it is
     reduced through the solver's own `_compute_actual_elastic_tensor` below — the same contraction
     being tested. Use it for the spatial pattern and the design→realise→simulate loop; for ground
     truth use `physical_homog.energy_C` / `virial_nuE` (bulk only, today — audit A-9)."""
-    ev, sx = geo['edge_vecs'], geo['simplices']; nn = len(geo['pts']); nt = len(sx)
-    u_modes = PH.relax(geo, np.arange(2, 2 * nn), SA.assemble_K_faff)
+    ev, sx = geo['edge_vecs'], geo['simplices']; nt = len(sx)
+    if u_modes is None:
+        u_modes = sim_relax(geo)
     D = np.zeros((nt, 3, 3))
     for k, (F, u) in enumerate(zip(_Fk, u_modes)):
         D[:, :, k] = MO.vec3(MO.tri_metric_change(ev, sx, F, u) - _Dgt[k])
@@ -487,8 +496,39 @@ def region_phys_C6(geo, C6_per, region=None):
     return C6_per[idx].mean(0) * (8.0 * len(idx) / geo['areas'][idx].sum())
 
 
+def _C33_to_c6(M):
+    """(3,3) Voigt [xx,yy,xy] → the solver's 6-vector layout [c0..c5], the inverse of the
+    `[[c0,c2,c1],[c2,c5,c4],[c1,c4,c3]]` assembly used throughout."""
+    return np.array([M[0, 0], M[0, 2], M[0, 1], M[2, 2], M[1, 2], M[1, 1]])
+
+
+def sim_bulk_C6(geo, u_modes=None):
+    """BULK physical 6-vector — **genuinely INDEPENDENT** of the design path.
+
+    Reduces the sim's relaxed field by the macroscopic VIRIAL STRESS (`physical_homog.virial_C`),
+    touching no solver code. Prefer this over `sim_region_C6(geo, None)` for any whole-cell
+    "independent sim" claim: that route pushes the same relaxation back through the solver's own
+    `_compute_actual_elastic_tensor` and so cannot see a defect in it (audit A-9 / A-0).
+
+    Costs the SAME single relaxation as the shared route — pass `u_modes` from `sim_relax` to share
+    it with `sim_per_triangle_C6` rather than relaxing twice. For sub-regions use
+    `physical_homog.energy_C_region` (6 relaxations)."""
+    if u_modes is None:
+        u_modes = sim_relax(geo)
+    return _C33_to_c6(PH.virial_C(geo, u_modes))
+
+
 def sim_region_C6(geo, region=None):
-    """Convenience: physical 6-vector over a region (one relaxation)."""
+    """Physical 6-vector over a region.
+
+    `region=None` (the whole cell) now routes to the **INDEPENDENT** `sim_bulk_C6` — that is the
+    better answer to the same question, and most callers asking for the whole cell were labelling
+    the result "independent sim" when it was not (audit A-9). Costs 3 relaxations instead of 1.
+
+    A genuine sub-region still goes through `sim_per_triangle_C6`, which is NOT independent; use
+    `physical_homog.energy_C_region` when independence matters there."""
+    if region is None:
+        return sim_bulk_C6(geo)
     return region_phys_C6(geo, sim_per_triangle_C6(geo), region)
 
 

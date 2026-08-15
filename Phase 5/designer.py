@@ -79,8 +79,9 @@ def verify(geo, k, nu_target=None, E_target=None):
     solver's own readout for the same k; then their gap (the honesty check).  If targets are given
     also returns `target_err_sim` — how well the INDEPENDENT sim hits the requested target."""
     C.apply_k_to_geo(geo, k)
-    C6_per  = C.sim_per_triangle_C6(geo)
-    C6_bulk = C.region_phys_C6(geo, C6_per, None)
+    u_modes = C.sim_relax(geo)                  # ONE relaxation, shared by both readouts
+    C6_per  = C.sim_per_triangle_C6(geo, u_modes)          # spatial pattern (shared contraction)
+    C6_bulk = C.sim_bulk_C6(geo, u_modes)                  # bulk: INDEPENDENT (virial), audit A-1/A-9
     nu_sim, E_sim = C.nu_E_theta(C6_bulk, ANG)                       # numpy (37,)
 
     prob = DesignProblem.from_geo(geo)

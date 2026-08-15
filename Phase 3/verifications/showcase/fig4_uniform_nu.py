@@ -31,7 +31,7 @@ def main():
                        mode='k', n_iter=NITER, n_restarts=NREST, reg=REG, verbose=False)
         C.apply_k_to_geo(geo, r['k'])
         C6 = C.sim_per_triangle_C6(geo)
-        nu_th = C.nu_E_theta(C.region_phys_C6(geo, C6, None), TH)[0]
+        nu_th = C.nu_E_theta(C.sim_bulk_C6(geo), TH)[0]
         nu_local = C.local_nuE_angleavg(geo, C6)[0]                # per-triangle angle-averaged ν
         pc = C.fill_local_map(ax, geo, nu_local, cmap='RdBu_r', sym=True, vlim=1.0)
         C.draw_box(ax, geo); pcs.append(pc)

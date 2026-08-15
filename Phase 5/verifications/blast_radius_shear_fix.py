@@ -57,7 +57,7 @@ def one(path):
     nu_slv, E_slv = C.nu_E_theta(prob.region_tensor(out['per_triangle'], None).numpy(), ANG)
 
     try:                                             # the sim self-screens near-singular geometry
-        nu_sim, E_sim = C.nu_E_theta(C.region_phys_C6(geo, C.sim_per_triangle_C6(geo), None), ANG)
+        nu_sim, E_sim = C.nu_E_theta(C.sim_bulk_C6(geo), ANG)
         c6_phys = voigt_to_c6(PH.energy_C(geo, free, SA.assemble_K_faff))
         nu_phy, E_phy = C.nu_E_theta(c6_phys, ANG)
     except PH.UnhealthyGeometryError:

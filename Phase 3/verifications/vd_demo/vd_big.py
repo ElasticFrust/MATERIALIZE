@@ -80,7 +80,7 @@ def maps(alpha=30.0, eta=0.15, half=42, seed=0):
     Lv = np.sqrt(((geo['bond_R'] + pert[geo['bond_v']] - pert[geo['bond_u']]) ** 2).sum(1))
     k = 1.0 + np.tanh(alpha * (Lv - 1.0))
     C.apply_k_to_geo(geo, k); C6 = C.sim_per_triangle_C6(geo)
-    nu_g, E_g = C.c6_nuE(C.region_phys_C6(geo, C6, None))
+    nu_g, E_g = C.c6_nuE(C.sim_bulk_C6(geo))
     print(f"  maps: {geo['tri_bond'].shape[0]} tri  global nu={nu_g:+.3f} E={E_g:.3f}", flush=True)
     C.save_network(os.path.join(HERE, 'vd_big.npz'), geo, k, C6, kind='VD_regular_large',
                    alpha=alpha, eta=eta, half=half, nu=float(nu_g), E=float(E_g))

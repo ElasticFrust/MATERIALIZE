@@ -30,5 +30,5 @@ for seed in [0,1,2,3]:
         prob,geo=C.make_case('disorder_hi',12,seed=seed)  # N=12 smaller/faster probe
         r=C.optimize(prob,[C.Objective('nu_theta',tgt)],mode='k',n_iter=350,n_restarts=3,reg=5e-3,verbose=False)
         C.apply_k_to_geo(geo,r['k'])
-        nu=C.nu_E_theta(C.region_phys_C6(geo,C.sim_per_triangle_C6(geo),None),TH)[0]
+        nu=C.nu_E_theta(C.sim_bulk_C6(geo),TH)[0]
         print(f"  seed{seed} {tag}: sim nu[{nu.min():+.2f},{nu.max():+.2f}] kmed={np.median(r['k'].detach().numpy()):.2f}",flush=True)

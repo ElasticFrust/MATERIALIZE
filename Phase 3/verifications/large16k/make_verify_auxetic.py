@@ -32,7 +32,7 @@ def main():
     for kind in CASES:
         for topo in TOPOS:
             geo, k, C6, meta = C.load_network(os.path.join(HERE, 'networks', f'{kind}__{topo}.npz'))
-            nt = C.c6_nuE(C.region_phys_C6(geo, C6, None))[0]
+            nt = C.c6_nuE(C.sim_bulk_C6(geo))[0]
             nx, ny = stretch_nu(geo, 0), stretch_nu(geo, 1)
             rows.append((kind, topo, nt, nx, ny))
             print(f"  {kind:5s} {topo:11s} | tensor nu={nt:+.3f} | stretch-x={nx:+.3f} stretch-y={ny:+.3f}",

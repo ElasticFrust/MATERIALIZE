@@ -49,7 +49,7 @@ def main():
         k = r['k'].detach().numpy()
         nu_diff, _ = C.nu_E_theta(C.solver_region_C6(prob, r['k']), th)
         C.apply_k_to_geo(geo, r['k'])
-        nu_sim, _ = C.nu_E_theta(C.region_phys_C6(geo, C.sim_per_triangle_C6(geo), None), th)
+        nu_sim, _ = C.nu_E_theta(C.sim_bulk_C6(geo), th)
         err = float(np.abs(nu_sim - target).max())
         runs.append((reg, nu_sim, k))
         print(f"  reg={reg:g}: diff[{nu_diff.min():+.3f},{nu_diff.max():+.3f}] "

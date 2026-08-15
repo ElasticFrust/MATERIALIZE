@@ -50,7 +50,7 @@ def run(kind, topo, nd):
     objs, region, focus = objs_for(kind, prob, geo)
     r = C.optimize(prob, objs, mode='k', n_iter=NITER, reg=REG, verbose=False)
     C.apply_k_to_geo(geo, r['k']); C6 = C.sim_per_triangle_C6(geo)
-    nu_g, E_g = C.c6_nuE(C.region_phys_C6(geo, C6, None))
+    nu_g, E_g = C.c6_nuE(C.sim_bulk_C6(geo))
     csv.append((kind, topo, prob.n_tri, f'{nu_g:+.3f}', f'{E_g:.3f}'))
     C.save_network(os.path.join(nd, f'{kind}__{topo}.npz'), geo, r['k'], C6, kind=kind, topo=topo,
                    n_tri=int(prob.n_tri), region=region, global_nu=float(nu_g), global_E=float(E_g))

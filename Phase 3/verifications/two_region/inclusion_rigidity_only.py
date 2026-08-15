@@ -33,7 +33,7 @@ def build_uniform(half, kscale):
     k = np.full(len(geo['bond_u']), kscale)
     geo['bond_k'] = k; geo['tri_k'] = k[geo['tri_bond']]
     C6 = C.sim_per_triangle_C6(geo)
-    nu, E = C.c6_nuE(C.region_phys_C6(geo, C6, None))
+    nu, E = C.c6_nuE(C.sim_bulk_C6(geo))
     return geo, k, nu, E
 
 

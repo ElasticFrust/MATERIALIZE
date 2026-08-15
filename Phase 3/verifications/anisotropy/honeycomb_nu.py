@@ -45,7 +45,7 @@ def main():
         nu_diff, E_diff = C.nu_E_theta(C.solver_region_C6(prob, r['k']), th)
         C.apply_k_to_geo(geo, r['k'])
         C6 = C.sim_per_triangle_C6(geo)
-        nu_sim, E_sim = C.nu_E_theta(C.region_phys_C6(geo, C6, None), th)
+        nu_sim, E_sim = C.nu_E_theta(C.sim_bulk_C6(geo), th)
         runs.append((reg, nu_sim, E_sim, k))
         print(f"  reg={reg:g}: ν(θ) sim [{nu_sim.min():+.3f},{nu_sim.max():+.3f}] (mean {nu_sim.mean():+.3f}) "
               f"| E(θ) [{E_sim.min():.3f},{E_sim.max():.3f}] (soft vs E0={E0.mean():.2f}) "

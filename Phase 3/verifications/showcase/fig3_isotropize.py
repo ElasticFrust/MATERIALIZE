@@ -29,7 +29,7 @@ def design(base, nu0):
     r = C.optimize(prob, [C.Objective('nu_theta', np.full_like(TH, nu0))],
                    mode='k', n_iter=NITER, n_restarts=NREST, reg=REG, verbose=False)
     C.apply_k_to_geo(geo, r['k'])
-    nu = C.nu_E_theta(C.region_phys_C6(geo, C.sim_per_triangle_C6(geo), None), TH)[0]
+    nu = C.nu_E_theta(C.sim_bulk_C6(geo), TH)[0]
     return nu, geo, np.asarray(r['k'].detach().numpy(), float)
 
 

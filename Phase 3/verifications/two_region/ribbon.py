@@ -49,7 +49,7 @@ def design_patch(nu_target, tag):
                    mode='k', n_iter=NITER, reg=REG, verbose=False)
     k = r['k'].detach().numpy()
     C.apply_k_to_geo(geo, r['k']); C6 = C.sim_per_triangle_C6(geo)
-    nu, E = C.c6_nuE(C.region_phys_C6(geo, C6, None))
+    nu, E = C.c6_nuE(C.sim_bulk_C6(geo))
     print(f"  {tag} patch (solo, independent design): nu={nu:+.3f} (tgt {nu_target:+.2f}) E={E:.3f}   "
           f"k: min={k.min():.3f} mean={k.mean():.3f} frac(k<0.05)={np.mean(k < 0.05):.3f}", flush=True)
     return geo, k, nu, E

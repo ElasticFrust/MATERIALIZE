@@ -42,7 +42,7 @@ def main():
 
     nu_diff, E_diff = C.nu_E_theta(C.solver_region_C6(prob, r['k']), th)   # differentiable readback
     C6 = C.sim_per_triangle_C6(geo)
-    nu_sim, E_sim = C.nu_E_theta(C.region_phys_C6(geo, C6, None), th)      # INDEPENDENT sim
+    nu_sim, E_sim = C.nu_E_theta(C.sim_bulk_C6(geo), th)      # INDEPENDENT sim
     err = float(np.abs(nu_sim - target).max())
     k = r['k'].detach().numpy()
     print(f"  [recreate_pointy] target=crystal(4,1) nu on {TOPO} N={N} tri={prob.n_tri}  REG={REG}", flush=True)

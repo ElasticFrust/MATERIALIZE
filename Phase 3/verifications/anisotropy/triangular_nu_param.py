@@ -21,7 +21,7 @@ CASE = 'anisotropy'
 def main():
     geo, k_bond, C6_per, meta = C.load_network(os.path.join(C.savedir(CASE), 'triangular_nu.npz'))
     th = C.ANG                                                   # θ grid ∈ [0,π]
-    nu, E = C.nu_E_theta(C.region_phys_C6(geo, C6_per, None), th)
+    nu, E = C.nu_E_theta(C.sim_bulk_C6(geo), th)
     deg = np.degrees(th)
 
     fig, ax = plt.subplots(figsize=(8, 7))

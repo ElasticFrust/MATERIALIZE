@@ -44,7 +44,7 @@ def main():
                 dnu = C.solver_region_nuE(prob, res['k'])[0]
                 C.apply_k_to_geo(geo, res['k'])
                 C6 = C.sim_per_triangle_C6(geo)                    # one relaxation, reused below
-                snu, sE = C.c6_nuE(C.region_phys_C6(geo, C6, None))
+                snu, sE = C.c6_nuE(C.sim_bulk_C6(geo))
                 st = is_stable(dnu, snu, sE)
                 rows.append((topo, label, N, tgt, dnu, snu, sE, st))
                 C.save_network(os.path.join(ndir, f'{topo}_N{N}_nu{tgt:+.2f}.npz'), geo, res['k'], C6,

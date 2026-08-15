@@ -107,6 +107,21 @@ Consequences, all deliberate:
   `Phase 2/test_forward_solver.py` [7] imports it precisely so the comparison has an independent
   side. The dependency rule is about **production** code, not about who may run a check.
 
+**"Independent" is a property of a specific routine, not of the directory.** The operative coverage
+table lives in `CLAUDE.md` §3 and is kept current; the shape of it is:
+
+| genuinely independent (no solver code in the path) | NOT independent (shared contraction) |
+|---|---|
+| `energy_C`, `virial_C` — bulk tensor | `_common.sim_per_triangle_C6` — per-triangle |
+| `energy_C_per_triangle` — per-triangle `C(s)` | `_common.region_phys_C6` — regional |
+| `energy_C_region` — regional `C` | |
+| `virial_nuE` / `energy_nuE` — bulk ν, E | |
+
+The right column is not wrong, it answers a different question: it validates the spatial *pattern*
+and the design→realise→simulate loop. It cannot validate the homogenisation, because it *is* the
+homogenisation. Gated by `test_forward_solver` [7] (bulk) and [8] (per-triangle and regional);
+[8] closed audit A-9 on 2026-08-15.
+
 ## 4. The dependency rule, and how it is enforced
 
 **No design/production module in Phase 2 or Phase 3 may import from `verification_tools/`.**

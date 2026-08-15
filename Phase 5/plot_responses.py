@@ -27,7 +27,7 @@ import plotting as P
 def response_from_npz(path):
     """(nu_theta, E_theta, meta) of a saved design, from its stored SIM per-triangle tensors."""
     geo, bond_k, C6_per, meta = C.load_network(path)
-    C6_bulk = C.region_phys_C6(geo, C6_per, None)
+    C6_bulk = C.sim_bulk_C6(geo)
     nu, E = C.nu_E_theta(C6_bulk, ANG)
     return np.asarray(nu), np.asarray(E), meta
 

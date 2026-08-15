@@ -39,7 +39,7 @@ rows = []
 for i, src in enumerate(srcs):
     geo, k0, C6p, meta = C.load_network(src)
     geo['seed_name'] = str(meta.get('seed_name', f'aniso4_{i}'))
-    nu_b, _ = C.nu_E_theta(C.region_phys_C6(geo, C6p, None), ANG)          # BEFORE (k-only)
+    nu_b, _ = C.nu_E_theta(C.sim_bulk_C6(geo), ANG)          # BEFORE (k-only)
     err_b = float(meta.get('target_err_sim', np.nan))
 
     geoP, kP, hist = positions.design_with_positions(nu_target, E_target, geo,

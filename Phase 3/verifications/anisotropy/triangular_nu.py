@@ -90,7 +90,7 @@ def main(name, cfg):
 
     nu_diff, _ = C.nu_E_theta(C.solver_region_C6(prob, r['k']), th)   # differentiable readback
     C6 = C.sim_per_triangle_C6(geo)
-    nu_sim, _ = C.nu_E_theta(C.region_phys_C6(geo, C6, None), th)     # INDEPENDENT sim
+    nu_sim, _ = C.nu_E_theta(C.sim_bulk_C6(geo), th)     # INDEPENDENT sim
     err_diff = float(np.abs(nu_diff - target).max())
     err_sim = float(np.abs(nu_sim - target).max())
     k = r['k'].detach().numpy()

@@ -88,10 +88,10 @@ def main():
 
     geo, k, C6, prob = design_or_load(nu_t)
     nu_d, E_d = C.nu_E_theta(C.solver_region_C6(prob, torch.as_tensor(k, dtype=torch.float64)), TH)
-    nu_s, E_s = C.nu_E_theta(C.region_phys_C6(geo, C6, None), TH)
+    nu_s, E_s = C.nu_E_theta(C.sim_bulk_C6(geo), TH)
     # undesigned baseline: the SAME substrate with UNIFORM k=1 (bare lattice, before inverse design)
     gb = dict(geo); gb['bond_k'] = np.ones(len(geo['bond_R'])); gb['tri_k'] = gb['bond_k'][geo['tri_bond']]
-    nu_u = C.nu_E_theta(C.region_phys_C6(gb, C.sim_per_triangle_C6(gb), None), TH)[0]
+    nu_u = C.nu_E_theta(C.sim_bulk_C6(gb), TH)[0]
     print(f"  [{TAG} {BASE} rot90] target ν∈[{nu_t.min():+.2f},{nu_t.max():+.2f}]  solver "
           f"[{nu_d.min():+.2f},{nu_d.max():+.2f}]  sim [{nu_s.min():+.2f},{nu_s.max():+.2f}]  "
           f"kmed={np.median(k):.2f}", flush=True)

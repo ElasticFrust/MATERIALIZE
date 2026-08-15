@@ -36,7 +36,7 @@ def main():
             r = C.optimize(prob, [C.Objective('nu_theta', np.full_like(TH, nu0))],
                            mode='k', n_iter=NITER, n_restarts=NREST, reg=REG, verbose=False)
             C.apply_k_to_geo(geo, r['k'])
-            nu = C.nu_E_theta(C.region_phys_C6(geo, C.sim_per_triangle_C6(geo), None), TH)[0]
+            nu = C.nu_E_theta(C.sim_bulk_C6(geo), TH)[0]
             means.append(nu.mean()); spreads.append(nu.std())
         ax.errorbar(TARGETS, means, yerr=spreads, marker='o', ms=7, lw=1.8, capsize=4,
                     color=col, label=label)

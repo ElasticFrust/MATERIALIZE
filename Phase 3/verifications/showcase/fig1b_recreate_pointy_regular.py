@@ -29,7 +29,7 @@ def main():
     k = np.asarray(r['k'].detach().numpy(), float)
     nu_diff = C.nu_E_theta(C.solver_region_C6(prob, r['k']), TH)[0]
     C.apply_k_to_geo(geo, r['k'])
-    nu_sim = C.nu_E_theta(C.region_phys_C6(geo, C.sim_per_triangle_C6(geo), None), TH)[0]
+    nu_sim = C.nu_E_theta(C.sim_bulk_C6(geo), TH)[0]
     disagree = float(np.abs(nu_sim - nu_diff).max())
     print(f"  [regular] target ν∈[{target.min():+.2f},{target.max():+.2f}]  achieved sim "
           f"[{nu_sim.min():+.2f},{nu_sim.max():+.2f}]  |sim-diff|={disagree:.2f}  kmed={np.median(k):.2f} "

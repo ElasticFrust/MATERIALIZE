@@ -22,7 +22,7 @@ COL = {'regular': '#000000', 'disorder_hi': '#d62728'}
 
 def ach(kind, topo):
     geo, k, C6, meta = C.load_network(os.path.join(ND, f'{kind}__{topo}.npz'))
-    return C.nu_E_theta(C.region_phys_C6(geo, C6, None), TH)      # (nu(θ), E(θ))
+    return C.nu_E_theta(C.sim_bulk_C6(geo), TH)      # (nu(θ), E(θ))
 
 
 def main():

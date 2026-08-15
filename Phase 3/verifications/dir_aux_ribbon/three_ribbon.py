@@ -87,7 +87,7 @@ def build_center(eta, seed):
 def solo_nu0(geo, k):
     C.apply_k_to_geo(geo, k)
     C6 = C.sim_per_triangle_C6(geo)
-    nu0 = C.nu_E_theta(C.region_phys_C6(geo, C6, None), np.array([0.0]))[0][0]
+    nu0 = C.nu_E_theta(C.sim_bulk_C6(geo), np.array([0.0]))[0][0]
     return float(nu0)
 
 
@@ -221,7 +221,7 @@ def plot_nu_theta(geoL, kL, geoC, kC, geoR, kR, geo, C6, mid1, mid2, nu_practica
     def solo_profile(geo0, k0):
         C.apply_k_to_geo(geo0, k0)
         C6_0 = C.sim_per_triangle_C6(geo0)
-        return C.nu_E_theta(C.region_phys_C6(geo0, C6_0, None), th)[0]
+        return C.nu_E_theta(C.sim_bulk_C6(geo0), th)[0]
 
     nuL_solo, nuC_solo, nuR_solo = solo_profile(geoL, kL), solo_profile(geoC, kC), solo_profile(geoR, kR)
 

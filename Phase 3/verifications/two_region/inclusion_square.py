@@ -32,7 +32,7 @@ def design_whole(half, nu_t, E_t, tag, n_iter=220, n_restarts=1):
                    mode='k', n_iter=n_iter, reg=REG, n_restarts=n_restarts, verbose=False)
     k = r['k'].detach().numpy()
     C.apply_k_to_geo(geo, r['k']); C6 = C.sim_per_triangle_C6(geo)
-    nu, E = C.c6_nuE(C.region_phys_C6(geo, C6, None))
+    nu, E = C.c6_nuE(C.sim_bulk_C6(geo))
     print(f"    {tag}: nu={nu:+.3f} (tgt {nu_t:+.2f}) E={E:.2f} (tgt {E_t})   "
           f"k min={k.min():.3f} mean={k.mean():.3f}", flush=True)
     return geo, k

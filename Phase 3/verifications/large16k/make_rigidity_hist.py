@@ -56,7 +56,7 @@ def main():
         groups = {'whole system': np.ones(len(k), bool),
                   'R_E (stiff-E)': in_circle(mid, RE), 'R_ν (auxetic)': in_circle(mid, RN)}
         stats = {n: binned(k, ang, sel) for n, sel in groups.items()}
-        iso = np.ptp(C.nu_E_theta(C.region_phys_C6(geo, C6, None), C.ANG)[0])
+        iso = np.ptp(C.nu_E_theta(C.sim_bulk_C6(geo), C.ANG)[0])
         deg = np.degrees(CEN)
         ncol = 1 + len(groups)
         axes = [fig.add_subplot(len(TOPOS), ncol, ncol * row + i + 1) for i in range(ncol)]
