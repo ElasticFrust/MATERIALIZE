@@ -106,10 +106,13 @@ def draw_network(ax, geo, bond_k, cmap=STYLE.K_CMAP, norm=None, reps=STYLE.TILE_
 
 
 # ---- 2. per-triangle scalar field (filled triangles) ----------------------------------------
-def draw_field(ax, geo, values, kind='nu', cmap=None, vlim=None, colorbar=True, title=None):
+def draw_field(ax, geo, values, kind='nu', cmap=None, vlim=None, colorbar=True, title=None,
+               cbar_label=None):
     """Per-triangle scalar field as FILLED triangles (image-correct `tri_verts`, no tearing).
     kind='nu' → diverging cmap centred at 0 (auxetic ν<0 vs normal ν>0); kind='E' → sequential.
-    Returns the PolyCollection. Pass `vlim=(lo,hi)` to fix the scale across panels."""
+    Returns the PolyCollection. Pass `vlim=(lo,hi)` to fix the scale across panels, and
+    `cbar_label` for any field that is neither ν nor E (kind only picks the colour scaling, so
+    without it such a field is mislabelled on the colourbar)."""
     tv = list(np.asarray(geo['tri_verts'], float))          # (nt,3,2) image-correct
     vals = np.asarray(values, float)
     if cmap is None:
@@ -130,7 +133,8 @@ def draw_field(ax, geo, values, kind='nu', cmap=None, vlim=None, colorbar=True, 
     square(ax)
     if colorbar:
         ax.figure.colorbar(pc, ax=ax, fraction=0.046, pad=0.02,
-                           label=(r'$\nu$' if kind == 'nu' else r'$E$'))
+                           label=(cbar_label if cbar_label is not None
+                                  else (r'$\nu$' if kind == 'nu' else r'$E$')))
     if title:
         ax.set_title(title, fontsize=8)
     return pc

@@ -142,7 +142,7 @@ def test_elastic_tensor_vs_energy_hessian():
     # (N, eta, seed, VD contrast or None for uniform k); eta=0 uniform is the BLIND control (W=0)
     cases = [(8, 0.00, 0, None), (8, 0.20, 1, None), (8, 0.20, 1, 5),
              (8, 0.35, 2, None), (12, 0.30, 3, 10)]
-    worst = 0.0
+    worst = worst_r = 0.0
     for N, eta, seed, vd in cases:
         mesh = MB.build_geometry(N, eta, seed)
         if vd is None:
@@ -259,7 +259,7 @@ def test_per_triangle_C_vs_energy_hessian():
     Dinv = np.linalg.inv(np.stack([MO.vec3(g) for g in Dgt], 1))
     cases = [(8, 0.00, 0, None), (8, 0.20, 1, None), (8, 0.20, 1, 5),
              (8, 0.35, 2, None), (12, 0.30, 3, 10)]
-    worst = 0.0
+    worst = worst_r = 0.0
     for N, eta, seed, vd in cases:
         mesh = MB.build_geometry(N, eta, seed)
         if vd is None:
@@ -288,8 +288,32 @@ def test_per_triangle_C_vs_energy_hessian():
         tag = f"eta={eta}" + (f" VD{vd:+d}" if vd else " k=1")
         assert err < 2e-2, (f"per-triangle C(s) disagrees with the energy Hessian ({tag}, N={N}): "
                             f"{err:.3e}")
+
+        # ---- (d) genuine SUB-REGIONS -------------------------------------------------------
+        # region=None in (b) only exercises the whole-cell branch; the `idx` branch needs its own
+        # check. NB **no _G_TO_DG here**, unlike the per-triangle comparison above: the ×16 between
+        # the two conventions is exactly cancelled by their normalisations. `energy_C_region` is
+        # ½·ΣC_s/A_r = 8·ΣM_s/A_r, and `region_phys_C6` is mean(c6)·8n/A_r = 8·ΣM_s/A_r — the same
+        # quantity. (Dividing by 16 here fails by a factor 16, which is how this was caught.)
+        C_s_ind = PH.energy_C_per_triangle(mesh, free, SA.assemble_K_faff)
+        cen = mesh['pts'][mesh['simplices']].mean(1)
+        halves = [np.where(cen[:, 0] < np.median(cen[:, 0]))[0],          # left half
+                  np.where(cen[:, 1] > np.median(cen[:, 1]))[0],          # top half
+                  np.arange(0, nt, 3)]                                    # a scattered third
+        for r, region in enumerate(halves):
+            idx = np.asarray(region)
+            c6r = c6[idx].mean(0) * (8.0 * len(idx) / mesh['areas'][idx].sum())
+            R_solver = np.array([[c6r[0], c6r[2], c6r[1]],
+                                 [c6r[2], c6r[5], c6r[4]],
+                                 [c6r[1], c6r[4], c6r[3]]])
+            R_ind = PH.energy_C_region(mesh, free, SA.assemble_K_faff,
+                                       region=idx, C_s=C_s_ind)
+            e_r = np.abs(R_solver - R_ind).max() / np.abs(R_ind).max()
+            worst_r = max(worst_r, e_r)
+            assert e_r < 2e-2, (f"regional C disagrees with the energy Hessian "
+                                f"({tag}, N={N}, region {r}, {len(idx)} tri): {e_r:.3e}")
     print(f"  [8] per-triangle C(s) vs energy Hessian (component-wise, {len(cases)} meshes): "
-          f"worst {worst:.2e}  OK")
+          f"worst {worst:.2e}; regional (3 sub-regions each): worst {worst_r:.2e}  OK")
 
 
 def test_woodbury_legacy_runs():
