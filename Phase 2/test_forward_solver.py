@@ -170,6 +170,14 @@ def test_elastic_tensor_vs_energy_hessian():
 
     `_compute_actual_elastic_tensor` is fed the SIMULATION's measured W (not the solver's own), so
     the check isolates the contraction: same A(s), same W, two independent routes to C_eff.
+
+    NB the residual here is therefore NOT solver-vs-sim error. The sim's W is extracted with the
+    geometrically EXACT strain (Δg = FᵀF − I) while the oracle is the LINEARISED energy Hessian, and
+    those two strain measures differ by O(DELTA) — 5.8e-3 at DELTA=1e-3, which is the whole of it.
+    Feed the same relaxed field through the LINEARISED strain instead and the agreement is 2.3e-13;
+    the solver's OWN forward agrees with the oracle to ~5e-12 (bulk) / ~8e-10 (per-triangle). The
+    exact-strain W is used on purpose: it makes the check sensitive to the contraction, which is the
+    thing under test. See audit A-15.
     """
     import scipy.sparse.linalg as spla
     import forward_solver_torch as fst

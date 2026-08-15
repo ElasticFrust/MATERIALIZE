@@ -16,6 +16,23 @@ disorder intent — a topology scan); and an anisotropic base lattice (ψ=0.6).
 
 ---
 
+> **What this residual is NOT.** It is *not* solver-vs-sim disagreement. [7]/[8] deliberately feed
+> the contraction the sim's W extracted with the GEOMETRICALLY EXACT strain (Δg = FᵀF − I) and
+> compare against the LINEARISED energy Hessian. Measured on the same relaxed field u (N=10, η=0.30,
+> VD a=+5):
+>
+> | W fed to the contraction | per-triangle | bulk |
+> |---|---|---|
+> | sim's W, strain read **exactly** | 1.05e-02 | 5.37e-03 |
+> | sim's W, strain read **linearised** | **5.47e-13** | **2.33e-13** |
+> | **solver's own W** (intrinsic solve) | **7.54e-10** | 5.45e-12 |
+>
+> The two strain measures differ by 5.84e-03 at DELTA=1e-3, which accounts for row 1 exactly. So the
+> ~1e-2 figures below measure a strain-measure mismatch at finite probe amplitude — a property of
+> the isolation construction, chosen so the check is sensitive to the CONTRACTION. The solver's own
+> end-to-end agreement with the oracle is ~8 orders better. See audit A-15.
+
+
 ## 1. Headline
 
 | quantity (mean over seeds) | η=0 | η=0.2 | η=0.4 | η=0.5 |
