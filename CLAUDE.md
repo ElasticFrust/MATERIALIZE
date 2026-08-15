@@ -205,20 +205,31 @@ Three DISTINCT quantities — keep them separate:
   solve `forward()`; verification path = an **independent** NumPy periodic relaxation →
   virial/energy homogenisation (`verification_tools/physical_homog.py`: `virial_nuE`, `energy_nuE`,
   which must agree).
-- **The oracle is LINEAR too — it is an independent IMPLEMENTATION, not independent PHYSICS**
-  *(corrected 2026-08-15; this used to say "nonlinear relaxation", which is false).*
-  `physical_homog.relax` is a single `spsolve` of Ku = −f_aff with the linearised bond extension
-  (R·δu)/ℓ — no iteration, no Newton, no minimisation, and there is no nonlinear relaxation anywhere
-  in the repo. Consequences, both important:
+- **The oracle linearises the KINEMATICS — it is an independent IMPLEMENTATION, not independent
+  PHYSICS** *(corrected 2026-08-15; this used to say "nonlinear relaxation", which is false).*
+  **Terminology, kept straight because this project legislates it:** every model here uses a LINEAR
+  (Hookean) constitutive law. "Nonlinear" in this codebase always means **geometric/kinematic**
+  nonlinearity — ℓ = ‖xᵢ−xⱼ‖ as a function of node positions — never a nonlinear material. Three
+  distinct models, and it matters which is which:
+    1. **linear springs, exact kinematics** — U = ½Σk(‖xᵢ−xⱼ‖−ℓ₀)². The physical reference.
+       **Not implemented anywhere in the repo.**
+    2. **the solver** — U = ½Σ(kₑ/4ℓ²)(qₑ·Δg)² with Δg = FᵀF−I exact: linear in ENERGY (quadratic
+       form in Δg), exact in GEOMETRY. Note (qₑ·Δg)/2ℓ = δℓ·(ℓ′+ℓ)/2ℓ, so this is *not* ½k(δℓ)²
+       — it differs from (1) at O(δℓ/ℓ).
+    3. **the oracle as implemented** — U = ½Σk((Rₑ·δu)/ℓₑ)²: linear springs with the extension
+       LINEARISED in displacement, i.e. the small-displacement approximation of (1).
+  `physical_homog.relax` is model 3: a single `spsolve` of Ku = −f_aff — no iteration, no Newton, no
+  minimisation — and model 1 exists nowhere in the repo. Consequences, both important:
   - **What it does check, and checks strongly:** that the solver's algebra is right. The solver's own
     `forward()` agrees with it to **1e-13–1e-11** on healthy disordered/VD networks — the intrinsic
     constrained solve is numerically equivalent to the nodal solve. This is what catches
     contraction-class bugs like A-0.
   - **What it CANNOT check:** anything second-order in the deformation. In particular it cannot
     substantiate "near a mechanism the linear read-back diverges from the true nonlinear relaxation
-    — hence every design is checked against the independent simulation": the sim is linear as well,
-    so it diverges in exactly the same way. Near-mechanism designs are **not** currently validated
-    against nonlinear physics by anything in the repo (audit **A-15**).
+    — hence every design is checked against the independent simulation": models 2 and 3 are
+    tangent-equivalent by construction (verified to ~1e-12 per triangle), so the comparison cannot
+    probe where they part company. Near-mechanism designs are **not** currently validated against
+    finite-displacement kinematics by anything in the repo (audit **A-15**).
 - **Define the ensemble** (usually natural). Verification quantities are computed over an *explicit*
   ensemble: a **crystal = the single structure** (or a parametric family, e.g. the Bravais sweep) —
   no randomness ⇒ nothing to average; a disordered family = fixed parameters (η, N) over seeds.
