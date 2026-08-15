@@ -1,0 +1,221 @@
+{
+ "N": 20,
+ "etas": [
+  0.0,
+  0.02,
+  0.04,
+  0.06,
+  0.08,
+  0.1,
+  0.12,
+  0.14,
+  0.16,
+  0.18,
+  0.2,
+  0.22,
+  0.24,
+  0.26,
+  0.28,
+  0.3,
+  0.32,
+  0.34,
+  0.36,
+  0.38,
+  0.4,
+  0.42,
+  0.44,
+  0.46,
+  0.48,
+  0.5
+ ],
+ "seeds": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9
+ ],
+ "cases": [
+  "disordered",
+  "VD a=-10",
+  "VD a=-2",
+  "VD a=+5",
+  "VD a=+10",
+  "VD a=+100"
+ ],
+ "solver_vs_sim": {
+  "disordered": {
+   "nu_sim": 0.23728290228415985,
+   "nu_slv": 0.2370499256474516,
+   "max_dnu": 0.01468000752283502,
+   "E_sim": 1.0122395395397403,
+   "E_slv": 1.0126770657109194,
+   "max_dE_rel": 0.0316580631371061
+  },
+  "VD a=-10": {
+   "nu_sim": 0.4065056554821562,
+   "nu_slv": 0.4103903035042218,
+   "max_dnu": 0.08822976862344029,
+   "E_sim": 0.32350498303373054,
+   "E_slv": 0.32574570183013596,
+   "max_dE_rel": 0.164509267376203
+  },
+  "VD a=-2": {
+   "nu_sim": 0.3644148997931499,
+   "nu_slv": 0.36414965158007,
+   "max_dnu": 0.016543664032825478,
+   "E_sim": 0.8378514726908393,
+   "E_slv": 0.8369782352199687,
+   "max_dE_rel": 0.047312261498428584
+  },
+  "VD a=+5": {
+   "nu_sim": -0.06692562037279384,
+   "nu_slv": -0.07290150788558204,
+   "max_dnu": 0.11814825037970306,
+   "E_sim": 0.6106096697791549,
+   "E_slv": 0.6172919357913849,
+   "max_dE_rel": 0.07917669362832908
+  },
+  "VD a=+10": {
+   "nu_sim": -0.17190232267704872,
+   "nu_slv": -0.18447637504820394,
+   "max_dnu": 0.10048852239145212,
+   "E_sim": 0.38517883119431295,
+   "E_slv": 0.3920283208965778,
+   "max_dE_rel": 0.13676641721885247
+  },
+  "VD a=+100": {
+   "nu_sim": -0.04428725828988649,
+   "nu_slv": -0.04696519748029711,
+   "max_dnu": 0.591281888370987,
+   "E_sim": 0.062256410369912675,
+   "E_slv": 0.06288643990088924,
+   "max_dE_rel": 0.8490567735132801
+  }
+ },
+ "known_value_ok": true,
+ "ref_json": null,
+ "worst_rel_vs_ref": null,
+ "ref_check": [],
+ "auxetic_band": {
+  "nu_eta_min": 0.3333333333333336,
+  "nu_eta_max": -0.14502551988356055
+ },
+ "skipped_unhealthy": [
+  {
+   "eta": 0.44,
+   "seed": 0,
+   "why": "near-singular geometry: min triangle area 3.216e-04, mean 4.330e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.44,
+   "seed": 2,
+   "why": "near-singular geometry: min triangle area 1.741e-04, mean 4.330e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.44,
+   "seed": 4,
+   "why": "near-singular geometry: min triangle area 2.493e-04, mean 4.330e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.44,
+   "seed": 5,
+   "why": "near-singular geometry: min triangle area 7.570e-05, mean 4.330e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.46,
+   "seed": 0,
+   "why": "near-singular geometry: min triangle area 2.976e-04, mean 4.332e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.46,
+   "seed": 1,
+   "why": "near-singular geometry: min triangle area 1.616e-04, mean 4.331e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.46,
+   "seed": 4,
+   "why": "near-singular geometry: min triangle area 1.629e-05, mean 4.333e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.46,
+   "seed": 6,
+   "why": "near-singular geometry: min triangle area 1.452e-04, mean 4.333e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.46,
+   "seed": 7,
+   "why": "near-singular geometry: min triangle area 1.490e-04, mean 4.332e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.48,
+   "seed": 1,
+   "why": "near-singular geometry: min triangle area 4.364e-05, mean 4.337e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.48,
+   "seed": 2,
+   "why": "near-singular geometry: min triangle area 4.056e-04, mean 4.344e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.48,
+   "seed": 4,
+   "why": "near-singular geometry: min triangle area 3.215e-04, mean 4.340e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.48,
+   "seed": 5,
+   "why": "near-singular geometry: min triangle area 1.671e-04, mean 4.338e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.48,
+   "seed": 7,
+   "why": "near-singular geometry: min triangle area 3.107e-04, mean 4.340e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.48,
+   "seed": 9,
+   "why": "near-singular geometry: min triangle area 4.324e-04, mean 4.339e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.5,
+   "seed": 0,
+   "why": "near-singular geometry: min triangle area 3.665e-04, mean 4.351e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.5,
+   "seed": 1,
+   "why": "near-singular geometry: min triangle area 3.555e-05, mean 4.349e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.5,
+   "seed": 2,
+   "why": "near-singular geometry: min triangle area 4.297e-05, mean 4.362e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.5,
+   "seed": 3,
+   "why": "near-singular geometry: min triangle area 1.371e-04, mean 4.348e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.5,
+   "seed": 5,
+   "why": "near-singular geometry: min triangle area 2.540e-04, mean 4.350e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.5,
+   "seed": 6,
+   "why": "near-singular geometry: min triangle area 2.674e-04, mean 4.355e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  },
+  {
+   "eta": 0.5,
+   "seed": 7,
+   "why": "near-singular geometry: min triangle area 2.429e-04, mean 4.356e-01 (inverted or sliver) \u2014 refusing to simulate (scipy/L"
+  }
+ ]
+}

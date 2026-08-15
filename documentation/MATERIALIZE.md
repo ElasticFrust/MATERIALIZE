@@ -376,6 +376,10 @@ the framework.
 
 ## 5. Repository layout
 
+> The **why** behind this layout — the layers, which way dependencies run, what "protected core"
+> and "independent oracle" mean and what they cost — is `documentation/ARCHITECTURE.md`. This
+> section is the file map; that document is the architecture.
+
 ```
 MATERIALIZE/
 ├── plotting.py                  SINGLE source of truth for all figures (see project CLAUDE.md §3)

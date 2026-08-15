@@ -10,7 +10,7 @@ import markdown  # available in the anaconda env
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-DOCS = ["MATERIALIZE", "FUTURE_DIRECTIONS"]
+DOCS = ["MATERIALIZE", "ARCHITECTURE", "FUTURE_DIRECTIONS"]
 # MathJax must be LOADED LOCALLY and SYNCHRONOUSLY: an async CDN <script> does not finish rendering
 # under Edge's --virtual-time-budget, leaving raw LaTeX in the PDF. tex-svg.js is self-contained
 # (renders SVG, no separate web-font files), so caching this one file is enough for offline math.

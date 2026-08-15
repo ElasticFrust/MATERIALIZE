@@ -46,6 +46,8 @@ class STYLE:
     POLAR_POS   = 'tab:blue'     # ν > 0 in the polar plot
     POLAR_NEG   = 'tab:red'      # ν < 0 in the polar plot
     TARGET_KW   = dict(color='k', ls='--', lw=2.2)   # dashed target overlay
+    PANEL       = (4.4, 3.5)     # inches per grid panel — big enough that a legend never covers
+                                 # the data; if the legend crowds the curves, the panel is too small
 
 
 def square(ax):
@@ -260,6 +262,64 @@ def plot_means_spread(groups, xlabel='x', ylabel='y', suptitle=None, combine_all
 
 
 # ---- 5. saving: standalone high-DPI element, and a montage ----------------------------------
+def plot_overlay_grid(panels, xlabel='x', ylabel='y', suptitle=None, ncols=3,
+                      panel=STYLE.PANEL, ylim=None, hline0=False):
+    """One panel per case; the METHODS COMPARED ARE OVERLAID INSIDE each panel (mean ± σ).
+
+    Use this whenever two ways of computing the same quantity are being compared — above all
+    **solver vs independent sim**, which by project convention (CLAUDE.md §3) always share a panel:
+    the comparison IS the point, and splitting them into separate subplots puts the two curves the
+    reader must overlay at opposite ends of the figure.
+
+    Args:
+        panels: dict case name → dict method name → (x, ys), `ys` shape (nsamples, nx).
+                A method may pass ys of shape (nx,) for a single sample.
+        ncols:  panels per row; the grid wraps (never one long strip).
+        panel:  (w, h) inches per panel — big enough that the legend does not cover the data.
+        ylim:   shared y-limits, or None to autoscale per panel.
+        hline0: draw a dotted zero line (use for ν, where the sign is the physics).
+    Returns the Figure.
+    """
+    names = list(panels)
+    ncols = max(1, min(ncols, len(names)))
+    nrows = int(np.ceil(len(names) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(panel[0]*ncols, panel[1]*nrows),
+                             squeeze=False, sharex=True, sharey=ylim is not None)
+    cm = plt.get_cmap('tab10')
+    methods = list({m for d in panels.values() for m in d})
+    col = {m: cm(i % 10) for i, m in enumerate(methods)}
+    mk = {m: ['o', 's', '^', 'v', 'D'][i % 5] for i, m in enumerate(methods)}
+
+    for i, nm in enumerate(names):
+        ax = axes[i // ncols][i % ncols]
+        for m, (x, ys) in panels[nm].items():
+            ys = np.atleast_2d(np.asarray(ys, float))
+            mu, sd = np.nanmean(ys, 0), np.nanstd(ys, 0)
+            ax.plot(x, mu, color=col[m], lw=1.9, marker=mk[m], ms=3.6, label=m)
+            if ys.shape[0] > 1:
+                ax.fill_between(x, mu - sd, mu + sd, color=col[m], alpha=0.20, lw=0)
+        if hline0:
+            ax.axhline(0, color='gray', lw=0.6, ls=':')
+        if ylim:
+            ax.set_ylim(*ylim)
+        ax.set_title(nm, fontsize=10); ax.grid(alpha=0.25)
+        if i % ncols == 0:
+            ax.set_ylabel(ylabel)
+        if i // ncols == nrows - 1:
+            ax.set_xlabel(xlabel)
+    for j in range(len(names), nrows * ncols):          # blank any unused cell
+        axes[j // ncols][j % ncols].axis('off')
+
+    # ONE figure-level legend: repeating it per panel is what crowds the data out.
+    h, l = axes[0][0].get_legend_handles_labels()
+    fig.legend(h, l, loc='lower center', ncol=len(methods), fontsize=10, frameon=False,
+               bbox_to_anchor=(0.5, -0.01))
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=12)
+    fig.tight_layout(rect=(0, 0.045, 1, 1))
+    return fig
+
+
 def save_fig(fig, path, dpi=STYLE.DPI_ELEMENT, close=True):
     """Save `fig` to `path` at `dpi` (default the ≥300 element DPI); make parent dirs."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)

@@ -64,6 +64,10 @@ once the solver is trusted, not a permanent per-design requirement.
 above it.** Phase numbering is historical, *not* a clean ladder: the live arc is
 **Phase 2 (core) → Phase 3 (design) → Phase 5 (designer)**; Phase 4 is a retained remnant.
 
+> Full architecture doc (layers, dependency rules, the two invariants and *why* they cost what they
+> cost, where new work goes): **`documentation/ARCHITECTURE.md`**. This section stays the operative
+> short form; that document is the explanation. Keep them consistent.
+
 | layer | dir | role | stability |
 |---|---|---|---|
 | **Core (protected)** | `Phase 2/forward_solver_torch.py` | differentiable geometric homogeniser: (k, ℓ₀, geometry) → C(s), C_eff, ν, E, W; adjoint above 600 tri | **never modify without explicit approval**; gated by `test_forward_solver.py` + the physical `verify_*` suite |
@@ -315,6 +319,18 @@ this policy. It is pure-render (numpy + matplotlib; callers pass already-loaded 
 - **Means & spread.** Default: all group means together in ONE clean plot (no bands); each group's
   mean±σ in its OWN subplot. **Combine-all** (means+σ overlaid) only when ≤3 groups AND the
   comparison IS the overlap.
+- **Two METHODS for the same quantity ALWAYS share a panel** — above all **solver vs sim**. The
+  comparison *is* the point; splitting them puts the two curves the reader must overlay at opposite
+  ends of the figure. Use `plotting.py: plot_overlay_grid` (one panel per case, methods overlaid
+  mean±σ inside it). This *overrides* the means-together/spread-separate default, which is for
+  comparing GROUPS, not methods.
+- **Never one long strip of panels.** Grid-wrap (`ncols`, default 3); a single row separating
+  related runs by the width of the figure is unreadable.
+- **A legend must never cover the data** — one figure-level legend, not one per panel, and if it
+  still crowds the curves the panels are TOO SMALL (raise `STYLE.PANEL`, default 4.4×3.5 in).
+- **Sweep resolution: resolve the curve, not just its endpoints.** For a parameter sweep (e.g.
+  ν(η), E(η)) use a grid fine enough that the shape is not an artefact of sampling — **η step
+  ≤0.02** over [0, 0.5] (≥26 points), not the legacy 0.05.
 - **Resolution.** Standalone reusable elements **≥300 DPI** (higher for publication); montages 200
   (working; bump for production). Render each element/panel as its own high-DPI image, then compose.
 - **Load, don't re-optimise** at plot time (`load_network`; random restarts ⇒ non-reproducible).
