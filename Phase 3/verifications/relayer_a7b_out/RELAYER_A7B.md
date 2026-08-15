@@ -48,8 +48,9 @@ oracle-side. It only left an experiment script whose `main()` runs a 30×3-seed 
 `verification_tools/` now reads as `{physical_homog, sim_assembly}` = the oracle, everything else =
 experiments.
 
-Bodies are verbatim. 27 files were re-pointed; `verification_tools/` is no longer on
-`inverse_design.py`'s `sys.path` at all, so the inversion cannot return silently.
+Bodies are verbatim. 43 consumer files were re-pointed (plus the 4 new modules and the instrument);
+`verification_tools/` is no longer on `inverse_design.py`'s `sys.path` at all, so the inversion
+cannot return silently. `verification_tools/` is net **−67 lines**: code left the layer.
 
 **Deliberately not moved** — reasons in `AUDIT_2026-08.md` A-7b: `c6_to_nuE` and `W3_to_W9` (would
 prejudge the open finding **A-10**, three disagreeing ν/E reductions); `DELTA`/`MODES`
@@ -112,8 +113,8 @@ doubles), C_eff by 2.2e-16, per-triangle C6 by 5.0e-16, run-order dependent. Tha
 | constructed solver state (buffers + C1/C2/C3 operators), old vs new | **bit-identical** |
 | `Phase 2/test_forward_solver.py` | **7/7**; test [7] component-wise C_eff vs `physical_homog.energy_C` on W≠0 meshes, worst **1.67e-03** — identical to baseline |
 | `Phase 5/verifications/sanity.py` | ν = 0.333333, E = 1.154701 on **both** solver and sim |
-| `Phase 3/test_inverse_design.py` | see `p3_final` below |
-| import inventory, 149 files | see `after.json` below |
+| `Phase 3/test_inverse_design.py` | **16/16 ALL PASSED**, matching baseline (`p3_after.log`) |
+| import inventory, 145 → 149 files | **no regressions**; the 4 new modules import ok, the 2 pre-existing failures are unchanged, and one flaky `TIMEOUT` resolved to ok |
 | `inverse_design` transitive imports | **zero** oracle modules |
 
 Test [7] is the load-bearing one: `CLAUDE.md` §3 records that the crystal gate is *structurally
@@ -126,6 +127,14 @@ where W ≠ 0.
 genuine baseline was re-taken from commit `0ad2e49` in an isolated `git worktree`
 (`true_before.json`).
 
+**The inventory's verdict needed correcting too.** As first written it flagged *any* ok↔not-ok
+flip as a failure, and duly reported FAIL for `verify_positions.py: TIMEOUT → ok` — an
+*improvement*, caused by the per-file cap being wall-clock while the baseline ran under CPU
+contention. It now separates a regression (`ok → not-ok`, fatal) from an improvement, otherwise it
+would cry wolf on every future run. The two surviving failures are pre-existing and unrelated:
+`anisotropy/rot_target_seed_probe.py` (its own `_common` sys.path is broken) and `make_pdf.py`
+(`markdown2` not installed).
+
 **A side effect worth recording.** The import inventory executes each file up to its last
 module-level import; in files with code *between* imports that still runs real work, and it
 regenerated five tracked artifacts (`sphere_response_compare.png`, three `Phase 5/networks/*.npz`,
@@ -134,7 +143,9 @@ throwaway worktree so the live tree cannot be touched.
 
 ## 6. Files
 
-- `relayer_a7b.py` — the instrument
-- `true_before.json` / `.log` — genuine pre-change baseline (worktree at `0ad2e49`)
-- `after.json` / `.log` — post-change
-- `before.json` — the first, superseded baseline; kept only to document the flaw in §4
+- `relayer_a7b.py` — the instrument (`--out`, `--compare`, `--imports-from`)
+- `true_before.json` / `.log` — genuine pre-change baseline (worktree at `0ad2e49`, old layout)
+- `final.json` / `.log` — post-change, taken in a throwaway worktree of the finished commit
+- `p3_after.log` — the Phase 3 suite, 16/16
+- `before.json`, `step1.json` — the first, superseded baseline and its step-1 re-run; kept only
+  because §5 "Baseline honesty" refers to them

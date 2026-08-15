@@ -344,7 +344,7 @@ def compare(a_path, b_path):
         print('   ', m)
 
     ia, ib = a.get('imports') or {}, b.get('imports') or {}
-    changed = []
+    changed, improved = [], []
     if ia and ib:
         for f in sorted(set(ia) | set(ib)):
             if f not in ia:                          # a file the move ADDS: it must import cleanly
@@ -353,15 +353,22 @@ def compare(a_path, b_path):
                 continue
             if f not in ib:
                 changed.append(f"{f}: file disappeared (was {ia[f][:40]})"); continue
-            # only the ok/not-ok status must be stable; a reworded error message is not a change
-            if (ia[f] == 'ok') != (ib[f] == 'ok'):
-                changed.append(f"{f}: {ia[f][:70]} -> {ib[f][:70]}")
+            # only the ok/not-ok status matters; a reworded error message is not a change
+            if ia[f] == 'ok' and ib[f] != 'ok':
+                changed.append(f"{f}: REGRESSED  ok -> {ib[f][:70]}")
+            elif ia[f] != 'ok' and ib[f] == 'ok':
+                # NOT a failure. In particular TIMEOUT is load-dependent (the per-file cap is wall
+                # clock), so a busy baseline can time out where a quiet run succeeds.
+                improved.append(f"{f}: {ia[f][:60]} -> ok")
         n_ok_a = sum(1 for v in ia.values() if v == 'ok')
         n_ok_b = sum(1 for v in ib.values() if v == 'ok')
         print(f"\n[imports] before {n_ok_a}/{len(ia)} ok, after {n_ok_b}/{len(ib)} ok — "
-              f"{'NO STATUS CHANGES' if not changed else f'{len(changed)} CHANGED'}")
+              f"{'NO REGRESSIONS' if not changed else f'{len(changed)} REGRESSED'}"
+              f"{f', {len(improved)} improved' if improved else ''}")
         for c in changed:
-            print('   ', c)
+            print('    REGRESSION', c)
+        for c in improved:
+            print('    improved  ', c)
     else:
         print("\n[imports] not recorded on one side — skipped")
 

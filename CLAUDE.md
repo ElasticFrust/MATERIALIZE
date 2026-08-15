@@ -79,12 +79,16 @@ Principles specific here:
 
 - **Protected core + independent oracle** are the two load-bearing invariants *for now*: the solver
   is the fast path, the simulation the truth it is checked against while being validated.
-- **Dependencies point inward, and the oracle is off to the side.** `Phase 5 → Phase 3 → Phase 2`;
-  nothing in Phase 2/3 may import from `verification_tools/`, which is *temporary and retireable* —
-  a design layer rooted in it could not survive its retirement. `verification_tools/` is
-  deliberately **not** on `Phase 3/inverse_design.py`'s `sys.path`, so the inversion cannot return
-  silently. *(A-7b, fixed 2026-08-15: `inverse_design.py` had been importing its mesh construction,
-  its constraint topology and its **solver construction** from four scripts in there.)*
+- **Dependencies point inward, and the oracle is off to the side.** `Phase 5 → Phase 3 → Phase 2`.
+  **No *design/production* module in Phase 2/3 may import from `verification_tools/`** — it is
+  *temporary and retireable*, and a design layer rooted in it could not survive its retirement.
+  `verification_tools/` is deliberately **not** on `Phase 3/inverse_design.py`'s `sys.path`, so the
+  inversion cannot return silently. *(A-7b, fixed 2026-08-15: `inverse_design.py` had been importing
+  its mesh construction, its constraint topology and its **solver construction** from four scripts
+  in there.)* **Tests and verification scripts are the deliberate exception** and *should* import the
+  oracle — that is their job: `Phase 2/test_forward_solver.py` [7] imports `physical_homog` +
+  `sim_assembly` precisely so the comparison has an independent side. The rule is about which way
+  *production* code depends, not about who may run a check.
   Corollary, and the deeper reason: **the oracle must share NO code with the design path** —
   otherwise "checked against the sim" degrades into checking the code against itself (cf. the shear
   defect, §3 verification discipline). `physical_homog` therefore keeps its own `DELTA`/`MODES`
