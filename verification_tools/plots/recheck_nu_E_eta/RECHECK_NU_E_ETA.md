@@ -52,6 +52,22 @@ or has collapsed toward a mechanism:
 | VD a=+10 | 0.1005 | 0.137 | 0.1005 | 0.137 |
 | **VD a=+100** | **0.5913** | **0.849** | **0.0453** | **0.211** |
 
+> **CORRECTION (2026-08-15, later the same day).** The numbers in this table are **not** a measure of
+> solver-vs-sim physics. They compare the solver's ν,E — which are **ν_yx and E_y, the y-direction
+> only** — against the sim's, which are **½(ν_xy+ν_yx) and ½(Ex+Ey)**. That is audit **A-10**, and on
+> anisotropic/VD networks it dominates everything here. Applying the SAME reduction to BOTH tensors:
+>
+> | case (N=14, η=0.30) | Δν as tabulated | Δν, same reduction |
+> |---|---|---|
+> | disordered | 0.0003 | **8.6e-14** |
+> | VD a=−10 | 0.0791 | **1.4e-12** |
+> | VD a=+10 | 0.0929 | **2.4e-12** |
+> | VD a=+5 (η=0.40) | 0.0756 | **1.4e-12** |
+>
+> So solver and sim agree to ~1e-12 on these; the 0.08–0.09 was the convention difference. The
+> "disordered" row looks small only because that mesh is nearly isotropic, where the two reductions
+> coincide. **Read the table below as a comparison of two ν,E CONVENTIONS, not as accuracy.**
+
 **The one large disagreement is understood and expected.** At a = +100 the stiffness is effectively
 binary (k ∈ {0, 2}) and the network is at or past a floppy mode: E collapses from 1.1547 at η=0 to
 0.056 by η=0.04 and ~0 thereafter, and **81% of its samples have E_sim < 0.05**. `CLAUDE.md` §3
