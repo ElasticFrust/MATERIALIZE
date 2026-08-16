@@ -15,11 +15,21 @@
 > - `run_g1_2.py` saved only designs passing the *old* trustworthiness check, so its 58 rejected runs
 >   are unrecoverable — **re-run, don't re-analyse.**
 >
-> **Known limits of the current verification** (audit register `documentation/AUDIT_2026-08.md`):
-> `verify()`'s "independent sim" is **not** independent — it routes through the solver's own
-> contraction (A-1), and the independent oracle covers **bulk only**, so per-triangle and regional
-> `C(s)` are still ungated (A-9). §4 of this file's API notes have drifted from the code (C-6).
-> Do not add designs on top of this until A-9 and A-7b are done.
+> **State of the verification — UPDATED 2026-08-16.** The limits this banner used to list are
+> **resolved**; the text below them was stale and is corrected here:
+> - `verify()`'s independent sim **IS** independent (A-1, fixed 2026-08-15 in `4c3c584`): bulk ν,E
+>   come from `C.sim_bulk_C6` → `physical_homog.virial_C`, touching no solver code. The remaining
+>   `sim_per_triangle_C6` call supplies only the spatial **pattern** (`C6_per`), a use `CLAUDE.md` §3
+>   sanctions. *(This banner asserted the opposite for a day — re-verify a doc claim before relying
+>   on it.)*
+> - per-triangle and regional `C(s)` **are** gated now (A-9, `test_forward_solver` [8]).
+> - A-7b (re-layering) is done.
+> - the designer's verification surface (A-2 … A-6) is done, gated by
+>   `Phase 5/verifications/test_designer_surface.py`.
+>
+> **Still open:** §4 of this file's API notes have drifted from the code (C-6). **`target_err_sim`
+> was REDEFINED on 2026-08-16** (now relative and channel-resolved — register A-2), so its values are
+> **not comparable** to those stored in existing `Phase 5/networks/*.npz`.
 
 > **Purpose of this document.** A self-contained, step-by-step spec an independent implementer can follow to build
 > **Milestone 1 (M1)**: a *search-based inverse designer* that, given a target directional response **ν(θ), E(θ)** and a
@@ -234,6 +244,13 @@ def verify(geo, k):
     return dict(nu_sim=nu_sim, E_sim=E_sim, nu_solver=nu_slv, E_solver=E_slv,
                 solver_sim_gap=gap, C6_per=C6_per)
 ```
+
+> **The CODE is authoritative for this API, not this sketch** (which predates it — cf. C-6). As of
+> 2026-08-16 `verify()` also returns: `C6_bulk`; `physical_ok` / `physical_failures` (the extensible
+> `PHYSICALITY_CHECKS` gate, run on the independent `C6_bulk` — register A-5); and, when targets are
+> given, `target_err_sim` **and** `target_err_solver` with their `_nu` / `_E` channels — both now
+> RELATIVE, sharing `EPS_NU` with the gap above (A-2, A-3). `design()` returns `DesignReports`: a
+> list of the kept reports carrying the dropped candidates on `.rejected`.
 
 **Topology pool for M1a (no flips yet):** the "serious scan" is over Delaunay-realizable topologies, produced by varying the
 point set — this needs *no* new geometry code:
