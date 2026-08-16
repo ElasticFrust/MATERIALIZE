@@ -117,14 +117,48 @@ def loss_at(geo, k, nu_target, E_target, nu_weight=1.0, E_weight=1.0):
 
 
 # ---- 2. SPSA over the node positions (k fixed) ------------------------------------------------
+def tri_shape_quality(geo):
+    """Per-triangle shape quality  q = 4*sqrt(3)*Area / sum(edge^2):  1 = equilateral, 0 = degenerate.
+
+    This is the geometric quantity that governs whether the SOLVER can evaluate the network at all.
+    `A(s) = sum_e (k_e/4l_e^2) q_e q_e^T` loses rank when two of a triangle's edges become
+    near-PARALLEL, and where `A(s)` is rank-deficient the solver's inverse is set by its regulariser
+    rather than by physics (`CLAUDE.md` §3). A sliver is exactly that configuration.
+
+    Measured on the 124 saved `g1_2` designs (2026-08-16), against log10(solver-vs-sim gap):
+
+        min shape quality   corr -0.523   median 0.1475 (trustworthy) vs 0.0516 (untrusted)
+        min ANGLE           corr -0.505   median 5.79 deg            vs 2.20 deg
+        min/mean AREA       corr -0.418   median 0.1358              vs 0.0470
+        min EDGE LENGTH     corr -0.107   median 0.3561              vs 0.3214   <-- USELESS
+
+    So constraining the smallest DISTANCE does almost nothing: a long thin sliver has long edges and
+    a tiny angle. Quality (or equivalently min angle) is the predictor; length is not."""
+    ev = np.asarray(geo['edge_vecs'])
+    A = np.asarray(geo['areas'], float)
+    L2 = (ev ** 2).sum(2)
+    return 4.0 * np.sqrt(3.0) * A / np.maximum(L2.sum(1), 1e-300)
+
+
 def spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed=0,
-                   redelaunay_every=0, verbose=False, nu_weight=1.0, E_weight=1.0):
+                   redelaunay_every=0, verbose=False, nu_weight=1.0, E_weight=1.0,
+                   quality_floor=0.0):
     """Derivative-free position polish of `geo` at FIXED designed `k` (SPSA, sign-normalized —
     see module docstring).  Per step: perturb ALL positions by +-c_k*Delta (Delta random +-1 per
     coordinate) ON THE SAME SIMPLICES (smooth geometry probe, no accidental edge flips), evaluate
     `loss_at` twice, move every coordinate by a_k against the estimated descent direction, then
     accept-if-better-or-slightly-worse; reject any step that collapses a triangle below 1e-3 of
-    the mean area.  Every `redelaunay_every` steps the points are re-Delaunayed: if the topology
+    the mean area, or below `quality_floor` in SHAPE QUALITY.
+
+    `quality_floor` (default 0.0 = OFF, preserving historical behaviour) rejects steps that make any
+    triangle a sliver — see `tri_shape_quality`. **Why this exists:** the area floor alone does not
+    work. On the 124 saved `g1_2` designs the UNTRUSTED ones have median min/mean area 0.047, i.e.
+    **47x above the 1e-3 floor**, so that guard essentially never fires while only ~24% of runs come
+    back trustworthy. Slivers are an ANGLE failure, and area is a poor proxy for it.
+    The default is 0.0 rather than a calibrated value on purpose: the right threshold is being set by
+    an A/B against the 24% baseline, not read off a correlation.
+
+    Every `redelaunay_every` steps the points are re-Delaunayed: if the topology
     is unchanged the same bond ordering (hence `k`) is kept; if it CHANGED, the new-topology geo
     is returned immediately with `geo['topology_changed']=True` so the caller re-designs k.
 
@@ -155,7 +189,10 @@ def spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed
         gp = triangulation.geo_from_simplices(pts + ck * Delta, tris, Lx, Ly)
         gm = triangulation.geo_from_simplices(pts - ck * Delta, tris, Lx, Ly)
         mean_area = 0.5 * (gp['areas'].mean() + gm['areas'].mean())
-        if min(gp['areas'].min(), gm['areas'].min()) < area_floor * mean_area:
+        bad_area = min(gp['areas'].min(), gm['areas'].min()) < area_floor * mean_area
+        bad_shape = quality_floor > 0.0 and min(tri_shape_quality(gp).min(),
+                                                tri_shape_quality(gm).min()) < quality_floor
+        if bad_area or bad_shape:
             n_reject += 1                             # degenerate probe — skip this step
             history.append(L_cur)
             continue
@@ -171,7 +208,8 @@ def spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed
         pts_new = pts - ak * s * Delta
 
         g_new = triangulation.geo_from_simplices(pts_new, tris, Lx, Ly)
-        if g_new['areas'].min() < area_floor * g_new['areas'].mean():
+        if (g_new['areas'].min() < area_floor * g_new['areas'].mean()
+                or (quality_floor > 0.0 and tri_shape_quality(g_new).min() < quality_floor)):
             n_reject += 1; rej_streak += 1            # degenerate triangle — reject
         else:
             L_new = loss_at(g_new, kt, nu_target, E_target, nu_weight, E_weight)
@@ -214,7 +252,7 @@ def spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed
 def design_with_positions(nu_target, E_target, geo0, n_outer=3, spsa_steps=40, n_iter=80,
                           n_restarts=1, reg=0.02, spsa_a=0.02, spsa_c=0.01,
                           redelaunay_every=0, seed=0, verbose=True,
-                          nu_weight=1.0, E_weight=1.0):
+                          nu_weight=1.0, E_weight=1.0, quality_floor=0.0):
     """Joint position+k design by alternation, starting from topology `geo0`:
 
         round = [k-design (designer.design_on_topology)] -> [SPSA position polish at fixed k]
@@ -245,7 +283,8 @@ def design_with_positions(nu_target, E_target, geo0, n_outer=3, spsa_steps=40, n
         geo2 = spsa_positions(geo, k, nu_target, E_target, n_steps=spsa_steps,
                               a=spsa_a, c=spsa_c, seed=seed + outer,
                               redelaunay_every=redelaunay_every,
-                              nu_weight=nu_weight, E_weight=E_weight)
+                              nu_weight=nu_weight, E_weight=E_weight,
+                              quality_floor=quality_floor)
         if geo2['topology_changed']:
             # k no longer matches geo2's bonds; the polish gains up to the change are in geo2's
             # positions, and the NEXT round's k-design re-designs k on the new topology
