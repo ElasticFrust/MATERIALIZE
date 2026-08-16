@@ -310,6 +310,53 @@ def test_homogeneity_regularizer():
           f"(achieved nu={rep1['achieved']:+.3f})  OK")
 
 
+# ---- audit B-1: always-on anomaly capture for [15] -------------------------------------------
+# B-1 stage 3: this comparison intermittently reads ~1.4e-04 (once ~1.17e-02) instead of its usual
+# 1.6e-12 — measured rate ~1 in 21 suite runs, 2026-08-16. It needs SUITE CONTEXT (0 anomalies in 30
+# isolated processes) and is stochastic GIVEN that context, so a bisect cannot corner it: two full
+# bisects both drew clean. Cause unknown; ruled out by measurement: the A-10 change, ill-conditioning
+# (relative condition number 0.05-0.08 w.r.t. k), perturbing G through the singular lstsq (1-3x, no
+# amplification even at sigma_min=4.7e-17), a Delaunay flip, a float32 leak, make_lattice caching,
+# method switching, a try/except fallback, the 500/600 threshold window, and state from any of the 13
+# preceding tests.
+#
+# [15] only ever reported max-over-the-3-cases, so WHICH case deviates and whether the deviation is
+# ONE tensor component or diffuse has never been recorded — the sharpest unused clue. This captures
+# exactly that, costs nothing when nothing is wrong, and lets the verification campaign collect the
+# diagnostic for free instead of buying dedicated runs. Threshold 1e-9 sits ~600x above the worst
+# healthy case (1.6e-12) and ~1e5 below the anomaly.
+B1_DUMP_THRESHOLD = 1e-9
+B1_DUMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'verifications', 'b1_dumps')
+
+
+def _b1_dump_if_anomalous(phi, psi, eta, seed, vs, c_solver, c_phys):
+    """Record a full picture of an anomalous [15] comparison. Never raises and never alters the
+    test's verdict — the asserts are untouched; this only observes."""
+    try:
+        if vs <= B1_DUMP_THRESHOLD:
+            return
+        import datetime, json, platform
+        os.makedirs(B1_DUMP_DIR, exist_ok=True)
+        scale = float(np.abs(c_phys).max())
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        commit, dirty, _ = C._provenance()
+        rec = dict(when=stamp, commit=commit, dirty=dirty, vs=vs,
+                   case=dict(phi=phi, psi=psi, eta=eta, seed=seed),
+                   # is the deviation ONE component or diffuse? -> the discriminating question
+                   dC_over_scale=(np.abs(c_solver - c_phys) / scale).tolist(),
+                   c_solver=c_solver.tolist(), c_phys=c_phys.tolist(),
+                   torch_threads=torch.get_num_threads(),
+                   omp=os.environ.get('OMP_NUM_THREADS', 'unset'),
+                   platform=platform.platform(), cpu_count=os.cpu_count())
+        path = os.path.join(B1_DUMP_DIR, f'b1_anomaly_{stamp}_eta{eta}_s{seed}.json')
+        with open(path, 'w') as fh:
+            json.dump(rec, fh, indent=2)
+        print(f"  [15] *** B-1 ANOMALY CAPTURED *** vs={vs:.3e} "
+              f"(case eta={eta} seed={seed}) -> {path}", flush=True)
+    except Exception as e:                                   # noqa: BLE001 — a diagnostic must never
+        print(f"  [15] (B-1 dump failed, ignored: {type(e).__name__}: {e})", flush=True)  # break a gate
+
+
 def test_homogenization():
     """The homogenisation function -- turning a relaxed network into effective (ν, E) -- checked
     three ways that MUST all agree: (a) the forward solver's own homogenised forward(), (b)
@@ -355,6 +402,7 @@ def test_homogenization():
         c_phys = PH.energy_C(geo, free, SA.assemble_K_faff)          # INDEPENDENT energy-Hessian tensor
         ve = max(abs(nu_v - nu_e), abs(E_v - E_e) / abs(E_v))
         vs = float(np.abs(c_solver - c_phys).max() / np.abs(c_phys).max())
+        _b1_dump_if_anomalous(phi, psi, eta, seed, vs, c_solver, c_phys)   # audit B-1, see below
         assert ve < 3e-3, f"virial vs energy-Hessian disagree (phi={phi},psi={psi},eta={eta}): {ve:.2e}"
         assert vs < 0.01, f"solver vs physical homogenisation tensor disagree (phi={phi},psi={psi},eta={eta}): {vs:.2e}"
         worst_ve, worst_vs = max(worst_ve, ve), max(worst_vs, vs)

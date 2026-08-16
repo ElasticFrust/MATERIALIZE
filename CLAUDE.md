@@ -311,8 +311,13 @@ Three DISTINCT quantities — keep them separate:
   the designer) — it needs the solver, on which the sim must not depend. *(TODO #2.6:
   `_common.open_stretch` open-boundary solve not yet guarded.)*
 - **Physical ground truth = virial/energy (unweighted mean of C(s)).** The legacy **area-weighted
-  metric average** (`Ceff_nuE`) is physically wrong (biases ν on unequal-area meshes) and has been
-  **removed** (tombstoned 2026-08-10; git-restorable).
+  metric average** (`Ceff_nuE`) is physically wrong (biases ν on unequal-area meshes) and is
+  **tombstoned — it raises `NotImplementedError`** (2026-08-10; body preserved in-place, git-restorable).
+  *Precisely (audit C-5, which flagged "removed" as an overstatement): the function is dead, but call
+  sites remain inside the **superseded legacy island** in `verification_tools/` — those scripts
+  therefore do not run. See `verification_tools/README.md` §3. Nothing on a live path calls it, and
+  **numbers computed through it are stale** — notably the "mean-field ≈1.4× over-compliance" figure,
+  which must be re-derived before being re-cited.*
 - **Protected core is gated.** `Phase 2/forward_solver_torch.py` changes require passing
   `test_forward_solver.py` **and** the physical `verify_*` suite; not done until dependents are
   re-verified and blast radius checked.

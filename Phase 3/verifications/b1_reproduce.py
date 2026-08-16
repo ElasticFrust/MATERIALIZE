@@ -22,6 +22,12 @@ Modes:
                to catch state left behind by an earlier test
   commits ...  run the probe against a list of git revisions via throwaway worktrees — the check
                that separates "nondeterminism" from "the tree was moving underneath the runs"
+  suitectx N   RE-ESCALATION DIAGNOSTIC (2026-08-16). Reproduce the suite context (run the 13
+               preceding tests), then probe N times logging the FULL tensors — per case, and
+               component-wise. [15] reports only max-over-3-cases, so which case deviates, and
+               whether the deviation is ONE tensor component or diffuse, has never been recorded.
+               That is the sharpest unused clue: the anomaly appears only in suite context (the
+               isolated probe has spread 0.00e+00), so `repeat` cannot see it and this can.
 
 Run:  python b1_reproduce.py fingerprint
       python b1_reproduce.py repeat 30
@@ -150,6 +156,49 @@ def mode_bisect():
         print(_line(name, vs, hs), flush=True)
 
 
+def probe_case_full(phi, psi, eta, seed):
+    """Like probe_case, but returns the two 3x3 tensors so the deviation can be localised."""
+    geo, k = build_case(phi, psi, eta, seed)
+    free = np.arange(2, 2 * len(geo['pts']))
+    cs = C.solver_region_C6(DesignProblem.from_geo(geo), torch.as_tensor(k))
+    c_solver = np.array([[cs[0], cs[2], cs[1]], [cs[2], cs[5], cs[4]], [cs[1], cs[4], cs[3]]])
+    c_phys = PH.energy_C(geo, free, SA.assemble_K_faff)
+    return c_solver, c_phys
+
+
+def mode_suitectx(n):
+    """Suite context, then N fully-logged probes. Prints a line per (repeat, case); on any case whose
+    error exceeds the isolated baseline by >100x, dumps the component-wise |dC|/max|C| matrix."""
+    import test_inverse_design as T
+    BASE = {0: 2.205e-13, 1: 1.604e-12, 2: 2.202e-13}          # isolated, measured
+    torch.manual_seed(0)
+    print('  establishing suite context (13 preceding tests)...', flush=True)
+    for name in PRECEDING:
+        try:
+            getattr(T, name)()
+        except Exception as e:
+            print(f'   ({name} raised {type(e).__name__}: {e})', flush=True)
+    print('  context established; probing\n', flush=True)
+    hits = 0
+    for r in range(n):
+        for ci, case in enumerate(CASES):
+            cs, cp = probe_case_full(*case)
+            scale = np.abs(cp).max()
+            vs = float(np.abs(cs - cp).max() / scale)
+            flag = ''
+            if vs > 100 * BASE[ci]:
+                hits += 1
+                flag = f'   *** {vs / BASE[ci]:.1e}x BASELINE ***'
+            print(f'  rep {r+1:3d} case{ci+1} vs={vs:.4e}{flag}', flush=True)
+            if flag:
+                D = np.abs(cs - cp) / scale
+                print('        component-wise |dC|/max|C|  (Voigt xx,yy,xy):', flush=True)
+                for row in D:
+                    print('          ' + '  '.join(f'{v:.3e}' for v in row), flush=True)
+                print(f'        solver diag={np.diag(cs)}  phys diag={np.diag(cp)}', flush=True)
+    print(f'\n  {n} repeats x 3 cases -> {hits} deviation(s) above 100x baseline')
+
+
 def mode_commits(revs):
     """Probe each revision in a throwaway worktree — separates nondeterminism from a moving tree."""
     child = os.path.join(HERE, os.path.basename(__file__))
@@ -184,6 +233,8 @@ def main():
         mode_repeat(int(sys.argv[2]) if len(sys.argv) > 2 else 10)
     elif mode == 'bisect':
         mode_bisect()
+    elif mode == 'suitectx':
+        mode_suitectx(int(sys.argv[2]) if len(sys.argv) > 2 else 5)
     elif mode == 'commits':
         mode_commits(sys.argv[2:])
     else:

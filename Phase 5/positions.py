@@ -27,12 +27,21 @@ deliberately want joint position+topology exploration (not the default, and not 
 
 Public API
 ----------
-    loss_at(geo, k, nu_target, E_target)                       -> float  (objective residual)
+    loss_at(geo, k, nu_target, E_target, nu_weight=1.0, E_weight=1.0)
+                                                               -> float  (objective residual)
     spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed=0,
-                   redelaunay_every=0)                         -> geo    (carries 'spsa_history',
+                   redelaunay_every=0, nu_weight=1.0, E_weight=1.0)
+                                                               -> geo    (carries 'spsa_history',
                                                                           'topology_changed')
     design_with_positions(nu_target, E_target, geo0, n_outer=3, spsa_steps=40, n_iter=80,
-                          n_restarts=1, reg=0.02, redelaunay_every=0) -> (geo, k, history)
+                          n_restarts=1, reg=0.02, redelaunay_every=0,
+                          nu_weight=1.0, E_weight=1.0)          -> (geo, k, history)
+
+**`nu_weight`/`E_weight` MUST match the weights the k-design used** — `CLAUDE.md` §3 makes this the
+critical rule of position optimisation: mismatched weights mean the polish silently optimises a
+DIFFERENT loss and destroys anisotropy. They were previously omitted from this very cheat-sheet
+(audit B-3b), so a reader following it was led into precisely the documented failure mode.
+`designer.design()` passes them through for you.
 """
 # ---- §0 preamble (verbatim; positions.py lives directly in Phase 5/) --------------------------
 import os, sys

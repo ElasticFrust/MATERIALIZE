@@ -748,12 +748,50 @@ def networks_dir(case):
     return d
 
 
-def save_network(path, geo, bond_k, C6_per=None, **meta):
+_GIT_STATE = None            # memoised: git is shelled out ONCE per process, not once per save
+
+
+def _provenance():
+    """(commit, dirty, saved_utc) for the artifact-traceability stamp.
+
+    The git query is cached for the process — a campaign saves hundreds of designs and the tree does
+    not change under a running job. Never raises: a missing git, a detached checkout or a non-repo
+    cwd must not be able to fail a long design run; provenance is best-effort and degrades to ''."""
+    global _GIT_STATE
+    import datetime
+    import subprocess
+    if _GIT_STATE is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+
+        def _git(*a):
+            try:
+                return subprocess.run(('git',) + a, cwd=here, capture_output=True, text=True,
+                                      timeout=10).stdout.strip()
+            except Exception:                                # noqa: BLE001 — best-effort by design
+                return ''
+        _GIT_STATE = (_git('rev-parse', '--short', 'HEAD'), bool(_git('status', '--porcelain')))
+    return (*_GIT_STATE,
+            datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'))
+
+
+def save_network(path, geo, bond_k, C6_per=None, seed=None, **meta):
     """Persist a DESIGNED network so later analysis/plots can reload it (load_network) WITHOUT
     re-running the minimizer. Stores geometry + designed per-bond k + (optional) per-triangle
-    physical tensor + metadata (topo, size, target, region, achieved...)."""
+    physical tensor + metadata (topo, size, target, region, achieved...).
+
+    Also stamps PROVENANCE automatically — `commit`, `dirty`, `saved_utc`, and `seed` — so every
+    saved artifact satisfies the charter's "traceable to (code version, config, seed)" rule
+    (audit B-3: none of this was recorded). `dirty=True` means the tree had uncommitted changes when
+    the design was produced, so `commit` alone does NOT reproduce it — that distinction is exactly
+    what made the B-1 investigation expensive. Pass `seed=` explicitly; an unpassed seed is stored as
+    None rather than silently invented."""
     import json
     k = bond_k.detach().numpy() if torch.is_tensor(bond_k) else np.asarray(bond_k)
+    commit, dirty, saved = _provenance()
+    meta.setdefault('commit', commit)
+    meta.setdefault('dirty', dirty)
+    meta.setdefault('saved_utc', saved)
+    meta.setdefault('seed', seed)
     np.savez_compressed(path, pts=geo['pts'], tri_verts=geo['tri_verts'], centroids=geo['centroids'],
                         simplices=geo['simplices'], bond_u=geo['bond_u'], bond_v=geo['bond_v'],
                         bond_R=geo['bond_R'], tri_bond=geo['tri_bond'], areas=geo['areas'],

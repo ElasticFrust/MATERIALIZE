@@ -205,14 +205,22 @@ def main():
         t0 = time.time()
         try:
             row = run_one(run_id, nu, bn, f, topo)
+            row['status'], row['error'] = 'ok', ''
             rows.append(row)
             print(f"[{run_id+1:3d}/{n_runs}] {topo[1]:8s} nu*={nu:+.2f} band={bn:6s} "
                   f"| err i={row['err_initial']:.3f} k={row['err_konly']:.3f} "
                   f"k+p={row['err_full']:.3f} | gap={row['solver_sim_gap']:.3f} "
                   f"| {time.time()-t0:.0f}s", flush=True)
         except Exception as e:                             # noqa: BLE001
+            # RECORD the failure instead of dropping it (audit A-11): a dropped run left the success
+            # rate with a survivorship-biased denominator. The bare `except` is retained on purpose
+            # — an unattended campaign must survive one bad topology — but it no longer hides the
+            # attempt. NB it would also absorb UnhealthyGeometryError, which `status` now names.
             print(f"[{run_id+1:3d}/{n_runs}] FAILED {topo[0]} nu*={nu} band={bn}: {e}", flush=True)
             traceback.print_exc()
+            rows.append(dict(run_id=run_id, topo=topo[0], topo_class=topo[1],
+                             nu_target=float(nu), band=bn,
+                             status=f'FAILED:{type(e).__name__}', error=str(e)[:200]))
         # incremental save so a crash keeps progress
         if rows and (run_id % 5 == 0 or run_id == n_runs - 1):
             _save(rows)
@@ -228,13 +236,16 @@ def _save(rows):
     if not rows:
         return
     os.makedirs(RESDIR, exist_ok=True)
-    keys = list(rows[0].keys())
+    # UNION of keys, not rows[0]'s: since A-11 a FAILED run is recorded too and carries fewer
+    # fields, so keying off the first row would raise (DictWriter on extra keys, KeyError in the
+    # npz comprehension) the moment run 1 failed. Missing entries are written blank.
+    keys = list(dict.fromkeys(k for r in rows for k in r))
     with open(os.path.join(RESDIR, 'results.csv'), 'w', newline='') as fh:
-        w = csv.DictWriter(fh, fieldnames=keys)
+        w = csv.DictWriter(fh, fieldnames=keys, extrasaction='ignore')
         w.writeheader()
-        w.writerows(rows)
+        w.writerows([{k: r.get(k, '') for k in keys} for r in rows])
     np.savez(os.path.join(RESDIR, 'results.npz'),
-             **{k: np.array([r[k] for r in rows]) for k in keys})
+             **{k: np.array([r.get(k, '') for r in rows]) for k in keys})
 
 
 def _summary(rows):

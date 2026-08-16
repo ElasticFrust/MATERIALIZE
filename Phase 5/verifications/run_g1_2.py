@@ -30,6 +30,8 @@ torch.set_default_dtype(torch.float64)
 
 sys.path.insert(0, os.path.join(REPO, 'Phase 5'))
 import seeds, designer, positions, triangulation
+import physical_homog as PH        # require_healthy_mesh / UnhealthyGeometryError — ONE definition
+                                   # of "healthy geometry" (audit A-13), not a local re-implementation
 
 # ---- sweep grid ------------------------------------------------------------------------------
 NU_GRID = np.array([-0.95, -0.75, -0.5, -0.3, -0.1, 0.1, 0.2, 0.3, 0.4, 0.6, 0.9])
@@ -101,17 +103,24 @@ def _healthy(geo):
     solver's uniform-k nu,E are finite and physical.  Gates the independent sim (scipy/LAPACK),
     which can HARD-CRASH (native segfault, uncatchable in Python) on a near-singular geometry — so
     both topology construction and the position search must screen geometries through this first."""
-    a = np.asarray(geo['areas'], float)
-    if not np.all(a > 0) or a.min() < 1e-3 * a.mean():
+    # Geometry screen: delegate to the CANONICAL check rather than re-implementing the area test
+    # (audit A-13 — this file carried it three times, once with a different threshold).
+    try:
+        PH.require_healthy_mesh(geo)
+    except PH.UnhealthyGeometryError:
         return False
+    # Response screen: "is the RESPONSE physical" is the CALLER's job (CLAUDE.md §3) — it needs the
+    # solver, which the sim must not depend on. Narrow except: a near-singular geometry can make the
+    # solve return non-finite or raise a linalg error, and THAT is the answer (unhealthy); anything
+    # else is a real bug and must not be silently swallowed (audit A-11).
     try:
         prob = DesignProblem.from_geo(geo)
         out = prob.forward(torch.ones(len(geo['bond_u'])))
         nu, E = c6_to_nuE(prob.region_tensor(out['per_triangle'], None))
         nu, E = float(nu), float(E)
-        return bool(np.isfinite(nu) and np.isfinite(E) and abs(nu) < 2.5 and E > 1e-6)
-    except Exception:                                      # noqa: BLE001
+    except (np.linalg.LinAlgError, torch._C._LinAlgError, ValueError):
         return False
+    return bool(np.isfinite(nu) and np.isfinite(E) and abs(nu) < 2.5 and E > 1e-6)
 
 
 # ---- the 10 distinct topologies ---------------------------------------------------------------
@@ -171,8 +180,9 @@ def eta_reference(half=4.0, etas=(0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45
             ang = rng.uniform(0.0, 2 * np.pi, len(pts0))
             pj = pts0 + eta * np.stack([np.cos(ang), np.sin(ang)], axis=1)   # magnitude-eta move
             g = triangulation.geo_from_simplices(pj, tris, Lx, Ly)           # NEVER re-triangulate
-            a = np.asarray(g['areas'])
-            if not (a > 0).all() or a.min() < 1e-3 * a.mean():
+            try:
+                PH.require_healthy_mesh(g)                   # canonical screen (A-13), not a copy
+            except PH.UnhealthyGeometryError:
                 continue
             C.apply_k_to_geo(g, np.ones(len(g['bond_u'])))
             nu, E = C.sim_region_nuE(g)
@@ -188,13 +198,21 @@ def nu_tag(nu):
 
 def _jittered_start(pts0, tris, Lx, Ly, rng, jitter):
     """Symmetry-breaking start: jitter positions (frozen connectivity) until all triangles keep a
-    healthy positive area, so SPSA begins away from the stationary symmetric point."""
+    healthy positive area, so SPSA begins away from the stationary symmetric point.
+
+    Uses the canonical screen with a DELIBERATELY STRICTER `min_area_frac` (audit A-13: this was a
+    bare 0.05 inline, indistinguishable from the 1e-3 sites and readable as an inconsistency). 1e-3
+    is the "will the sim segfault" floor; here we want a comfortable starting geometry, and the loop
+    shrinks the jitter until it gets one — so the stricter bound is the point, not a mistake."""
+    START_MIN_AREA_FRAC = 0.05
     for _ in range(8):
         pj = pts0 + rng.normal(0.0, jitter, pts0.shape)
         g = triangulation.geo_from_simplices(pj, tris, Lx, Ly)
-        if g['areas'].min() > 0.05 * g['areas'].mean():
+        try:
+            PH.require_healthy_mesh(g, min_area_frac=START_MIN_AREA_FRAC)
             return g
-        jitter *= 0.6
+        except PH.UnhealthyGeometryError:
+            jitter *= 0.6
     return g
 
 
@@ -253,13 +271,14 @@ def _save(rows):
     if not rows:
         return
     os.makedirs(RESDIR, exist_ok=True)
-    keys = list(rows[0].keys())
+    # UNION of keys, not rows[0]'s — see run_goal1._save: FAILED rows (A-11) carry fewer fields.
+    keys = list(dict.fromkeys(k for r in rows for k in r))
     with open(os.path.join(RESDIR, 'results.csv'), 'w', newline='') as fh:
-        w = csv.DictWriter(fh, fieldnames=keys)
+        w = csv.DictWriter(fh, fieldnames=keys, extrasaction='ignore')
         w.writeheader()
-        w.writerows(rows)
+        w.writerows([{k: r.get(k, '') for k in keys} for r in rows])
     np.savez(os.path.join(RESDIR, 'results.npz'),
-             **{k: np.array([r[k] for r in rows]) for k in keys})
+             **{k: np.array([r.get(k, '') for r in rows]) for k in keys})
 
 
 def main():
@@ -326,28 +345,47 @@ def main():
                 gap = float(rep['solver_sim_gap'])
                 err = abs(nu_ach - float(nu_target))
                 trust = int(gap < GAP_TOL)
-                path = ''
-                if trust:                                  # save only trustworthy designs
-                    path = os.path.join(NETDIR, f"design_g12_{t['name']}_{nu_tag(float(nu_target))}.npz")
-                    C.apply_k_to_geo(geoB, k)
-                    C.save_network(path, geoB, k, C6_per=rep['C6_per'],
-                                   target_nu=float(nu_target), target_E=1.0,
-                                   topo=t['name'], topo_class=t['cls'], coord_sig=t['sig'],
-                                   nu_sim=nu_ach, E_sim=E_ach, nu_initial=nu_init[t['name']],
-                                   nu_aniso_std=aniso, solver_sim_gap=gap, note='G1.2 positions-only k=1')
+                # SAVE EVERY RUN, trustworthy or not (audit A-12). The previous `if trust:` discarded
+                # 58 of 110 runs, and because the trust filter was applied with an instrument later
+                # found ~200x too lenient (A-0), the rejected set could not be re-examined — it was
+                # simply gone. An untrustworthy design is DATA: it is the record of where the solver
+                # and the sim part company. The filename marks it so nothing is mistaken for a good
+                # design, and `trustworthy` is stored in the file's own metadata.
+                tag = 'design' if trust else 'UNTRUSTED'
+                path = os.path.join(NETDIR, f"{tag}_g12_{t['name']}_{nu_tag(float(nu_target))}.npz")
+                C.apply_k_to_geo(geoB, k)
+                C.save_network(path, geoB, k, C6_per=rep['C6_per'],
+                               target_nu=float(nu_target), target_E=1.0,
+                               topo=t['name'], topo_class=t['cls'], coord_sig=t['sig'],
+                               nu_sim=nu_ach, E_sim=E_ach, nu_initial=nu_init[t['name']],
+                               nu_aniso_std=aniso, solver_sim_gap=gap, trustworthy=bool(trust),
+                               note='G1.2 positions-only k=1')
                 rows.append(dict(run_id=run_id, topo=t['name'], topo_class=t['cls'],
                                  coord_sig=t['sig'], n_nodes=t['n_nodes'], n_bond=t['n_bond'],
                                  nu_target=float(nu_target), nu_initial=nu_init[t['name']],
                                  nu_achieved_sim=nu_ach, E_achieved_sim=E_ach, err=err,
                                  nu_aniso_std=aniso, solver_sim_gap=gap, trustworthy=trust,
+                                 status='ok', error='',
                                  design_loss=float(loss), design_path=path))
                 print(f"[{run_id:3d}/{n_runs}] {t['name']:20s} nu*={nu_target:+.2f} | "
                       f"init={nu_init[t['name']]:+.3f} -> ach={nu_ach:+.3f} err={err:.3f} "
                       f"aniso={aniso:.3f} gap={gap:.3f} {'OK' if trust else 'UNTRUST'} "
                       f"| {time.time()-t0:.0f}s", flush=True)
             except Exception as e:                         # noqa: BLE001
+                # A failed run is RECORDED, not dropped (audit A-11). Dropping it left the success
+                # rate with a survivorship-biased denominator: N_ok/N_ok instead of N_ok/N_attempted.
+                # The bare `except` stays deliberately — this is a long unattended campaign driver and
+                # one bad topology must not kill it — but it is now honest about what it swallowed.
                 print(f"[{run_id:3d}/{n_runs}] FAILED {t['name']} nu*={nu_target}: {e}", flush=True)
                 traceback.print_exc()
+                rows.append(dict(run_id=run_id, topo=t['name'], topo_class=t['cls'],
+                                 coord_sig=t['sig'], n_nodes=t['n_nodes'], n_bond=t['n_bond'],
+                                 nu_target=float(nu_target), nu_initial=nu_init[t['name']],
+                                 nu_achieved_sim=float('nan'), E_achieved_sim=float('nan'),
+                                 err=float('nan'), nu_aniso_std=float('nan'),
+                                 solver_sim_gap=float('nan'), trustworthy=0,
+                                 status=f'FAILED:{type(e).__name__}', error=str(e)[:200],
+                                 design_loss=float('nan'), design_path=''))
             if rows and (run_id % 5 == 0 or run_id == n_runs):
                 _save(rows)
 

@@ -160,9 +160,11 @@ nu.backward()              # d(nu)/dk in k.grad — dense (<=600) or adjoint (>6
 - **The tensor oracle must be `physical_homog.energy_C` (or the virial), never
   `_common.sim_region_C6`** — the latter routes the sim's relaxation through the solver's own
   `_compute_actual_elastic_tensor`, so comparing against it is self-verification.
-- **Do not** use the legacy area-weighted metric average — `test_cluster_Ceff.Ceff_nuE` has been
-  **removed/tombstoned** (superseded; it biased ν on unequal-area meshes); use the physical
-  (virial/energy) ground truth.
+- **Do not** use the legacy area-weighted metric average — `test_cluster_Ceff.Ceff_nuE` is
+  **tombstoned and raises `NotImplementedError`** (superseded; it biased ν on unequal-area meshes);
+  use the physical (virial/energy) ground truth. Call sites survive only in the superseded legacy
+  island (`verification_tools/README.md` §3), which consequently does not run — audit C-5 flagged
+  the earlier "removed" wording as overstating a cleanup that was not finished.
 
 ---
 
