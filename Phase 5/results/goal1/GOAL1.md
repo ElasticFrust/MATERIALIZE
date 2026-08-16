@@ -109,6 +109,18 @@ floor is raised:
 > `medium`/`small`/`none` maxima (+0.33, +0.34, +0.33) ARE genuine: they sit well inside the grid, so
 > the designer had room above and did not use it. Likewise every minimum here is genuine. Only the
 > two flagged cells are artifacts of where the search stopped.
+>
+> **RESOLVED 2026-08-16** by `Phase 5/results/goal1_frontier/GOAL1_FRONTIER.md` (ν probed to 0.95):
+> | band | f | reported here | **actual frontier** |
+> |---|---|---|---|
+> | soft | 0.00 | +0.45 ⚠ | **+0.91** (gap 0.0000, trustworthy) |
+> | large | 0.10 | +0.44 ⚠ | **+0.63** (genuine — targets 0.80/0.90/0.95 all saturate there, gap 0.0000) |
+>
+> So the true `f=0` window is **[−0.78, +0.91]** — near-symmetric — and roughly **half the positive
+> half of the design space was invisible to this sweep**. The positive frontier turns out to depend on
+> stiffness contrast exactly as the negative one does, which *strengthens* this document's central
+> claim rather than weakening it: reaching either extreme requires bond-level contrast, and clamping
+> `f` collapses both ends toward the uniform-lattice ν = 1/3.
 
 At `f = 0` the designer reaches deep auxetic behaviour (ν ≈ −0.82) *and* the stiff positive end
 (+0.45). Clamping the bonds toward uniform (`f = 0.99`) collapses the whole reachable window to
