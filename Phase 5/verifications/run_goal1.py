@@ -33,6 +33,11 @@ NU_GRID = np.array([-0.9, -0.7, -0.5, -0.3, -0.15, 0.0, 0.1, 0.2, 0.3, 0.4, 0.45
 BANDS = [('soft', 0.0), ('large', 0.1), ('medium', 0.5), ('small', 0.9), ('none', 0.99)]
 REPS_PER_COMBO = 2                                          # distinct topologies per (nu,band)
 GAP_TOL = 0.05
+# Seeds as NAMED constants, not literals buried in main() — the charter requires every artifact to be
+# traceable to (code version, config, SEED), and `save_network` now stamps these into each design
+# (audit B-3; the shakedown found `seed: None` because they were inline and never recorded).
+SEED_TOPO = 0                                               # topology generation (build_topologies)
+SEED_SHUFFLE = 12345                                        # run-order shuffle across classes
 RESDIR = os.path.join(REPO, 'Phase 5', 'results', 'goal1')
 NETDIR = os.path.join(REPO, 'Phase 5', 'networks', 'goal1')
 
@@ -146,11 +151,13 @@ def run_one(run_id, nu_target, band_name, f, topo):
     path = os.path.join(NETDIR, f'design_g1_{run_id}.npz')
     C.apply_k_to_geo(geoF, kF)
     C.save_network(path, geoF, kF, C6_per=rep_iii['C6_per'],
+                   seed=dict(topo=SEED_TOPO, shuffle=SEED_SHUFFLE),   # B-3 traceability
                    target_nu=float(nu_target), target_E=1.0, band=band_name, band_f=f,
                    topo_class=cls, seed_name=name, n_nodes=n_nodes,
                    err_initial=err_i, err_konly=err_ii, err_full=err_iii,
                    nu_sim_initial=nu_i, nu_sim_konly=nu_ii, nu_sim_full=nu_iii,
-                   E_sim_full=E_iii, solver_sim_gap=gap, nu_solver_full=float(nuF_slv))
+                   E_sim_full=E_iii, solver_sim_gap=gap, nu_solver_full=float(nuF_slv),
+                   trustworthy=bool(gap < GAP_TOL))    # was computed for the row but never saved
 
     return dict(run_id=run_id, topo_name=name, topo_class=cls, n_nodes=n_nodes, n_bond=nbond,
                 nu_target=float(nu_target), band=band_name, band_f=f,
@@ -185,8 +192,8 @@ def main():
     print(f"[goal1] {len(NU_GRID)} nu x {len(BANDS)} bands x {REPS_PER_COMBO} = {n_runs} runs",
           flush=True)
 
-    topos = build_topologies(n_runs + 5, seed0=0)
-    rng = np.random.default_rng(12345)
+    topos = build_topologies(n_runs + 5, seed0=SEED_TOPO)
+    rng = np.random.default_rng(SEED_SHUFFLE)
     rng.shuffle(topos)                                     # spread classes across the grid
     print(f"[goal1] built {len(topos)} distinct topologies; classes: "
           f"{ {c: sum(1 for t in topos if t[1]==c) for c in set(t[1] for t in topos)} }",
