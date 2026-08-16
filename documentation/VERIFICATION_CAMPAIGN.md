@@ -52,7 +52,7 @@ it costs little.
 | what | covers |
 |---|---|
 | `Phase 2/test_forward_solver.py` | 8 gates: crystal ν=1/3; foam; intrinsic gradient; autograd-vs-FD; large-N adjoint; legacy Woodbury; **[7]** bulk `C_eff` vs energy Hessian component-wise; **[8]** per-triangle + regional `C(s)` vs the independent oracle |
-| `Phase 2/verification_open_domain` | the open-domain checks that sit beside the core |
+| ~~`Phase 2/verification_open_domain`~~ | **not runnable** — it is a directory of PNG outputs, not a check (corrected 2026-08-16 when Stage 0 was first run). Open-boundary verification remains incomplete: audit **A-8** |
 | `Phase 3/test_inverse_design.py` | 16 tests incl. **[15]** solver-vs-oracle tensor + virial-vs-energy, and the strain/stress + homogeneity family |
 | `Phase 3/verifications/verify_lattice.py` | the Phase 3 lattice check |
 | `verification_tools/accuracy_vs_disorder.py` | 9 network families × η ≤ 0.42 — end-to-end solver-vs-oracle, the broadest single statement of solver accuracy we have |

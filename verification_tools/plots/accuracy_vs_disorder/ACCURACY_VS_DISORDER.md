@@ -52,8 +52,14 @@ disorder intent — a topology scan); and an anisotropic base lattice (ψ=0.6).
 **Read the first three rows for "is the solver right"; the last three only for "is the contraction
 right".** They are different questions and they differ by up to 8 orders (§2).
 
-- **The oracle does not drift.** The control is flat at 1.1e-13 across every family and every η, so
-  growth elsewhere is never the yardstick.
+- **The oracle barely drifts — with one exception, corrected 2026-08-16.** The control (virial vs
+  energy, no solver code) sits at **1.1e-13 for eight of the nine families** across the whole domain.
+  **VD a=+100 is the exception:** it climbs 1.1e-13 → **1.3e-10** by η=0.42 (median 1.7e-12) — three
+  orders. Earlier revisions of this document, the register and memory all said "flat at 1.1e-13
+  across every family and every η"; that was overstated. The conclusion is unaffected — for that
+  family the yardstick is still ~6 orders tighter than the end-to-end error it measures (1.3e-04) —
+  but the oracle is *not* perfectly stiffness-independent, and a future claim resting on it near a
+  mechanism should quote the control alongside.
 - **End-to-end, the solver is essentially exact across the whole domain.** Worst value over all nine
   families and all η ≤ 0.42, per-triangle: **1.3e-04**, and that is VD a=+100 alone; the other eight
   families never exceed **6.0e-08** (max per family at η=0.42: re-triangulated 1.9e-10, VD a=−2
