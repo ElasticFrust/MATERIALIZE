@@ -27,7 +27,10 @@ def test_round_trip():
     rng = torch.Generator().manual_seed(1)
     k_true = 0.3 + 1.5 * torch.rand(prob.n_bond, generator=rng)
     tgt = prob.region_tensor(prob.forward(k_true)['per_triangle'], None).detach()
-    res = optimize(prob, [Objective('tensor', tgt)], mode='k', n_iter=120, verbose=False)
+    # reg EXPLICITLY 0.0 (CLAUDE.md §3 "you MUST pass reg" = state it, not default into it): the
+    # target is built FROM k_true, so this is a RECOVERY test. reg penalises k-variance, and k_true
+    # is a random spread — any reg>0 biases the optimum away from the solution being recovered.
+    res = optimize(prob, [Objective('tensor', tgt)], mode='k', n_iter=120, reg=0.0, verbose=False)
     err = validate(prob, res['k'], res['l0'], [Objective('tensor', tgt)])[0]['err']
     assert err < 1e-3, f"round-trip tensor err {err:.2e}"
     print(f"  [1] round-trip: full-tensor err={err:.2e}  OK")
@@ -49,7 +52,7 @@ def test_property_E():
     prob = DesignProblem.periodic(N=14, eta=0.2, seed=3)
     base = validate(prob, torch.ones(prob.n_bond), None, [Objective('E', 0.0)])[0]['achieved']
     tgtE = 0.6 * base
-    res = optimize(prob, [Objective('E', tgtE)], mode='k', n_iter=100, verbose=False)
+    res = optimize(prob, [Objective('E', tgtE)], mode='k', n_iter=100, reg=0.02, verbose=False)
     rep = validate(prob, res['k'], res['l0'], [Objective('E', tgtE)])[0]
     assert rep['err'] / tgtE < 0.03, f"E achieved {rep['achieved']:.3f} vs {tgtE:.3f}"
     print(f"  [3] E target {tgtE:.3f} (0.6*base): achieved {rep['achieved']:.3f}  OK")
@@ -76,7 +79,7 @@ def test_mixed_global_local():
     reg = prob.region_in_circle(c, radius=0.18 * (prob.centroids[:, 0].max() - prob.centroids[:, 0].min()))
     objs = [Objective('nu', target=+0.25, region=None, weight=1.0),          # global positive
             Objective('nu', target=-0.20, region=reg, weight=2.0)]           # local auxetic patch
-    res = optimize(prob, objs, mode='k', n_iter=150, verbose=False)
+    res = optimize(prob, objs, mode='k', n_iter=150, reg=0.02, verbose=False)
     rep = validate(prob, res['k'], res['l0'], objs)
     g, l = rep[0], rep[1]
     assert g['err'] < 0.05 and l['err'] < 0.05, f"global {g['achieved']:.3f}, local {l['achieved']:.3f}"
@@ -88,7 +91,7 @@ def test_large_N_adjoint():
     prob = DesignProblem.periodic(N=20, eta=0.3, seed=6)          # 800 tri > 600 -> adjoint path
     assert prob.n_tri > 600
     objs = [Objective('nu', target=0.0)]
-    res = optimize(prob, objs, mode='k', n_iter=60, verbose=False)
+    res = optimize(prob, objs, mode='k', n_iter=60, reg=0.02, verbose=False)
     rep = validate(prob, res['k'], res['l0'], objs)[0]
     assert res['history'][-1] < res['history'][0] and rep['err'] < 0.03, \
         f"large-N nu achieved {rep['achieved']:.3f}"
@@ -100,7 +103,7 @@ def test_open_domain():
     tri = D2C.generate_foam_points((5, 5), 0.2)
     prob = DesignProblem.open(tri)
     objs = [Objective('nu', target=0.10)]
-    res = optimize(prob, objs, mode='k', n_iter=100, verbose=False)
+    res = optimize(prob, objs, mode='k', n_iter=100, reg=0.02, verbose=False)
     rep = validate(prob, res['k'], res['l0'], objs)[0]
     assert rep['err'] < 0.03, f"open nu achieved {rep['achieved']:.3f} vs 0.10"
     print(f"  [7] open mesh ({prob.n_tri} tri) nu=0.10: achieved {rep['achieved']:+.3f}  OK")
@@ -112,16 +115,16 @@ def test_directional():
     prob = DesignProblem.periodic(N=16, eta=0.3, seed=8)
     prof = 0.25 + 0.25 * np.cos(4 * ANG)                          # (a) program a REALIZABLE 4-fold ν(θ)
     o = [Objective('nu_theta', prof)]                            # (pure cos2θ is OFF the ν(θ) manifold)
-    res = optimize(prob, o, mode='k', n_iter=140, verbose=False)
+    res = optimize(prob, o, mode='k', n_iter=140, reg=0.02, verbose=False)
     ea = validate(prob, res['k'], res['l0'], o)[0]['err']
     assert ea < 0.09, f"nu(theta) profile maxerr {ea:.3f}"
     o2 = [Objective('nu_theta', -0.10)]                          # (b) isotropise to flat ν0=-0.1
-    res2 = optimize(prob, o2, mode='k', n_iter=150, verbose=False)
+    res2 = optimize(prob, o2, mode='k', n_iter=150, reg=0.02, verbose=False)
     got = validate(prob, res2['k'], res2['l0'], o2)[0]['achieved']
     spread, mean = float(np.ptp(got)), float(got.mean())
     assert spread < 0.06 and abs(mean + 0.10) < 0.03, f"isotropise spread {spread:.3f} mean {mean:.3f}"
     o3 = [Objective('E_theta', 0.9)]                             # (c) flat E(θ) target
-    res3 = optimize(prob, o3, mode='k', n_iter=100, verbose=False)
+    res3 = optimize(prob, o3, mode='k', n_iter=100, reg=0.02, verbose=False)
     gE = validate(prob, res3['k'], res3['l0'], o3)[0]['achieved']
     assert abs(gE.mean() - 0.9) < 0.12, f"E(theta) flat mean {gE.mean():.3f}"
     print(f"  [8] directional: nu-profile maxerr={ea:.3f}, isotropise spread={spread:.3f}@{mean:+.3f}, "
@@ -238,7 +241,9 @@ def test_strain_stress_design():
 
     stress_target = region_mean_vec3(stress_true, None).detach()
     objs = [Objective('stress', target=stress_target, region=None, load=load)]
-    res = optimize(prob, objs, mode='k', n_iter=150, verbose=False)
+    # reg EXPLICITLY 0.0, same reason as test_round_trip: both targets here are computed FROM
+    # k_true, so these are recovery problems and a k-variance penalty biases away from the answer.
+    res = optimize(prob, objs, mode='k', n_iter=150, reg=0.0, verbose=False)
     rep = validate(prob, res['k'], res['l0'], objs)[0]
     # matching all 3 stress-vec3 components simultaneously converges to a few % relative (a coarse
     # 3-number summary of a high-dim k has many near-equally-good solutions; not full k_true recovery)
@@ -249,7 +254,7 @@ def test_strain_stress_design():
                                 0.25 * (prob.centroids[:, 0].max() - prob.centroids[:, 0].min()))
     strain_target = region_mean_vec3(strain_true, reg).detach()
     objs2 = [Objective('strain', target=strain_target, region=reg, load=load)]
-    res2 = optimize(prob, objs2, mode='k', n_iter=150, verbose=False)
+    res2 = optimize(prob, objs2, mode='k', n_iter=150, reg=0.0, verbose=False)
     rep2 = validate(prob, res2['k'], res2['l0'], objs2)[0]
     assert rep2['err'] < 0.05 * float(strain_target.abs().max()), f"strain err {rep2['err']:.4f}"
     print(f"  [13] strain design (sub-region, {len(reg)} tri): err={rep2['err']:.4f}  OK")
@@ -279,8 +284,13 @@ def test_homogeneity_regularizer():
             finite = vals[torch.isfinite(vals)]
             return float(finite.var())
 
+    # reg EXPLICITLY 0.0 on BOTH arms, and deliberately so. `reg` penalises k-VARIANCE, which
+    # suppresses per-triangle nu variance as a side effect — the very quantity this test measures.
+    # Turning it on would confound the homogeneity effect with the reg effect and would also weaken
+    # the res0 CONTROL, whose whole job is to be the hinge-like high-variance baseline. The two arms
+    # must differ ONLY in `homogeneity`. (Near-mechanism risk is handled by n_restarts on res1.)
     res0 = optimize(prob, [Objective('nu', target=-0.5, region=reg, weight=1.0)],
-                    mode='k', n_iter=150, verbose=False)
+                    mode='k', n_iter=150, reg=0.0, verbose=False)
     var0 = region_nu_var(res0['k'])
 
     objs1 = [Objective('nu', target=-0.5, region=reg, weight=1.0, homogeneity=1.0)]
@@ -290,7 +300,7 @@ def test_homogeneity_regularizer():
     # than just loosening the achieved-error tolerance to paper over an unlucky single run. Even with
     # n_restarts=3, repeated calibration runs showed achieved err mostly ~0.00-0.01 with an occasional
     # outlier up to ~0.09 -- the 0.12 bound below has margin over that observed tail, not a blind guess.
-    res1 = optimize(prob, objs1, mode='k', n_iter=150, n_restarts=4, verbose=False)
+    res1 = optimize(prob, objs1, mode='k', n_iter=150, n_restarts=4, reg=0.0, verbose=False)
     rep1 = validate(prob, res1['k'], res1['l0'], objs1)[0]
     var1 = region_nu_var(res1['k'])
 
