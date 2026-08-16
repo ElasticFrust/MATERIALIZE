@@ -5,7 +5,13 @@ k-CONTRAST band, over >=100 DIFFERENT topologies, optimising BOTH k and vertex p
 design INDEPENDENTLY sim-verified, recording the target-error at three stages
 (initial -> k-only -> k+positions) so the optimisation's improvement can be proven.
 
-    nu grid  : 11 values spanning the realizable 2D range.
+    nu grid  : 11 values over [-0.9, +0.45]. NOT "the realizable 2D range" — the isotropic 2D bound
+               is (-1, 1), so this covers 90% of the negative half and 45% of the positive half.
+               The asymmetry is historical and undocumented. CONSEQUENCE: any reported reachable
+               MAXIMUM at or near +0.45 is CENSORED BY THE GRID, not measured (the negative end is
+               genuinely measured: the designer tries -0.9 and falls short at ~-0.82). The positive
+               frontier is probed separately by `run_goal1_frontier.py`; do not quote a "+0.45
+               ceiling" from this sweep as a property of the networks.
     k-bands  : 5 contrast floors f = min(k)/avg(k) in {0.0, 0.1, 0.5, 0.9, 0.99}.
     topology : >=110 DISTINCT topologies (foam / bravais / tiling / auxetic / flipped), one per run.
 

@@ -11,9 +11,16 @@ optimisation actually helps.
 
 ## 1. The experiment
 
-- **ν grid (11):** `[-0.9, -0.7, -0.5, -0.3, -0.15, 0.0, 0.1, 0.2, 0.3, 0.4, 0.45]` — spans the 2D
-  physical range (−1, 1). Extremes may be unreachable; that is reported honestly as a *frontier*,
-  not a failure.
+- **ν grid (11):** `[-0.9, -0.7, -0.5, -0.3, -0.15, 0.0, 0.1, 0.2, 0.3, 0.4, 0.45]`.
+  > **CORRECTION 2026-08-16.** This used to read "spans the 2D physical range (−1, 1)". It does not:
+  > it spans **(−0.9, +0.45)** — 90% of the negative half, 45% of the positive half. The asymmetry is
+  > historical and undocumented. **This invalidates the positive half of the reachable-window result
+  > below**: the reported max of **+0.45** at `f=0` (and +0.44 at `f=0.1`) is *the top grid point* —
+  > nothing above it was ever attempted — so it is the **edge of the search, not a frontier**. The
+  > true ceiling could be 0.5 or 0.95 and this sweep could not distinguish them. The **negative** end
+  > is a genuine measurement (grid runs to −0.9, designer falls short at −0.82). Probed properly by
+  > `Phase 5/verifications/run_goal1_frontier.py` (ν up to 0.95). Extremes may be unreachable; that
+  > is reported as a *frontier*, not a failure — but only where the grid actually looked.
 - **k-contrast bands (5):** a per-bond stiffness floor `f = min(k)/avg(k)` ∈
   `{soft 0.0, large 0.1, medium 0.5, small 0.9, none 0.99}`. `f = 0` lets bonds go fully soft
   (mechanisms/auxetics accessible); `f → 1` forces a near-uniform lattice.
@@ -91,11 +98,17 @@ floor is raised:
 
 | band | f | reachable ν [min, max] | median ν |
 |------|-----|------------------------|----------|
-| soft   | 0.00 | **[−0.82, +0.45]** | +0.00 |
-| large  | 0.10 | [−0.31, +0.44] | −0.00 |
+| soft   | 0.00 | **[−0.82, +0.45 ⚠]** | +0.00 |
+| large  | 0.10 | [−0.31, +0.44 ⚠] | −0.00 |
 | medium | 0.50 | [−0.00, +0.33] | +0.17 |
 | small  | 0.90 | [+0.05, +0.34] | +0.20 |
 | none   | 0.99 | **[+0.16, +0.33]** | +0.26 |
+
+> ⚠ **= CENSORED BY THE GRID, not a measured frontier.** +0.45 is the top grid point and +0.44 is one
+> step below it, so neither is a property of the networks — nothing above +0.45 was attempted. The
+> `medium`/`small`/`none` maxima (+0.33, +0.34, +0.33) ARE genuine: they sit well inside the grid, so
+> the designer had room above and did not use it. Likewise every minimum here is genuine. Only the
+> two flagged cells are artifacts of where the search stopped.
 
 At `f = 0` the designer reaches deep auxetic behaviour (ν ≈ −0.82) *and* the stiff positive end
 (+0.45). Clamping the bonds toward uniform (`f = 0.99`) collapses the whole reachable window to
