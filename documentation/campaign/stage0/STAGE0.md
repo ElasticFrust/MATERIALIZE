@@ -100,12 +100,32 @@ successful designs too, so it does not discriminate.
 
 ## 4. Verdict
 
-**Stage 0 PASSES.** Phase 2 and Phase 3 are sound; the designer surface and the sanity gate are
-exact; the broadest solver-accuracy statement reproduces bit-for-bit. Stage 1 (`goal1` shakedown) may
-proceed.
+**Stage 0 passes — with one check that now legitimately FAILS.**
 
-Two items leave this stage open, neither blocking: the `verify_lattice` design section (§3) and the
-standing B-1 constraint — **no headline number may rest on a single run**.
+Phase 2 and Phase 3 are sound; the designer surface and the sanity gate are exact; the broadest
+solver-accuracy statement reproduces bit-for-bit. Stage 1 (`goal1` shakedown) may proceed.
+
+**Amendment (same day).** The table in §1 records `verify_lattice` as PASS because it was run in its
+*original* form, which printed `ALL GEOMETRY PASS` and exited 0 regardless of the design section (§3).
+That script has since been fixed — the design section now gates on solver-vs-sim agreement, uses
+`reg=0.02` with `n_restarts=3`, and `sys.exit(main())` so the verdict reaches the exit code. **It now
+FAILS**, on the regular-lattice case:
+
+```
+regular      target=-0.20  solver=-0.112  sim=+0.137  gap=0.248  UNTRUSTWORTHY
+aniso_shr    target=-0.20  solver=-0.200  sim=-0.200  gap=0.000  OK
+disorder_lo  target=-0.20  solver=-0.238  sim=-0.238  gap=0.000  OK
+FAIL
+```
+
+**This failure is kept, not tuned away.** It is the only check in the suite currently pointing at a
+real solver validity limit; retuning the target to make it green would bury the one signal we have.
+Root cause established (§3 of this doc, and now `CLAUDE.md` §3): **`A(s)` rank loss, not a mechanism** —
+the network is rigid and well-conditioned (0 Hessian eigenvalues below 1e-8·max, condition 8.6e4)
+while `A(s)` is rank-deficient on 7% of triangles.
+
+So: the layers below the designer are verified, and one honest failure is now visible where an
+invisible pass used to be. Both facts stand.
 
 ## 5. Limitations
 

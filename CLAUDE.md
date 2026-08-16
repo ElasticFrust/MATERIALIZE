@@ -188,11 +188,37 @@ same C_eff and generically coupled — but nontrivially, not a rigid lock. **Cha
   properties, not fundamental limits.
 
 **Honest limits.** Linear constitutive (no strain-stiffening); C is the tangent about the reference.
-**Mechanism** = a zero-/near-zero-energy floppy deformation mode (energy Hessian near-singular
-beyond rigid modes); near one, W is ill-conditioned and the linear read-back diverges from the true
-nonlinear relaxation — a soft-eigenvalue issue, **not** a linearisation artefact — hence every
-design is checked against the independent simulation. Bulk/periodic by construction; open-boundary
-questions use a separate nodal solve, for verification only.
+
+**The solver's validity condition is that A(s) stays INVERTIBLE PER TRIANGLE** *(corrected
+2026-08-16 — the previous wording named a different condition and a refuted cause; see below)*. The
+metric-space solve inverts the per-triangle bare tensor
+`A(s) = Σ_{e∈s} (k_e/4ℓ_e²) q_e q_eᵀ` (`_woodbury_solve_aw`: `inv(A3 + 1e-12·|A3|max·I)`), so where
+`A(s)` loses rank the inverse is set by that **regulariser, not by physics**, and `C(s)` for those
+triangles can be arbitrarily wrong. Since `C_eff` is the UNWEIGHTED mean over triangles, a handful of
+such triangles can swamp it. **Two independent routes to rank loss:**
+- **low k** — soft/dead edges (softplus underflows to exactly 0). Guarded *indirectly* by `reg`,
+  which penalises k-variance; **`reg` discourages but does not detect it**.
+- **degenerate geometry** — sliver triangles make the three `q_e` outer products near-coplanar.
+  Guarded by `require_healthy_mesh`, but only via a triangle-AREA proxy.
+Neither guard inspects `A(s)` itself. *Measured 2026-08-16, regular lattice driven to ν=−0.2:* 11% of
+bonds dead, `A(s)` rank-deficient on 7% of triangles, solver ν=−0.110 vs sim ν=+0.136 — **opposite
+signs**.
+
+**A MECHANISM is a different failure — do not conflate them.** A mechanism is a zero-/near-zero-energy
+floppy deformation mode (energy Hessian near-singular beyond rigid modes). The two are **independent**:
+in the measurement above the Hessian had **zero** eigenvalues below 1e-8·max and condition 8.6e4 — a
+perfectly rigid, well-conditioned network — while `A(s)` was rank-deficient and the read-back was
+wrong by 0.25 in ν. **So "check for a floppy mode" gives a FALSE ALL-CLEAR for the A(s) failure**;
+that check was the previously documented one.
+
+*Also corrected:* this paragraph used to say the read-back "diverges from the true **nonlinear**
+relaxation". It cannot — audit **A-15** established the oracle is LINEAR (small-displacement
+`assemble_K_faff`), tangent-equivalent to the solver to ~1e-12. Nothing in the repo computes the
+nonlinear relaxation (model 1). The divergence measured above is *between two linear formulations*.
+
+Every design is still checked against the independent simulation — that check is what catches both
+failures. Bulk/periodic by construction; open-boundary questions use a separate nodal solve, for
+verification only.
 
 ### Verification discipline  *(settled 2026-08-10)*
 
