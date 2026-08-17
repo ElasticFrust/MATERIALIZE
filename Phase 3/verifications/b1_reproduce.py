@@ -199,6 +199,125 @@ def mode_suitectx(n):
     print(f'\n  {n} repeats x 3 cases -> {hits} deviation(s) above 100x baseline')
 
 
+STAGES = ('bare', 'W', 'per_triangle', 'elastic_tensor')      # the solver's pipeline, in order
+
+
+def stage_hashes(phi, psi, eta, seed):
+    """Hash EVERY stage of one forward solve, plus the inputs, in pipeline order.
+
+    The point (user's suggestion, 2026-08-17): B-1 is only ever observed at the END of the pipeline,
+    so we cannot tell WHERE the deviation is born. Hashing each stage localises it:
+
+        geometry/k differ      -> the INPUT construction, not the solve
+        bare differs           -> A(s) assembly
+        W differs, bare same   -> the constrained SOLVE (the KKT / Woodbury path)
+        per_triangle differs, W same -> the CONTRACTION (1+W)^T A (1+W)  <-- the A-0 channel
+        elastic_tensor differs, per_triangle same -> the final average/reduction
+    """
+    geo, k = build_case(phi, psi, eta, seed)
+    prob = DesignProblem.from_geo(geo)
+    with torch.no_grad():
+        out = prob.forward(torch.as_tensor(k), physical_units=True)
+    h = {'geo': _h(geo['pts']) + _h(geo['simplices']), 'k': _h(k)}
+    for s in STAGES:
+        v = out[s]
+        h[s] = _h(v.detach().cpu().numpy() if hasattr(v, 'detach') else np.asarray(v))
+    return h
+
+
+def mode_stages(n, ctx=True):
+    """Repeat the stage-hash probe and report the FIRST stage that ever disagrees.
+
+    With ctx=True the 13 preceding suite tests run first, because B-1 has never been observed
+    without suite context (0 anomalies in 30 isolated processes)."""
+    if ctx:
+        import test_inverse_design as T
+        torch.manual_seed(0)
+        print('  establishing suite context (13 preceding tests)...', flush=True)
+        for name in PRECEDING:
+            try:
+                getattr(T, name)()
+            except Exception as e:
+                print(f'   ({name} raised {type(e).__name__})', flush=True)
+        print('  context established\n', flush=True)
+
+    keys = ('geo', 'k') + STAGES
+    seen = {c: {kk: {} for kk in keys} for c in range(len(CASES))}
+    for r in range(n):
+        for ci, case in enumerate(CASES):
+            h = stage_hashes(*case)
+            for kk in keys:
+                seen[ci][kk].setdefault(h[kk], []).append(r + 1)
+        if (r + 1) % 5 == 0:
+            print(f'  {r+1}/{n}', flush=True)
+
+    print()
+    any_split = False
+    for ci in range(len(CASES)):
+        line, first_split = [], None
+        for kk in keys:
+            nv = len(seen[ci][kk])
+            line.append(f'{kk}:{nv}')
+            if nv > 1 and first_split is None:
+                first_split = kk
+        flag = ''
+        if first_split:
+            any_split = True
+            flag = f'   <-- FIRST SPLIT AT: {first_split}'
+        print(f'  case{ci+1}  ' + '  '.join(line) + flag)
+        if first_split:
+            for hv, runs in seen[ci][first_split].items():
+                print(f'        {hv}  on runs {runs[:8]}{"..." if len(runs) > 8 else ""}')
+    print()
+    print('  distinct-value count per stage; 1 = deterministic across all repeats.')
+    if not any_split:
+        print(f'  NO stage split over {n} repeats x {len(CASES)} cases '
+              f'-- B-1 did not fire; this is a BOUND, not an absence.')
+
+
+def mode_imports():
+    """Does IMPORT ORDER change the result? (user's hypothesis, 2026-08-17)
+
+    Re-imports the stack in a different order in a fresh interpreter and compares stage hashes to
+    the canonical order. A difference would make B-1 an import/initialisation-order effect."""
+    import subprocess
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo = os.path.dirname(os.path.dirname(here))
+    # `_common` wires the rest of sys.path, so an order that imports something else FIRST must be
+    # given the paths explicitly or it fails for the wrong reason (the first version of this test
+    # did exactly that and reported spurious "DIFFERS" rows).
+    paths = ";".join(f"sys.path.insert(0,r'{p}')" for p in
+                     (os.path.join(repo, 'verification_tools'), os.path.join(repo, 'Phase 2'),
+                      P3, here))
+    prog = (
+        "import sys,os;" + paths + ";"
+        "{imports}"
+        "import torch;torch.set_default_dtype(torch.float64);"
+        "import b1_reproduce as B;"
+        # WARM-UP first: run 1 differs from later runs in ANY order (BLAS/allocator warm-up), so
+        # comparing first calls would measure warm-up, not import order. Report the SECOND call.
+        "[B.stage_hashes(*c) for c in B.CASES];"
+        "print('RESULT ' + '|'.join(B.stage_hashes(*c)['elastic_tensor'] for c in B.CASES))"
+    )
+    orders = {
+        'canonical  (_common first)': "import _common;import physical_homog;import numpy;",
+        'numpy first               ': "import numpy;import _common;import physical_homog;",
+        'physical_homog first      ': "import physical_homog;import _common;import numpy;",
+        'torch before everything   ': "import torch;import _common;import physical_homog;import numpy;",
+    }
+    ref = None
+    for label, imp in orders.items():
+        r = subprocess.run([sys.executable, '-c', prog.format(imports=imp)],
+                           capture_output=True, text=True, cwd=P3)
+        line = [l for l in r.stdout.splitlines() if l.startswith('RESULT ')]
+        got = line[-1][7:] if line else f'ERR {r.stderr.strip()[-90:]}'
+        same = '' if ref is None else ('  SAME' if got == ref else '  <-- DIFFERS')
+        if ref is None:
+            ref = got
+        print(f'  {label}  {got}{same}')
+    print('\n  identical hashes => import order is NOT the mechanism (warm-up controlled for).')
+
+
 def mode_commits(revs):
     """Probe each revision in a throwaway worktree — separates nondeterminism from a moving tree."""
     child = os.path.join(HERE, os.path.basename(__file__))
@@ -235,6 +354,11 @@ def main():
         mode_bisect()
     elif mode == 'suitectx':
         mode_suitectx(int(sys.argv[2]) if len(sys.argv) > 2 else 5)
+    elif mode == 'stages':
+        mode_stages(int(sys.argv[2]) if len(sys.argv) > 2 else 20,
+                    ctx=(len(sys.argv) < 4 or sys.argv[3] != 'noctx'))
+    elif mode == 'imports':
+        mode_imports()
     elif mode == 'commits':
         mode_commits(sys.argv[2:])
     else:
