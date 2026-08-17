@@ -84,6 +84,28 @@ WATCH = ['Phase 2', 'Phase 3', 'Phase 5']
 SKIP_DIRS = {'__pycache__', '.git', 'validation_2026-08', 'networks_old'}
 
 
+def slug(rel):
+    """Destination folder name for a script — from its FULL relative path, not its basename.
+
+    Four scripts are called `design_and_verify.py` and two `make_maps.py`; keying on the basename
+    made them share one folder, and the second run's log OVERWROTE the first's (cost: the
+    auxetic_sweep log — its numbers survived only because the script also writes a CSV)."""
+    rel = os.path.splitext(rel)[0]
+    for pre in ('Phase 3/verifications/', 'Phase 5/verifications/', 'Phase 2/', 'Phase 3/', 'Phase 5/'):
+        if rel.startswith(pre):
+            rel = rel[len(pre):]
+            break
+    return rel.replace('/', '__').replace('\\', '__')
+
+
+def already_done(csv_path):
+    """Scripts with a manifest row — so an interrupted sweep can resume instead of restarting."""
+    if not os.path.exists(csv_path):
+        return set()
+    with open(csv_path, newline='', encoding='utf-8') as fh:
+        return {r['script'] for r in csv.DictReader(fh) if r.get('script')}
+
+
 def provenance():
     """(commit, dirty) — `dirty` means the tree had uncommitted changes, so commit alone does NOT
     reproduce the run. That distinction is exactly what made the B-1 investigation expensive."""
@@ -143,6 +165,9 @@ def main():
         return
 
     csv_path = os.path.join(HERE, 'manifest.csv')
+    done_already = already_done(csv_path)
+    if done_already:
+        print(f'resuming: {len(done_already)} script(s) already recorded', flush=True)
     new = not os.path.exists(csv_path)
     with open(csv_path, 'a', newline='', encoding='utf-8') as fh:
         w = csv.writer(fh)
@@ -150,7 +175,10 @@ def main():
             w.writerow(['phase', 'script', 'exit', 'seconds', 'n_outputs', 'commit', 'dirty',
                         'finished_utc'])
         for i, (phase, rel) in enumerate(todo, 1):
-            stem = os.path.splitext(os.path.basename(rel))[0]
+            if rel in done_already:
+                print(f'[{i}/{len(todo)}] {rel}\n   already in manifest — skipped (resume)', flush=True)
+                continue
+            stem = slug(rel)
             dest = os.path.join(HERE, phase, stem)
             os.makedirs(dest, exist_ok=True)
             src = os.path.join(REPO, rel)
