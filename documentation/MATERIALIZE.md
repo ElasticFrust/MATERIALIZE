@@ -722,12 +722,35 @@ while the *strain* one fills). (ii) *strong local response ⇒ soft material* �
 dilating/auxetic inclusions must be near-mechanism soft ($E\to0$), the fragile regime where the linear
 readback needs the independent nonlinear check.
 
+**A CLOSED-FORM rung, added 2026-08-17.** Everything above compares **two codes**. The hexagon
+diameter family gives a reference independent of both: a hexagon with a rigid perimeter (six unit
+edges) and free hinges, with $d$ the separation of two opposite vertices and $r=d/2$, has
+
+$$\nu(r)\;=\;\frac{4r^{2}-1}{3+4r-4r^{2}}$$
+
+which the solver reproduces to **4.4e-06** over $d\in[0.05,2]$ on a 7-node, 6-triangle **open** mesh.
+Derivation: $|V_0V_1|=1$ gives $y^{2}=1-(r-\tfrac12)^{2}$; along the single soft mode the cell
+dimensions are $L_x=1+2r$ — the **lattice constant**, not the hexagon's own width $2r$, the step that
+otherwise predicts $\nu=2/3$ at the regular hexagon instead of $1$ — and $L_y=2y$; differentiating
+gives the result. Landmarks: $\nu(\tfrac12)=-0.2$ (re-entrant), $\nu(1)=0$, $\nu(2)=+1$ (the textbook
+honeycomb, where the response is also isotropic). Because $\nu=1$ at the regular hexagon depends on
+$C_{xyxy}$, this gate is **sensitive to the shear channel** and would have caught the 2026-08 defect
+immediately.
+
+**Mesh preconditions (A-17).** The solver is *wrong*, not merely inaccurate, on a malformed
+triangulation, and nothing checked for one. `Phase 2/mesh_build.check_mesh_preconditions` now tests
+(1) combinatorial closure — every bond in exactly two triangles, $V-E+F=0$, **periodic meshes only**
+— and (2) the absence of inverted (negative signed area) triangles.
+
 Run the regressions:
 ```bash
 python "Phase 2/test_forward_solver.py"     # solver: nu=1/3 crystal, gradients, adjoint, [7] and [8]
                                             # C_eff vs the energy Hessian COMPONENT-WISE (W != 0)
 python "Phase 3/test_inverse_design.py"     # 16 tests: round-trip, auxetic, local, mixed,
                                             # strain/stress, homogenisation, isotropisation, ...
+python "Phase 5/verifications/test_designer_surface.py"   # 5: designer verify() surface + A-17
+                                                          # mesh preconditions
+python "Phase 5/verifications/test_hex_closed_form.py"    # 3: the CLOSED-FORM hexagon gate
 ```
 
 ---

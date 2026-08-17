@@ -356,8 +356,13 @@ Three DISTINCT quantities — keep them separate:
   results → a known value (ν=1/3, E=2/√3) → an analytical argument. Passing tests alone ≠ verified.
 - **New functionality gets a test.** Core and any new capability get a structured test — compared vs
   an alternative code path or a known value — alongside the existing regressions.
-- **Regressions:** `test_forward_solver.py` (crystal ν, **gradients + large-N adjoint**);
-  `test_inverse_design.py` (16 tests). Use the anaconda python (see environment subsection).
+- **Regressions (the full gate set):** `Phase 2/test_forward_solver.py` (crystal ν, **gradients +
+  large-N adjoint**, and **[7]/[8] component-wise `C` vs the energy Hessian**);
+  `Phase 3/test_inverse_design.py` (16 tests); `Phase 5/verifications/test_designer_surface.py`
+  (5 — the designer's verification surface **and the A-17 mesh preconditions**);
+  **`Phase 5/verifications/test_hex_closed_form.py` (3 — the only CLOSED-FORM gate: the hexagon
+  diameter family against ν(r) = (4r²−1)/(3+4r−4r²), matched to 4.4e-06).** Use the anaconda python
+  (see environment subsection).
 
 ### Environment & reproducibility  *(settled 2026-08-10)*
 

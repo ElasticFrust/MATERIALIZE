@@ -152,6 +152,26 @@ nu.backward()              # d(nu)/dk in k.grad — dense (<=600) or adjoint (>6
 - **Physical ground truth for sim-vs-solver:** `verification_tools/physical_homog.py`
   (`sim_nuE` = virial, `energy_nuE`, and `energy_C` for the full **tensor**) — the relaxed network's
   physical response, used by the `verify_*` scripts.
+- **CLOSED-FORM gate** *(added 2026-08-17)*: `Phase 5/verifications/test_hex_closed_form.py`. The
+  hexagon diameter family — 7 nodes, 6 triangles, no periodicity, milliseconds per point — has an
+  analytic answer for a rigid perimeter with free hinges,
+
+  ```
+  ν(r) = (4r² − 1) / (3 + 4r − 4r²),        r = d/2
+  ```
+
+  reproduced to **4.4e-06** over d ∈ [0.05, 2], with landmarks ν(½) = −0.2, ν(1) = 0, ν(2) = +1 (the
+  textbook honeycomb value). This is the **strongest** rung of the verification ladder — a reference
+  independent of *both* the solver and the sim, where everything else compares two codes. It is
+  sensitive to the **shear channel** (ν=1 at the regular hexagon depends on `C_xyxy`), so it would
+  have caught **A-0** immediately. The test also asserts the finite-hinge residual is **first order in
+  `k_spoke`**, which is what proves the ~0.3–2.7 % offset at the designer's default is the model
+  difference and not solver error.
+- **Mesh preconditions** *(A-17, added 2026-08-17)*: `Phase 2/mesh_build.check_mesh_preconditions`
+  — (1) combinatorially closed (every bond in exactly 2 triangles, V−E+F=0; **periodic meshes only**)
+  and (2) no inverted/negative-signed-area triangles. Nothing checked either before; the solver is
+  **wrong**, not merely inaccurate, on a mesh that fails them. Gated by
+  `Phase 5/verifications/test_designer_surface.py` [5].
 - **A crystal-anchored check cannot gate the homogenisation.** On the regular uniform-k lattice
   `W ≡ 0` identically, so `C(s) = A(s)` and *any* error in how `W` is contracted is invisible —
   ν=1/3, E=2/√3 passes regardless. Scalar ν,E hides it too (they are weakly sensitive to the
