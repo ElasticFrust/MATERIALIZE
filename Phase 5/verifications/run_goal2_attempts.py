@@ -33,6 +33,13 @@ import designer
 import phys_targets as PT
 from plot_responses import response_from_npz
 import run_goal2 as G2                     # reuse build_pool + budget constants (add-only import)
+import physical_homog as PH                # UnhealthyGeometryError — the sim raises it BY DESIGN
+
+# The ADD-ONLY reload below is right for incremental work but WRONG for a re-run campaign: it
+# re-reads previously saved designs instead of re-designing them, which is exactly the
+# "re-analyse" that `Phase 5/PLAN.md` forbids for artifacts produced under the pre-fix solver.
+# Set FORCE_REDESIGN=True (or point ATTDIR at a fresh directory) when re-running for real.
+FORCE_REDESIGN = bool(int(os.environ.get('G2ATT_FORCE_REDESIGN', '0')))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -80,10 +87,18 @@ def design_attempts(t, pool_by_name, kept_bases):
     case = t['label']
     # ADD-ONLY: if this case's attempts were already computed+saved, RELOAD them (no overwrite)
     existing = sorted(glob.glob(os.path.join(ATTDIR, f'design_g2att_{case}_*.npz')))
-    if existing:
+    if existing and not FORCE_REDESIGN:
         out = []
         for p in existing:
-            nu, E, meta = response_from_npz(p)
+            # GUARDED: `response_from_npz` re-simulates, and the sim RAISES on a near-singular
+            # geometry by design (CLAUDE.md §3: "callers just try/except it"). Unguarded, ONE bad
+            # saved design killed this entire run (audit A-4 — its fix covered designer.design()
+            # but not this path). Record and skip instead.
+            try:
+                nu, E, meta = response_from_npz(p)
+            except PH.UnhealthyGeometryError as e:
+                print(f'    [skip] {os.path.basename(p)}: unhealthy geometry ({e})', flush=True)
+                continue
             out.append((str(meta.get('seed_name', '?')), np.asarray(nu), np.asarray(E),
                         float(meta.get('target_err_sim', np.nan)),
                         float(meta.get('solver_sim_gap', np.nan)), str(meta.get('status', '?'))))
