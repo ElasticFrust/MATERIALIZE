@@ -71,10 +71,22 @@ def build_pool(seed=0):
     for i, proc in enumerate(['poisson_disk', 'blue_noise', 'poisson_disk', 'uniform']):
         rec = seeds.random_patch(48, seed=seed + i, process=proc)
         pool.append(_tag(rec['geo'], rec['name']))
-    # non-Delaunay flips of the regular lattice (reach topologies Delaunay cannot)
-    for i in range(2):
-        gf = triangulation.random_flipped_geo(C.make_lattice(1.0, 1.0, half=3), 6, seed=seed + 50 + i)
-        pool.append(_tag(gf, f'flipped_reg_s{seed + 50 + i}'))
+    # non-Delaunay flips of the regular lattice (reach topologies Delaunay cannot).
+    # SCREEN them: `random_flipped_geo` can collapse a triangle, and an unscreened degenerate
+    # topology in this SHARED pool poisons every case that reaches it — the sim refuses it
+    # (UnhealthyGeometryError) and the case dies. Measured 2026-08-17: `flipped_reg_s50` had min
+    # triangle area 1.1e-16 (machine epsilon) against a mean of 0.433, and killed 10 of 13 cases.
+    # `run_goal1` and `run_g1_2` already search for a healthy seed like this; goal2 did not.
+    base = C.make_lattice(1.0, 1.0, half=3)
+    found = 0
+    for s in range(seed + 50, seed + 200):
+        if found == 2:
+            break
+        gf = triangulation.random_flipped_geo(base, 6, seed=s)
+        a = np.asarray(gf['areas'], float)
+        if a.min() > 1e-3 * a.mean():                    # same criterion as require_healthy_mesh
+            pool.append(_tag(gf, f'flipped_reg_s{s}'))
+            found += 1
     return pool
 
 

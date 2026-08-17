@@ -38,30 +38,13 @@
   "E_weight": 1.0,
   "cases": [
     {
-      "case": "crystal_phi1.3_psi1.0",
-      "provenance": "crystal",
-      "topo_class": "crystal_bravais",
-      "konly_err": 0.005740490675140375,
-      "kpos_err": 0.00574049153552969,
-      "improved": false,
-      "best_gap": 0.001104801681449552,
-      "best_seed": "random_poisson_disk_n48_s0",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_crystal_phi1.3_psi1.0_0.npz",
-        "networks\\goal2\\design_g2_crystal_phi1.3_psi1.0_1.npz",
-        "networks\\goal2\\design_g2_crystal_phi1.3_psi1.0_2.npz"
-      ]
-    },
-    {
       "case": "crystal_phi1.5_psi0.75",
       "provenance": "crystal",
       "topo_class": "crystal_bravais",
-      "konly_err": 0.016290497795523606,
-      "kpos_err": 0.010265603118130073,
+      "konly_err": 0.019458318355724362,
+      "kpos_err": 0.01294977986633593,
       "improved": true,
-      "best_gap": 0.0004987597201334126,
+      "best_gap": 6.797648504762041e-11,
       "best_seed": "bravais_phi1.5_psi0.8+pos",
       "trustworthy": true,
       "n_kept": 3,
@@ -72,150 +55,14 @@
       ]
     },
     {
-      "case": "crystal_phi0.7_psi1.3",
-      "provenance": "crystal",
-      "topo_class": "crystal_bravais",
-      "konly_err": 0.008307145976492736,
-      "kpos_err": 0.007187726079869172,
-      "improved": true,
-      "best_gap": 0.015133668014628787,
-      "best_seed": "bravais_phi0.7_psi1.3+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_crystal_phi0.7_psi1.3_0.npz",
-        "networks\\goal2\\design_g2_crystal_phi0.7_psi1.3_1.npz",
-        "networks\\goal2\\design_g2_crystal_phi0.7_psi1.3_2.npz"
-      ]
-    },
-    {
-      "case": "crystal_phi1.35_psi1.0_rot30",
-      "provenance": "crystal",
-      "topo_class": "crystal_bravais",
-      "konly_err": 0.011200007384095878,
-      "kpos_err": 0.0064481962680387195,
-      "improved": true,
-      "best_gap": 0.0015090145274891942,
-      "best_seed": "random_poisson_disk_n48_s2+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_crystal_phi1.35_psi1.0_rot30_0.npz",
-        "networks\\goal2\\design_g2_crystal_phi1.35_psi1.0_rot30_1.npz",
-        "networks\\goal2\\design_g2_crystal_phi1.35_psi1.0_rot30_2.npz"
-      ]
-    },
-    {
-      "case": "crystal_phi1.5_psi0.8_rot45",
-      "provenance": "crystal",
-      "topo_class": "crystal_bravais",
-      "konly_err": 0.04016020198871528,
-      "kpos_err": 0.031059938329430326,
-      "improved": true,
-      "best_gap": 0.01050126223600395,
-      "best_seed": "random_poisson_disk_n48_s2+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_crystal_phi1.5_psi0.8_rot45_0.npz",
-        "networks\\goal2\\design_g2_crystal_phi1.5_psi0.8_rot45_1.npz",
-        "networks\\goal2\\design_g2_crystal_phi1.5_psi0.8_rot45_2.npz"
-      ]
-    },
-    {
-      "case": "random_spd_s0_2",
-      "provenance": "random",
-      "topo_class": "random_tensor",
-      "konly_err": 0.038121341880483994,
-      "kpos_err": 0.037301990197928014,
-      "improved": true,
-      "best_gap": 0.004803234026062919,
-      "best_seed": "random_poisson_disk_n48_s2+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_random_spd_s0_2_0.npz",
-        "networks\\goal2\\design_g2_random_spd_s0_2_1.npz",
-        "networks\\goal2\\design_g2_random_spd_s0_2_2.npz"
-      ]
-    },
-    {
-      "case": "random_spd_s0_3",
-      "provenance": "random",
-      "topo_class": "random_tensor",
-      "konly_err": 0.08680070134484552,
-      "kpos_err": 0.06662382610386652,
-      "improved": true,
-      "best_gap": 0.004303327100034671,
-      "best_seed": "random_blue_noise_n48_s1+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_random_spd_s0_3_0.npz",
-        "networks\\goal2\\design_g2_random_spd_s0_3_1.npz",
-        "networks\\goal2\\design_g2_random_spd_s0_3_2.npz"
-      ]
-    },
-    {
-      "case": "random_spd_s0_4",
-      "provenance": "random",
-      "topo_class": "random_tensor",
-      "konly_err": 0.09516912576446157,
-      "kpos_err": 0.08339632869770042,
-      "improved": true,
-      "best_gap": 0.014713799093902857,
-      "best_seed": "random_poisson_disk_n48_s2+pos+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_random_spd_s0_4_0.npz",
-        "networks\\goal2\\design_g2_random_spd_s0_4_1.npz",
-        "networks\\goal2\\design_g2_random_spd_s0_4_2.npz"
-      ]
-    },
-    {
-      "case": "hand_Ex1.6_Ey0.8_nu0.3_G0.45",
-      "provenance": "hand",
-      "topo_class": "hand_orthotropic",
-      "konly_err": 0.005705155841651877,
-      "kpos_err": 0.003941731632184586,
-      "improved": true,
-      "best_gap": 0.0018406481465063629,
-      "best_seed": "random_blue_noise_n48_s1+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_hand_Ex1.6_Ey0.8_nu0.3_G0.45_0.npz",
-        "networks\\goal2\\design_g2_hand_Ex1.6_Ey0.8_nu0.3_G0.45_1.npz",
-        "networks\\goal2\\design_g2_hand_Ex1.6_Ey0.8_nu0.3_G0.45_2.npz"
-      ]
-    },
-    {
-      "case": "hand_Ex1.6_Ey0.8_nu0.3_G0.45_rot30",
-      "provenance": "hand",
-      "topo_class": "hand_orthotropic",
-      "konly_err": 0.003131558499661402,
-      "kpos_err": 0.0028308932394427444,
-      "improved": true,
-      "best_gap": 0.0024751317844352583,
-      "best_seed": "random_blue_noise_n48_s1+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_hand_Ex1.6_Ey0.8_nu0.3_G0.45_rot30_0.npz",
-        "networks\\goal2\\design_g2_hand_Ex1.6_Ey0.8_nu0.3_G0.45_rot30_1.npz",
-        "networks\\goal2\\design_g2_hand_Ex1.6_Ey0.8_nu0.3_G0.45_rot30_2.npz"
-      ]
-    },
-    {
       "case": "hand_Ex1.2_Ey1.2_nu-0.3_G0.3",
       "provenance": "hand",
       "topo_class": "hand_orthotropic",
-      "konly_err": 0.08096642804246401,
-      "kpos_err": 0.07129882848935698,
+      "konly_err": 0.09325270691741755,
+      "kpos_err": 0.08779750202436547,
       "improved": true,
-      "best_gap": 0.00451986433731949,
-      "best_seed": "random_poisson_disk_n48_s0+pos",
+      "best_gap": 1.1435402851628328e-10,
+      "best_seed": "random_uniform_n48_s3+pos",
       "trustworthy": true,
       "n_kept": 3,
       "paths": [
@@ -228,34 +75,17 @@
       "case": "hand_Ex2.0_Ey0.7_nu0.1_G0.8_rot22",
       "provenance": "hand",
       "topo_class": "hand_orthotropic",
-      "konly_err": 0.03152366324417823,
-      "kpos_err": 0.029814424223723934,
-      "improved": true,
-      "best_gap": 0.009261808742041924,
-      "best_seed": "random_uniform_n48_s3+pos",
+      "konly_err": 0.07694462750087645,
+      "kpos_err": 0.09259507130712838,
+      "improved": false,
+      "best_gap": 4.020403810756855e-09,
+      "best_seed": "random_uniform_n48_s3",
       "trustworthy": true,
       "n_kept": 3,
       "paths": [
         "networks\\goal2\\design_g2_hand_Ex2.0_Ey0.7_nu0.1_G0.8_rot22_0.npz",
         "networks\\goal2\\design_g2_hand_Ex2.0_Ey0.7_nu0.1_G0.8_rot22_1.npz",
         "networks\\goal2\\design_g2_hand_Ex2.0_Ey0.7_nu0.1_G0.8_rot22_2.npz"
-      ]
-    },
-    {
-      "case": "hand_Ex1.0_Ey1.0_nu0.55_G0.2",
-      "provenance": "hand",
-      "topo_class": "hand_orthotropic",
-      "konly_err": 0.10721160086755355,
-      "kpos_err": 0.10275284275748164,
-      "improved": true,
-      "best_gap": 0.006069031696462224,
-      "best_seed": "random_poisson_disk_n48_s0+pos",
-      "trustworthy": true,
-      "n_kept": 3,
-      "paths": [
-        "networks\\goal2\\design_g2_hand_Ex1.0_Ey1.0_nu0.55_G0.2_0.npz",
-        "networks\\goal2\\design_g2_hand_Ex1.0_Ey1.0_nu0.55_G0.2_1.npz",
-        "networks\\goal2\\design_g2_hand_Ex1.0_Ey1.0_nu0.55_G0.2_2.npz"
       ]
     }
   ],
