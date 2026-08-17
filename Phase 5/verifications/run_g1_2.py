@@ -124,25 +124,44 @@ def _healthy(geo):
 
 
 # ---- the 10 distinct topologies ---------------------------------------------------------------
+# Three of the ten topologies are NOT triangulations — square_octagon (60/114 bonds),
+# rotating_squares (16/101) and reentrant_honeycomb (98/194) carry FICTIONAL edges that exist only to
+# triangulate them. `USE_SEED_K0 = False` reproduces this file's historical behaviour EXACTLY: k=1 on
+# every bond, fictional ones included, which BRACES the hinges. Measured cost of that bracing (sim):
+# rotating squares +0.289 braced vs -1.000 freed; reentrant honeycomb +0.303 vs -1.083. It converts
+# the auxetic motifs into ordinary trusses before the experiment begins.
+# `USE_SEED_K0 = True` uses each seed's OWN `k0` (1.0 real, 0.001 fictional) — the configuration the
+# `is_fictional` mask exists for. Set by `run_g1_2_freed.py`; see documentation/campaign/stage3_g1_2/.
+USE_SEED_K0 = False
+
+
 def build_topologies():
-    """The 10 genuinely-distinct connectivity classes (distinct coordination histograms), each a
-    FULLY triangulated periodic network with ALL edges real (k=1).  ~30-72 nodes each."""
+    """The 10 genuinely-distinct connectivity classes (distinct coordination histograms).
+
+    Historically each was taken FULLY triangulated with ALL edges real (k=1); with
+    `USE_SEED_K0=True` the three non-triangulation tilings instead use their seed's own `k0`, which
+    frees the fictional bracing edges (see the note above). ~30-72 nodes each."""
     T = []
 
-    def add(name, cls, geo):
+    def add(name, cls, geo, k0=None):
         assert (np.asarray(geo['areas']) > 0).all(), f'{name}: non-positive area'
         h = coord_hist(geo)
+        nb = len(geo['bond_u'])
+        k_use = np.ones(nb) if (k0 is None or not USE_SEED_K0) else np.asarray(k0, float)
         T.append(dict(name=name, cls=cls, geo=geo, hist=h, sig=sig_str(h),
-                      n_nodes=len(geo['pts']), n_bond=len(geo['bond_u'])))
+                      n_nodes=len(geo['pts']), n_bond=nb, k0=k_use))
 
     base_tri = C.make_lattice(1.0, 1.0, half=3.5)                       # n=56, 6-6-6
     add('triangular', 'bravais', base_tri)
     add('honeycomb', 'basis', seeds.honeycomb(reps=4)['geo'])          # n=64
     add('kagome', 'basis', seeds.kagome(reps=3)['geo'])                # n=54
-    add('square_octagon', 'tiling', seeds.seed_tiling('square_octagon', 3)['geo'])  # n=36
+    _so = seeds.seed_tiling('square_octagon', 3)
+    add('square_octagon', 'tiling', _so['geo'], _so.get('k0'))         # n=36, 60/114 fictional
     add('tetrakis', 'basis', tetrakis(6))                              # n=72  {4:.5,8:.5}
-    add('rotating_squares', 'auxetic', seeds._rotating_squares(reps=4, theta_deg=25.0)['geo'])  # 32
-    add('reentrant_honeycomb', 'auxetic', seeds._reentrant_honeycomb(reps=4)['geo'])            # 64
+    _rs = seeds._rotating_squares(reps=4, theta_deg=25.0)
+    add('rotating_squares', 'auxetic', _rs['geo'], _rs.get('k0'))      # 32, 16/101 fictional
+    _rh = seeds._reentrant_honeycomb(reps=4)
+    add('reentrant_honeycomb', 'auxetic', _rh['geo'], _rh.get('k0'))   # 64, 98/194 fictional
     add('foam_poisson', 'foam', seeds.random_patch(55, seed=200, process='poisson_disk')['geo'])  # 54
     # flipped variants: search seeds for a NON-degenerate distinct connectivity (heavy flipping can
     # yield a near-singular network whose nu blows up, e.g. the old f16 had nu~646 — reject those)
@@ -225,7 +244,7 @@ def design_one(topo, nu_target):
     (solver-vs-sim gap < GAP_TOL) — falling back to the lowest-gap design if none is trustworthy.
     Returns (best_geo, k, rep, loss)."""
     geo0 = topo['geo']
-    k = np.ones(topo['n_bond'])
+    k = np.asarray(topo.get('k0', np.ones(topo['n_bond'])), float)   # ones unless USE_SEED_K0
     Lx, Ly = float(geo0['BL1'][0]), float(geo0['BL2'][1])
     tris = positions._tris_from_geo(geo0)                  # frozen connectivity
     pts0 = np.asarray(geo0['pts'], float)
