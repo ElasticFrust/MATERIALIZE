@@ -401,6 +401,17 @@ this policy. It is pure-render (numpy + matplotlib; callers pass already-loaded 
 - **Bond styling.** Colour by k with **viridis** (sequential, k≥0); **constant medium line width**
   (do NOT encode k by width). Bonds **very close to k=0** are drawn **dashed** (solid otherwise) — no
   faintness/alpha.
+- **Bond-colour scale: cut the top at a PERCENTILE, never at the max** *(settled 2026-08-17)*.
+  `STYLE.K_HI_PCT = 90`; bonds above it saturate, so the **true max goes in the panel title** and the
+  colorbar is drawn with `extend='max'`. Designed k is heavy-tailed — measured max/median **17** on a
+  healthy design and **147** on a degenerate one — so a `[min,max]` norm pushes essentially every bond
+  into the bottom few percent of viridis and a dense panel renders as a flat dark mass, in which the
+  correctly-dashed near-zero bonds read as a *torn mesh*. That is what made the B-4 regenerated
+  figures look like they had "missing parts": **the data and `draw_network` were fine, the norm was
+  not.** `draw_network(..., scale='log')` is available and is the right choice when the contrast is
+  large (at max/median ≈ 147 even the 90th-percentile linear cut leaves the bulk dark); its range is
+  taken over **live bonds only** (k ≥ `K0_FRAC`·median), because the dead population reaches ~1e-40
+  and would otherwise span ~18 decades and saturate everything real.
 - **Field maps (per-triangle ν or E): fill the whole triangle** (filled polygons). **ν → diverging
   colormap centered at 0**; **E → sequential**. Colorbar each.
 - **Directional response ν(θ), E(θ).** Cartesian is the MAIN plot (ν and E vs θ∈[0,π], target dashed).

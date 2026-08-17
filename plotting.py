@@ -39,6 +39,10 @@ class STYLE:
     E_CMAP      = 'viridis'      # Young field (sequential, E>0)
     LW          = 1.5            # constant medium bond line width (k NOT encoded by width)
     K0_FRAC     = 0.02           # k < K0_FRAC·median(k) ⇒ "very close to 0" ⇒ dashed (else solid)
+    K_HI_PCT    = 90             # bond-colour upper limit = this PERCENTILE of k, never the max —
+                                 # designed k is heavy-tailed (measured max/median 17 and 147), and a
+                                 # max-based norm compresses every bond into the bottom few percent
+                                 # of the colormap: the panel reads as a flat dark mass (audit B-4)
     DPI_ELEMENT = 300            # standalone reusable elements (≥300; raise for publication)
     DPI_MONTAGE = 200            # montage working DPI (raise for production)
     TILE_REPS   = 3              # reps×reps tiling for the periodic-continuous network draw
@@ -55,28 +59,58 @@ def square(ax):
     ax.set_aspect('equal'); ax.set_xticks([]); ax.set_yticks([])
 
 
-def _k_norm(k):
+def _k_norm(k, scale='linear', hi_pct=None):
+    """Colour norm for bond stiffness k. The upper limit is a PERCENTILE, never the max.
+
+    Why (audit B-4): designed k is heavy-tailed — measured max/median 17 (a healthy design) and 147
+    (a degenerate one). A norm spanning [min, max] therefore maps essentially every bond into the
+    bottom few percent of viridis, and a 3456-bond panel renders as a flat dark mass in which the
+    (correctly) dashed near-zero bonds read as a torn mesh rather than as marked dead bonds.
+
+    Bonds above the cut SATURATE, so the true max belongs in the panel title, and a colorbar for
+    this norm should be drawn with `extend='max'`.
+
+    `scale='log'` for designs whose live stiffness spans decades. The range is then taken over LIVE
+    bonds only (k ≥ K0_FRAC·median): the dead population reaches ~1e-40, so including it makes the
+    scale span ~18 decades and every real bond saturates at the top — worse than the defect it was
+    meant to fix."""
     k = np.asarray(k, float)
-    kmin, kmax = float(np.nanmin(k)), float(np.nanmax(k))
-    if not np.isfinite(kmin) or kmax <= kmin:
-        kmax = kmin + 1e-9
-    return mcolors.Normalize(kmin, kmax)
+    k = k[np.isfinite(k)]
+    hi_pct = STYLE.K_HI_PCT if hi_pct is None else hi_pct
+    if k.size == 0:
+        return mcolors.Normalize(0.0, 1.0)
+    hi = float(np.percentile(k, hi_pct))
+    if scale == 'log':
+        med = float(np.median(k))
+        live = k[k >= STYLE.K0_FRAC * med] if med > 0 else k[k > 0]
+        live = live[live > 0]
+        if live.size == 0:
+            return mcolors.Normalize(0.0, max(hi, 1e-9))
+        lo = float(np.percentile(live, 5))
+        hi = max(hi, lo * (1 + 1e-9))
+        return mcolors.LogNorm(lo, hi)
+    return mcolors.Normalize(0.0, hi if hi > 0 else max(float(k.max()), 1e-9))
 
 
 # ---- 1. canonical network draw (tiled-continuous, cropped) ----------------------------------
 def draw_network(ax, geo, bond_k, cmap=STYLE.K_CMAP, norm=None, reps=STYLE.TILE_REPS,
-                 pad=STYLE.PAD, title=None):
+                 pad=STYLE.PAD, title=None, scale='linear'):
     """THE canonical network draw. Tile the periodic cell reps×reps and crop to the central cell so
     bonds crossing the boundary render CONTINUOUSLY (no wrap gaps). Colour by k (viridis), CONSTANT
     medium width; bonds very close to k=0 drawn dashed (else solid). Square. Returns the (solid-bond)
     LineCollection so a colorbar can be attached. Supersedes the stub draws (fractional-wrap /
-    real-coord-stub) that left boundary gaps."""
+    real-coord-stub) that left boundary gaps.
+
+    Colour scale: `_k_norm` cuts the top at the K_HI_PCT percentile, NOT the max, so heavy-tailed
+    designed k stays legible (audit B-4); bonds above the cut saturate, so attach the colorbar with
+    `extend='max'` and put the true max in the title. `scale='log'` when the live stiffness spans
+    decades. Pass an explicit `norm` to override both (e.g. to share one scale across panels)."""
     Lx, Ly = float(geo['BL1'][0]), float(geo['BL2'][1])
     pts = np.asarray(geo['pts'], float)
     u = pts[geo['bond_u']]
     v = u + np.asarray(geo['bond_R'], float)
     k = np.asarray(bond_k, float)
-    norm = norm or _k_norm(k)
+    norm = norm or _k_norm(k, scale=scale)
     kmed = np.nanmedian(k)
     kmed = kmed if (np.isfinite(kmed) and kmed > 0) else 1.0
     solid = k >= STYLE.K0_FRAC * kmed                        # dashed only VERY near k=0
@@ -164,17 +198,35 @@ def _cartesian_pair(ax_nu, ax_E, thetas, curves, target_nu, target_E, labels, cm
         ax.grid(alpha=0.25)
 
 
+def _insert_zero_crossings(th, nu):
+    """Insert the interpolated θ where ν changes sign, with ν=0 there.
+
+    Without this the two sign branches are NaN-masked apart and each stops at the last SAMPLE on its
+    own side, so neither reaches r=|ν|=0: the polar curve tears open at every zero crossing. Adding
+    the crossing point makes both branches terminate at the origin, i.e. continuous. The gap is wide
+    exactly when ν(θ) is steep, which is when the polar plot matters most."""
+    out_th, out_nu = [th[0]], [nu[0]]
+    for i in range(len(th) - 1):
+        a, b = nu[i], nu[i + 1]
+        if (a > 0 and b < 0) or (a < 0 and b > 0):
+            t = a / (a - b)                                  # linear crossing between the samples
+            out_th.append(th[i] + t * (th[i + 1] - th[i])); out_nu.append(0.0)
+        out_th.append(th[i + 1]); out_nu.append(b)
+    return np.asarray(out_th), np.asarray(out_nu)
+
+
 def _polar_nu(ax, thetas, curves):
     """Polar ν: radius = |ν(θ)|, coloured blue where ν≥0, red where ν<0 (handles negative ν in polar).
-    θ mirrored to [0,2π] (elasticity is π-periodic)."""
-    th = np.concatenate([thetas, thetas + np.pi])
+    θ mirrored to [0,2π] (elasticity is π-periodic). Sign branches meet AT THE ORIGIN — see
+    `_insert_zero_crossings`, without which the curve breaks at every crossing."""
     for nu, _E in curves:
-        nu2 = np.concatenate([nu, nu])
+        th2, nu2 = _insert_zero_crossings(np.concatenate([thetas, thetas + np.pi]),
+                                          np.concatenate([nu, nu]))
         r = np.abs(nu2)
         r_pos = np.where(nu2 >= 0, r, np.nan)
-        r_neg = np.where(nu2 < 0, r, np.nan)
-        ax.plot(th, r_pos, color=STYLE.POLAR_POS, lw=1.5)
-        ax.plot(th, r_neg, color=STYLE.POLAR_NEG, lw=1.5)
+        r_neg = np.where(nu2 <= 0, r, np.nan)                # <=0 so the inserted zero joins BOTH
+        ax.plot(th2, r_pos, color=STYLE.POLAR_POS, lw=1.5)
+        ax.plot(th2, r_neg, color=STYLE.POLAR_NEG, lw=1.5)
     ax.set_title(r'$|\nu(\theta)|$  (blue $\nu{>}0$, red $\nu{<}0$)', fontsize=9)
 
 
