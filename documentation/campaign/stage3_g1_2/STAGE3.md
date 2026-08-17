@@ -101,6 +101,21 @@ which reads as "the floor does nothing". It was invalid — it ran a reduced sea
 nothing to reject. **A guard can only be tested under conditions that trigger the failure.** The
 positive control (`minq`) was the tell. Fixed to drive the real `design_one` search.
 
+## 4b. Stage 3c — the FREED variant, and what it settles
+
+`run_g1_2_freed.py` (fictional bracing edges at the seeds' own k0 = 0.001 instead of 1). 110 runs,
+126 min. Trustworthy **21 → 33 of 110**.
+
+**But the four malformed topologies STILL have none trustworthy** — `honeycomb`, `square_octagon`,
+`rotating_squares`, `reentrant_honeycomb`, exactly as in the braced run. Freeing the hinges changes
+their physics completely (rotating squares: +0.289 braced → −1.000 freed) and changes their
+trustworthiness **not at all**.
+
+That settles which of the two defects governs: **A-17 mesh malformation, not the bracing.** The
+bracing was a real defect in the experiment — it engineered the auxeticity out of those motifs — but
+it is not why the solver disagrees with the sim on them. Their solver numbers remain unusable until
+the mesh construction is fixed; they are sim-only.
+
 ## 5. What must happen before Stage 3's physics can be stated
 
 1. **Re-run `g1_2` with fictional edges at near-zero k**, not 1 — the configuration the
