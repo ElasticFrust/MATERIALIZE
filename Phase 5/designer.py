@@ -47,6 +47,7 @@ import phys_targets
 # what it deliberately raises is what CLAUDE.md §3 asks of callers. (The no-oracle-imports rule
 # governs the DESIGN path in Phase 2/3; this is the verification path.)
 import physical_homog as PH
+import mesh_build as MB              # check_mesh_preconditions — the solver's own mesh gate (A-17)
 
 # ν is O(1) and can cross zero, so every ν comparison here is relative WITH A FLOOR; E is strictly
 # positive so it is relative outright. ONE constant, shared by the solver-vs-sim gap (verify()) and
@@ -94,7 +95,20 @@ def _chk_realizable(C6, geo=None, k=None, rep=None):
     return phys_targets.is_physical(C6)
 
 
-PHYSICALITY_CHECKS = [('realizable', _chk_realizable)]
+def _chk_mesh(C6, geo=None, k=None, rep=None):
+    """The SOLVER's own mesh preconditions (audit A-17) — closed combinatorics, no inverted triangles.
+
+    This does not ask whether the RESPONSE is physical; it asks whether the solver was entitled to
+    compute one at all. Where either condition fails the solver is simply wrong (on `rotating_squares`,
+    known answer nu = -1: sim -1.00000, solver -0.685), and nothing else in the pipeline notices —
+    the design merely looks like a bad one. Phase 5 is PBC-only, hence `periodic=True`."""
+    if geo is None:
+        return True, ''                                  # nothing to check
+    ok, failures = MB.check_mesh_preconditions(geo, periodic=True)
+    return ok, '; '.join(failures)
+
+
+PHYSICALITY_CHECKS = [('realizable', _chk_realizable), ('mesh', _chk_mesh)]
 
 
 def run_physicality_checks(C6, geo=None, k=None, rep=None, checks=None):

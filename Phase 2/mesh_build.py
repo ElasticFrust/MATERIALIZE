@@ -140,6 +140,65 @@ def clean_tri(tri):
     return SimpleNamespace(points=np.asarray(tri.points, float)[used], simplices=remap[simp])
 
 
+def signed_areas(mesh):
+    """Per-triangle SIGNED area. Negative => the triangle is INVERTED (folded).
+
+    Uses the UNWRAPPED triangle vectors (`tri_verts` if present, else `edge_vecs`) — never the raw
+    `pts`. Under PBC the wrapped coordinates fabricate inversions, and computing this from `pts` is
+    exactly the mistake that made an earlier check dismiss real folding as a "Delaunay orientation
+    convention" (audit A-17)."""
+    tv = mesh.get('tri_verts')
+    if tv is not None:
+        tv = np.asarray(tv, float)
+        a, b = tv[:, 1] - tv[:, 0], tv[:, 2] - tv[:, 0]
+    else:
+        ev = np.asarray(mesh['edge_vecs'], float)      # [p1-p0, p2-p0, p2-p1]
+        a, b = ev[:, 0], ev[:, 1]
+    return 0.5 * (a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0])
+
+
+def check_mesh_preconditions(mesh, periodic=True):
+    """The TWO conditions the SOLVER requires of a mesh (audit A-17). Returns (ok, failures).
+
+    Measured 2026-08-17: with both satisfied the solver agrees with the independent sim to
+    0.00000-1e-11 across the crystal, nine disorder families, EIGHT orders of stiffness contrast, and
+    deep re-entrant geometry (nu = -9.99). Violate either and it is wrong — on `rotating_squares`
+    (known answer nu = -1) the sim gives -1.00000 while the solver reaches -0.685.
+
+      (1) COMBINATORIALLY CLOSED  — every bond in exactly 2 triangles, and V - E + F = 0.
+          **PERIODIC MESHES ONLY.** An OPEN mesh legitimately has boundary bonds in ONE triangle;
+          the single open hexagon (6 triangles) is exact. Pass `periodic=False` for open meshes.
+      (2) GEOMETRICALLY CONSISTENT — no INVERTED (negative signed-area) triangle. Applies to both.
+
+    They are INDEPENDENT: the chord-triangulated re-entrant hexagon satisfies (1) and violates (2)
+    (8/32 folded, gap up to 28); the non-triangulation tilings satisfy (2) and violate (1).
+
+    *Why the solver cares and the sim does not:* the metric formulation works on `q_e = dx dx^T` and
+    triangle AREAS, both orientation-blind, so a folded triangle is computed as though correctly
+    oriented; and open combinatorics corrupts the edge-compatibility / curvature operators. The nodal
+    sim only has springs between nodes."""
+    failures = []
+    tb = np.asarray(mesh['tri_bond'])
+    nE = int(np.max(tb)) + 1 if tb.size else 0
+    counts = np.bincount(tb.ravel(), minlength=nE)
+    if periodic:
+        bad = np.flatnonzero(counts != 2)
+        if bad.size:
+            hist = {int(c): int(n) for c, n in zip(*np.unique(counts, return_counts=True))}
+            failures.append(f'not closed: {bad.size} bond(s) not in exactly 2 triangles '
+                            f'(bond->#tri histogram {hist})')
+        V, F = len(mesh['pts']), len(mesh['simplices'])
+        chi = V - nE + F
+        if chi != 0:
+            failures.append(f'not a torus: V-E+F = {chi} (expected 0)')
+    sa = signed_areas(mesh)
+    n_inv = int((sa < 0).sum())
+    if n_inv:
+        failures.append(f'{n_inv} of {len(sa)} triangle(s) INVERTED (negative signed area; '
+                        f'most negative {sa.min():.3e})')
+    return (not failures), failures
+
+
 def build_open_mesh(tri, vd_a=None):
     """clean triangulation -> non-periodic mesh dict (bonds = unique edges, no wrap).
     vd_a: if not None, per-bond k = 1 + tanh(vd_a*(|R|-1)); else uniform k=1."""

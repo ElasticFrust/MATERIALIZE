@@ -94,19 +94,23 @@ def test_registry():
         seen.append('ran')
         return False, 'deliberate test failure'
 
-    checks = designer.PHYSICALITY_CHECKS + [('selftest', _always_fails)]
+    before = list(designer.PHYSICALITY_CHECKS)           # snapshot, NOT a hardcoded expectation:
+    n_reg = len(before)                                  # the registry is meant to grow (A-17 added
+                                                         # 'mesh'), so assert the INVARIANT instead
+    checks = before + [('selftest', _always_fails)]
     ok, fails = designer.run_physicality_checks(good, checks=checks)
     assert seen == ['ran'], "an appended check did not run"
     assert not ok and ('selftest', 'deliberate test failure') in fails, \
         f"appended check's failure did not surface: {fails}"
 
-    # ALL checks run (no short-circuit) so the log lists EVERY violated criterion
+    # ALL checks run (no short-circuit) so the log lists EVERY violated criterion. A zero tensor
+    # fails 'realizable'; 'mesh' abstains without a geo; 'selftest' always fails.
     both = designer.run_physicality_checks(np.zeros(6), checks=checks)[1]
-    assert len(both) == 2, f"expected both checks to report, got {both}"
+    assert len(both) >= 2, f"expected at least the realizable+selftest failures, got {both}"
     # the module registry itself is untouched by passing `checks`
-    assert [n for n, _ in designer.PHYSICALITY_CHECKS] == ['realizable'], "registry was mutated"
-    print(f"  [3] registry: appended check ran and surfaced; all checks reported "
-          f"({len(both)}/2); module registry unmutated  OK")
+    assert list(designer.PHYSICALITY_CHECKS) == before, "registry was mutated by passing checks="
+    print(f"  [3] registry: appended check ran and surfaced; {len(both)} failures reported from "
+          f"{n_reg}+1 checks; module registry unmutated  OK")
 
 
 # ---- [4] design() partitions, and survives an unhealthy candidate -----------------------------
@@ -173,10 +177,61 @@ def test_rejection_path():
           f"reason given, saved); unhealthy geometry did not abort the search  OK")
 
 
+# ---- [5] the A-17 mesh preconditions are enforced --------------------------------------------
+def test_mesh_preconditions():
+    """The solver's OWN mesh gate (A-17): closed combinatorics + no inverted triangles.
+
+    Validated against every mesh whose solver behaviour was MEASURED on 2026-08-17 — the gate must
+    pass exactly those where the solver is exact and fail exactly those where it is wrong."""
+    import mesh_build as MB
+    import seeds
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import hex_solver_validation as HV
+    import single_hexagon as SH
+
+    # PASS: the solver agrees with the sim to 0.00000-1e-11 on all of these
+    for lab, g in (('make_lattice', C.make_lattice(1.0, 1.0, half=3)),
+                   ('build_geometry', MB.build_geometry(6, 0.2, 1)),
+                   ('kagome', seeds.kagome(reps=3)['geo']),
+                   ('centre hexagon d=0.6', HV.build_dhex(2, 2, 0.6)[0]),
+                   ('chord hexagon d=1.5', HV.build_chords(2, 2, 1.5)[0])):
+        ok, f = MB.check_mesh_preconditions(g, periodic=True)
+        assert ok, f'{lab} should PASS the mesh gate, got {f}'
+
+    # FAIL (1) not closed: solver-vs-sim gap 0.22-0.38 measured on these
+    for lab, g in (('square_octagon', seeds.seed_tiling('square_octagon', 3)['geo']),
+                   ('rotating_squares', seeds._rotating_squares(reps=4, theta_deg=25.0)['geo']),
+                   ('reentrant_honeycomb', seeds._reentrant_honeycomb(reps=4)['geo'])):
+        ok, f = MB.check_mesh_preconditions(g, periodic=True)
+        assert not ok and any('not closed' in x or 'torus' in x for x in f), \
+            f'{lab} should FAIL as not-closed, got {f}'
+
+    # FAIL (2) inverted: the chord triangulation folds once the hexagon is non-convex (gap 8.6)
+    ok, f = MB.check_mesh_preconditions(HV.build_chords(2, 2, 0.6)[0], periodic=True)
+    assert not ok and any('INVERTED' in x for x in f), f'folded chord mesh should FAIL, got {f}'
+
+    # an OPEN mesh legitimately has boundary bonds in ONE triangle -- the single hexagon is EXACT
+    tri, _ = SH.hexagon(2.0)
+    om = MB.build_open_mesh(tri)
+    assert MB.check_mesh_preconditions(om, periodic=False)[0], 'open hexagon should PASS when open'
+    assert not MB.check_mesh_preconditions(om, periodic=True)[0], \
+        'the periodic flag must matter: an open mesh is not closed'
+
+    # and it is wired into the designer's registry
+    names = [n for n, _ in designer.PHYSICALITY_CHECKS]
+    assert 'mesh' in names, f'mesh check not registered: {names}'
+    bad = HV.build_chords(2, 2, 0.6)[0]
+    ok_all, fails = designer.run_physicality_checks(np.zeros(6), geo=bad)
+    assert not ok_all and any(n == 'mesh' for n, _ in fails), \
+        f'registry did not surface the mesh failure: {fails}'
+    print('  [5] mesh preconditions: 5 good meshes pass, 3 not-closed + 1 folded fail, open mesh '
+          'passes only when judged open, registry wired  OK')
+
+
 if __name__ == '__main__':
-    print('designer verification-surface tests (audit A-2 ... A-6)')
+    print('designer verification-surface tests (audit A-2 ... A-6, A-17)')
     failed = 0
-    for t in (test_metric, test_gate, test_registry, test_rejection_path):
+    for t in (test_metric, test_gate, test_registry, test_rejection_path, test_mesh_preconditions):
         try:
             t()
         except Exception as e:
