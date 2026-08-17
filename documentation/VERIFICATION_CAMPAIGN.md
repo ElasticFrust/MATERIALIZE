@@ -109,8 +109,13 @@ window, and state from any of the 13 preceding tests.
 **Consequences, which are binding on how this campaign reports:**
 1. **No headline number may rest on a single run.** A solver quantity can be wrong by ~1e-4 roughly
    5% of the time. Quote distributions over the campaign's many runs, not one design's number.
-2. ~1e-4 is far below every design tolerance in use (`gap_tol` 0.05), so **it does not threaten the
-   campaign's conclusions** — it threatens single-measurement claims about solver *accuracy*.
+2. ~~~1e-4 is far below every design tolerance in use (`gap_tol` 0.05), so **it does not threaten the
+   campaign's conclusions** — it threatens single-measurement claims about solver *accuracy*.~~
+   **WRONG — corrected 2026-08-17.** B-1 was caught outside the test suite returning **ν = +2.76886
+   where the truth is +2.950455: a 6 % error**, well ABOVE `gap_tol` and indistinguishable from a real
+   result. It does hit ordinary solver calls, and it can threaten conclusions. The binding rule is
+   therefore stronger: **no solver number is trustworthy without repetition OR an independent-sim
+   cross-check.** The sim is what caught this instance.
 3. **The campaign is the diagnostic.** `[15]` now dumps the full per-case tensors to
    `Phase 3/verifications/b1_dumps/` whenever the comparison exceeds 1e-9 — free when healthy. Running
    the suite before/after each campaign yields the sample that dedicated runs would otherwise have to
