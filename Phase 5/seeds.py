@@ -43,6 +43,7 @@ from inverse_design import (DesignProblem, Objective, optimize, validate, ANG,
 torch.set_default_dtype(torch.float64)   # REQUIRED — the whole stack is float64
 
 from triangulation import geo_from_simplices, delaunay_tris
+import mesh_build as MB              # check_mesh_preconditions — the solver's mesh gate (A-17)
 
 
 # ---- uniform seed record ---------------------------------------------------------------------
@@ -197,9 +198,30 @@ def seed_with_basis(bravais_v1, bravais_v2, basis, reps, Lx, Ly, eta=0.0, seed=0
         pts = pts + eta * np.stack([np.cos(a), np.sin(a)], 1)
         pts[:, 0] %= Lx; pts[:, 1] %= Ly
     geo = C._periodic_delaunay(pts, Lx, Ly)
+    _basis_mesh_ok = True
+    # Same degeneracy repair as `_delaunay_nondegenerate` (audit A-17): a symmetric basis (honeycomb
+    # is the case in point) is full of cocircular quadruples, so the periodic Delaunay tie-break can
+    # produce a NON-MANIFOLD mesh — measured honeycomb V-E+F = -5, and solver-vs-sim 0.0285 with no
+    # optimisation involved. All edges here are native, so mesh validity is the only criterion.
+    if not MB.check_mesh_preconditions(geo, periodic=True)[0]:
+        box = np.array([Lx, Ly])
+        for s_ in range(24):
+            amp = 1e-9 * (10.0 ** (s_ // 8))
+            jit = np.mod(pts + amp * np.random.default_rng(s_).standard_normal(pts.shape), box)
+            try:
+                g2 = C._periodic_delaunay(jit, Lx, Ly)
+            except Exception:                            # noqa: BLE001 — try the next tie-break
+                continue
+            if MB.check_mesh_preconditions(g2, periodic=True)[0]:
+                pts, geo = jit, g2
+                break
+        else:
+            _basis_mesh_ok = False      # tagged, not raised — see _delaunay_nondegenerate
     if name is None:
         name = f'basis_r{reps}_eta{eta}_s{seed}'
-    return make_record(name, geo)
+    rec = make_record(name, geo)
+    rec['mesh_ok'] = bool(_basis_mesh_ok)   # False => solver-invalid (A-17); use sim-only
+    return rec
 
 
 def honeycomb(reps=3, eta=0.0, seed=0):
@@ -279,6 +301,63 @@ def _native_by_displacements(pts, box, disps, tol=1e-3):
     return native
 
 
+def _natives_survive(geo, required, box):
+    """True iff every REQUIRED native edge is present in `geo` (same signature test the caller uses)."""
+    if not required:
+        return True
+    A = geo['pts'][geo['bond_u']]
+    B = A + geo['bond_R']
+    sigs = {_edge_sig(A[i], B[i], box) for i in range(len(geo['bond_u']))}
+    return not (required - sigs)
+
+
+def _delaunay_nondegenerate(name, pts, Lx, Ly, seeds_=24, required=None):
+    """Periodic Delaunay that is guaranteed to be a VALID CLOSED TRIANGULATION.
+
+    **Why this exists (audit A-17, fixed 2026-08-17).** These tilings are highly symmetric, so their
+    point sets are full of COCIRCULAR quadruples where the Delaunay tie-break is arbitrary. The
+    periodic stitching then produces a NON-MANIFOLD mesh — bonds in 1, 3 or even 4 triangles instead
+    of exactly 2. Measured as-built: honeycomb V−E+F = −5, square_octagon −6, rotating_squares −3,
+    reentrant_honeycomb −1. That silently breaks the SOLVER (its edge-compatibility and curvature
+    operators assume a closed surface) while the nodal sim is unaffected — square_octagon read
+    solver +0.0966 vs sim +0.3177, a gap of 0.22 with NO optimisation involved.
+
+    Fix: if the mesh is degenerate, retry with a TINY symmetry-breaking jitter (1e-9 — nine orders
+    below the unit edge length, and four below `_edge_sig`'s 5-decimal rounding, so native/fictional
+    tagging is untouched; the caller's `required` assert verifies that). The jitter is KEPT: snapping
+    back to the exact symmetric coordinates re-creates the degeneracy (measured — honeycomb and
+    reentrant fail again, gaps 0.52 and 0.21).
+
+    After the repair all four tilings give solver-vs-sim gap **0.0000** (from 0.0285, 0.2211, 0.0231,
+    0.0403), so they are usable by the solver rather than sim-only."""
+    box = np.array([Lx, Ly])
+    required = set(required or ())
+    tris = delaunay_tris(pts, Lx, Ly)
+    geo = geo_from_simplices(pts, tris, Lx, Ly)
+    if MB.check_mesh_preconditions(geo, periodic=True)[0]:
+        return pts, tris, geo, True
+    # A retry must satisfy BOTH criteria. Requiring only mesh validity is not enough: the jitter
+    # changes WHICH edges Delaunay produces, and a tie-break that fixes the manifold can drop a
+    # native rib (measured on reentrant_honeycomb, which then failed the caller's `required` assert).
+    for s in range(seeds_):
+        amp = 1e-9 * (10.0 ** (s // 8))                  # 1e-9, then 1e-8, then 1e-7
+        jit = np.mod(pts + amp * np.random.default_rng(s).standard_normal(pts.shape), box)
+        try:
+            t2 = delaunay_tris(jit, Lx, Ly)
+            g2 = geo_from_simplices(jit, t2, Lx, Ly)
+        except Exception:                                # noqa: BLE001 — try the next tie-break
+            continue
+        if MB.check_mesh_preconditions(g2, periodic=True)[0] and _natives_survive(g2, required, box):
+            return jit, t2, g2, True
+    # UNREPAIRABLE. Do NOT raise: some tilings genuinely cannot be Delaunay-triangulated both as a
+    # manifold AND keeping every native rib (a honeycomb's ribs are not all Delaunay edges of its
+    # vertex set — the old code only "kept" them by being non-manifold). Raising here would break
+    # every driver that uses these seeds. Instead return the best effort TAGGED, so the A-17 gate in
+    # `designer.PHYSICALITY_CHECKS` rejects it at the point of USE and the caller can go sim-only or
+    # switch representation (a centre-vertex fan triangulates any polygon validly — cf. dhex).
+    return pts, tris, geo, False
+
+
 def _triangulate_and_tag(name, pts, native, Lx, Ly, eps, required=None):
     """Delaunay-triangulate the tiling vertices, tag each geo bond native/fictional by matching its
     signature against `native`, and assert every REQUIRED edge survived (else the mesh is
@@ -288,8 +367,7 @@ def _triangulate_and_tag(name, pts, native, Lx, Ly, eps, required=None):
     box = np.array([Lx, Ly])
     if required is None:
         required = native
-    tris = delaunay_tris(pts, Lx, Ly)
-    geo = geo_from_simplices(pts, tris, Lx, Ly)
+    pts, tris, geo, mesh_ok = _delaunay_nondegenerate(name, pts, Lx, Ly, required=required)
     A = geo['pts'][geo['bond_u']]
     B = A + geo['bond_R']
     sigs = [_edge_sig(A[bi], B[bi], box) for bi in range(len(geo['bond_u']))]
@@ -301,7 +379,9 @@ def _triangulate_and_tag(name, pts, native, Lx, Ly, eps, required=None):
     assert is_fic.sum() > 0, f"{name}: no fictional edges produced (nothing to triangulate?)"
     assert (geo['areas'] > 0).all(), f"{name}: non-positive triangle area"
     k0 = np.where(is_fic, eps, 1.0)
-    return make_record(name, geo, k0=k0, is_fictional=is_fic)
+    rec = make_record(name, geo, k0=k0, is_fictional=is_fic)
+    rec['mesh_ok'] = bool(mesh_ok)      # False => solver-invalid (A-17); sim-only
+    return rec
 
 
 def _raw_square(reps, s=1.0):

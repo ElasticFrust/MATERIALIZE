@@ -198,13 +198,24 @@ def test_mesh_preconditions():
         ok, f = MB.check_mesh_preconditions(g, periodic=True)
         assert ok, f'{lab} should PASS the mesh gate, got {f}'
 
-    # FAIL (1) not closed: solver-vs-sim gap 0.22-0.38 measured on these
-    for lab, g in (('square_octagon', seeds.seed_tiling('square_octagon', 3)['geo']),
-                   ('rotating_squares', seeds._rotating_squares(reps=4, theta_deg=25.0)['geo']),
-                   ('reentrant_honeycomb', seeds._reentrant_honeycomb(reps=4)['geo'])):
-        ok, f = MB.check_mesh_preconditions(g, periodic=True)
+    # REPAIRED 2026-08-17: seeds now break the Delaunay tie (cocircular points) so these are valid
+    # and EXACT (gap 0.0000000) where they used to read 0.22-0.38. They must PASS now.
+    for lab, rec in (('square_octagon', seeds.seed_tiling('square_octagon', 3)),
+                     ('rotating_squares', seeds._rotating_squares(reps=4, theta_deg=25.0)),
+                     ('honeycomb', seeds.honeycomb(reps=4))):
+        ok, f = MB.check_mesh_preconditions(rec['geo'], periodic=True)
+        assert ok, f'{lab} should be REPAIRED and PASS now, got {f}'
+        assert rec.get('mesh_ok', True), f'{lab} should be tagged mesh_ok=True'
+
+    # STILL not closed: a honeycomb's ribs are not all Delaunay edges of its vertex set, so no
+    # tie-break gives both a manifold AND every native rib. These are TAGGED, not raised, so the
+    # gate rejects them at point of use instead of crashing every driver that builds them.
+    for lab, rec in (('honeycomb tiling', seeds.seed_tiling('honeycomb', 3)),
+                     ('reentrant_honeycomb', seeds._reentrant_honeycomb(reps=4))):
+        ok, f = MB.check_mesh_preconditions(rec['geo'], periodic=True)
         assert not ok and any('not closed' in x or 'torus' in x for x in f), \
             f'{lab} should FAIL as not-closed, got {f}'
+        assert rec.get('mesh_ok') is False, f'{lab} should be tagged mesh_ok=False, got {rec.get("mesh_ok")}'
 
     # FAIL (2) inverted: the chord triangulation folds once the hexagon is non-convex (gap 8.6)
     ok, f = MB.check_mesh_preconditions(HV.build_chords(2, 2, 0.6)[0], periodic=True)

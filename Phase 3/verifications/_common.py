@@ -256,19 +256,20 @@ def draw_box(ax, geo, **kw):
 
 
 def draw_network(ax, geo, k_bond, cmap='viridis', lw_scale=3.0, box=True):
-    """Draw the network in REAL geometry (per-bond line color AND width ∝ rigidity k), inside a
-    square axes frame. Bonds crossing the periodic boundary appear as short stubs at the edges."""
-    from matplotlib.collections import LineCollection
-    u = geo['pts'][geo['bond_u']]
-    segs = np.stack([u, u + geo['bond_R']], axis=1)      # real-coordinate segments
-    k = np.asarray(k_bond, float)
-    lw = 0.25 + lw_scale * k / (k.max() + 1e-12)
-    lc = LineCollection(segs, array=k, cmap=cmap, linewidths=lw, zorder=2)
-    ax.add_collection(lc)
-    if box:
-        draw_box(ax, geo)
-    square_frame(ax, geo)
-    return lc
+    """DELEGATES to the canonical `plotting.draw_network` (audit B-4, 2026-08-17).
+
+    This used to draw real-coordinate segments, so bonds crossing the periodic boundary appeared as
+    STUBS at the edges, and it encoded k by line WIDTH. Both violate the settled plotting policy
+    (`CLAUDE.md` §3): the canonical draw is tiled-continuous and cropped, colour by k with CONSTANT
+    medium width, near-zero k dashed. `plotting.draw_network`'s own docstring says it "supersedes the
+    stub draws"; this function WAS one of them, and ~13 scripts still call it.
+
+    Kept as a thin shim rather than deleted so those call sites keep working. **`lw_scale` is now a
+    NO-OP** — encoding k by width is exactly what the policy forbids; the parameter survives only so
+    existing calls do not break. Figures produced before this change are preserved alongside their
+    regenerated versions as `*_legacy_prePlotPolicy.png`."""
+    import plotting as _P                                 # lazy: avoids an import cycle at module load
+    return _P.draw_network(ax, geo, k_bond, cmap=cmap)
 
 
 def draw_lattice_zoom(ax, geo, color='0.2', cells=3.0, lw=1.4):
