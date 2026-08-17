@@ -155,7 +155,12 @@ space changes them.
 
 **Intrinsic solve, full constraints (verified default).** Minimise energy over δg s.t. (C1) edge
 compatibility Jδg=0; (C2) zero discrete Gaussian curvature 𝒞δg=0 (**omitting it is the classic
-single-site mean-field ≈1.4× over-compliance error**); (C3) area-weighted normalisation M_S δg=0.
+single-site mean-field over-compliance error — RE-DERIVED 2026-08-17, and it is NOT the fixed
+"≈1.4×" previously quoted here: the factor is strongly mesh-dependent, measured 1.015 (frozen
+η=0.15), 1.038 (η=0.25), 1.120 (VD a=−2), 1.166 (η=0.35), 1.642 (VD a=+5), 228 (VD a=+10,
+near-mechanism); median 1.14. The DIRECTION is confirmed — omitting C2 is always over-compliant —
+but quote a range, not a constant. The old 1.4 came through the tombstoned area-weighted
+`Ceff_nuE` (audit A-7). With C2 the solve matches the independent sim EXACTLY on all six meshes**); (C3) area-weighted normalisation M_S δg=0.
 `method='intrinsic'` is the verified default; **legacy single-site mean-field / Woodbury and the
 plain unweighted-mean normalisation are superseded — never in verification or plots.**
 
