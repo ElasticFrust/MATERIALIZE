@@ -228,3 +228,90 @@ def build_open_mesh(tri, vd_a=None):
     return dict(pts=pts, simplices=simp, edge_vecs=edge_vecs, actual_len2=l2, areas=areas,
                 bond_u=bu, bond_v=bv, bond_R=bR, bond_k=bond_k, tri_bond=tri_bond,
                 tri_k=bond_k[tri_bond])
+
+
+# ---- lattice construction (MOVED here from `Phase 3/verifications/_common.py`, audit A-7c,
+# 2026-08-18). Phase 5 PRODUCTION code (designer, seeds, triangulation, dataset) needs these, and
+# reaching into a module that lives inside a *verifications* directory inverted the layering.
+# `_common` re-exports them, so the ~100 verification scripts are untouched. ----------------
+from scipy.spatial import Delaunay          # noqa: E402  (used by _periodic_delaunay)
+
+def box(geo):
+    """(Lx, Ly) -- the box edge lengths (BL1 along x, BL2 along y) as plain floats."""
+    return float(geo['BL1'][0]), float(geo['BL2'][1])
+
+
+def _ny_commensurate(phi, Lx, row_h):
+    """Row count = multiple of the period p (smallest with p·φ/2 integer, so a rectangular box is a
+    true periodic supercell) whose height Ny·row_h is CLOSEST to Lx (→ box as square as possible)."""
+    period = 2
+    for base in (2, 3, 4, 5, 6, 8, 10, 12):
+        if abs(base * phi / 2 - round(base * phi / 2)) < 1e-9:
+            period = base
+            break
+    ny_real = Lx / row_h
+    lo = max(period, (int(ny_real) // period) * period)
+    hi = lo + period
+    return lo if abs(lo * row_h - Lx) <= abs(hi * row_h - Lx) else hi
+
+
+def _periodic_delaunay(pts, Lx, Ly):
+    """Periodic Delaunay of a point cloud in [0,Lx)x[0,Ly) via the 3x3-tile trick -> geo dict with
+    an axis-aligned SQUARE-ish box BL1=(Lx,0), BL2=(0,Ly)."""
+    n = len(pts); box = np.array([Lx, Ly])
+    shifts = np.array([(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)])
+    tiled = np.concatenate([pts + s * box for s in shifts], axis=0)
+    shift_of = np.repeat(shifts, n, axis=0)
+    simp_t = Delaunay(tiled).simplices
+    cen = tiled[simp_t].mean(1)
+    keep = (cen[:, 0] >= 0) & (cen[:, 0] < Lx) & (cen[:, 1] >= 0) & (cen[:, 1] < Ly)
+    simp_t = simp_t[keep]; nt = len(simp_t)
+    canon = simp_t % n; sft = shift_of[simp_t]
+    p0, p1, p2 = tiled[simp_t[:, 0]], tiled[simp_t[:, 1]], tiled[simp_t[:, 2]]
+    centroids = (p0 + p1 + p2) / 3.0                     # TRUE centroids (image-correct, in the box)
+    tri_verts = np.stack([p0, p1, p2], 1)               # (nt,3,2) image-correct vertices (for fills)
+    edge_vecs = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
+    l2 = (edge_vecs ** 2).sum(2)
+    areas = 0.5 * np.abs(edge_vecs[:, 0, 0] * edge_vecs[:, 1, 1]
+                         - edge_vecs[:, 0, 1] * edge_vecs[:, 1, 0])
+    pairs = [(0, 1, 0), (0, 2, 1), (1, 2, 2)]
+    keymap = {}; bonds = []; tri_bond = np.zeros((nt, 3), np.int64)
+    for ti in range(nt):
+        for ka, kb, ei in pairs:
+            ca, cb = int(canon[ti, ka]), int(canon[ti, kb])
+            d = sft[ti, kb] - sft[ti, ka]; dp = (int(d[0]), int(d[1])); R = edge_vecs[ti, ei]
+            if (ca, dp[0], dp[1]) <= (cb, -dp[0], -dp[1]):
+                key, Rk = (ca, cb, dp[0], dp[1]), R
+            else:
+                key, Rk = (cb, ca, -dp[0], -dp[1]), -R
+            if key not in keymap:
+                keymap[key] = len(bonds); bonds.append((key[0], key[1], Rk))
+            tri_bond[ti, ei] = keymap[key]
+    return dict(pts=pts, simplices=canon, edge_vecs=edge_vecs, actual_len2=l2,
+                bond_u=np.array([b[0] for b in bonds], np.int64),
+                bond_v=np.array([b[1] for b in bonds], np.int64),
+                bond_R=np.array([b[2] for b in bonds], float),
+                tri_bond=tri_bond, areas=areas, centroids=centroids, tri_verts=tri_verts,
+                BL1=np.array([Lx, 0.0]), BL2=np.array([0.0, Ly]))
+
+
+def make_lattice(phi, psi, half=10.0, seed=0, eta=0.0, half_y=None):
+    """Preferred constructor. Base vectors v1=(1,0), v2=(φ/2, ψ·√3/2) (φ=ψ=1 → regular triangular);
+    lattice = all m·v1+n·v2; keep a SQUARE real-space region (|x|,|y| ≤ half) as an axis-aligned
+    PERIODIC box. Optional eta perturbs positions (disordered); optional half_y makes a RECTANGULAR
+    ribbon (y half-height half_y instead of half). Returns a geo dict (k not set)."""
+    Nx = max(4, int(round(2 * half)))
+    row_h = psi * np.sqrt(3) / 2
+    Lx = float(Nx)
+    Ny = _ny_commensurate(phi, 2 * half_y if half_y is not None else Lx, row_h)
+    Ly = Ny * row_h
+    m, n = np.meshgrid(np.arange(Nx), np.arange(Ny), indexing='ij')
+    x = (m.ravel() + n.ravel() * phi / 2.0) % Nx
+    y = n.ravel() * row_h
+    pts = np.stack([x, y], 1).astype(float)
+    if eta > 0:
+        rng = np.random.default_rng(seed)
+        ang = rng.uniform(0, 2 * np.pi, len(pts))
+        pts = pts + eta * np.stack([np.cos(ang), np.sin(ang)], 1)
+        pts[:, 0] %= Lx; pts[:, 1] %= Ly
+    return _periodic_delaunay(pts, Lx, Ly)

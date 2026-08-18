@@ -98,3 +98,34 @@ def bare_tensor(mesh):
     vx, vy = ev[:, :, 0], ev[:, :, 1]; fac = k / np.maximum(l2, 1e-30) / 16.0
     return np.stack([(fac*vx**4).sum(1), (fac*vx**3*vy).sum(1), (fac*vx**2*vy**2).sum(1),
                      (fac*vx*vy**3).sum(1), (fac*vy**4).sum(1)], 1)
+
+
+# ---- directional response from C6 (MOVED here from `Phase 3/verifications/_common.py`,
+# audit A-7c, 2026-08-18). Pure tensor algebra in the solver's Voigt convention, so it belongs
+# beside the other metric/tensor ops. `_common` re-exports it. ------------------------------
+
+def _compliance_tensor(C6):
+    Cv = np.array([[C6[0], C6[2], C6[1]], [C6[2], C6[5], C6[4]], [C6[1], C6[4], C6[3]]])
+    S = np.linalg.inv(Cv)
+    Sc = np.zeros((2, 2, 2, 2))
+    Sc[0, 0, 0, 0] = S[0, 0]; Sc[1, 1, 1, 1] = S[1, 1]
+    Sc[0, 0, 1, 1] = Sc[1, 1, 0, 0] = S[0, 1]
+    for i in [(0, 0, 0, 1), (0, 0, 1, 0), (0, 1, 0, 0), (1, 0, 0, 0)]:
+        Sc[i] = S[0, 2] / 2
+    for i in [(1, 1, 0, 1), (1, 1, 1, 0), (0, 1, 1, 1), (1, 0, 1, 1)]:
+        Sc[i] = S[1, 2] / 2
+    for i in [(0, 1, 0, 1), (0, 1, 1, 0), (1, 0, 0, 1), (1, 0, 1, 0)]:
+        Sc[i] = S[2, 2] / 4
+    return Sc
+
+
+def nu_E_theta(C6, thetas):
+    """Directional Poisson ratio nu(theta) and Young's modulus E(theta) from a 6-vector."""
+    Sc = _compliance_tensor(C6)
+    nu, E = [], []
+    for th in thetas:
+        m = np.array([np.cos(th), np.sin(th)]); n = np.array([-np.sin(th), np.cos(th)])
+        Emm = np.einsum('ijkl,i,j,k,l', Sc, m, m, m, m)
+        Emn = np.einsum('ijkl,i,j,k,l', Sc, m, m, n, n)
+        nu.append(-Emn / Emm); E.append(1.0 / Emm)
+    return np.array(nu), np.array(E)

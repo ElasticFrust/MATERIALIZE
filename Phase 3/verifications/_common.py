@@ -42,6 +42,15 @@ from inverse_design import (DesignProblem, Objective, optimize, validate, c6_to_
 import metric_ops as MO
 import mesh_build as MB
 import sim_assembly as SA
+
+# ---- A-7c (2026-08-18): these MOVED to Phase 2 and are RE-EXPORTED here ------------------------
+# Phase 5 production code (designer, seeds, triangulation, dataset, positions) was importing them
+# from this module, which lives inside a *verifications* directory -- the dependency pointed at the
+# wrong layer. They now live beside the rest of the core-adjacent code; this re-export keeps every
+# existing `C.make_lattice(...)` / `C.save_network(...)` call site working unchanged.
+from mesh_build import box, _ny_commensurate, _periodic_delaunay, make_lattice   # noqa: F401,E402
+from metric_ops import _compliance_tensor, nu_E_theta                            # noqa: F401,E402
+from persistence import _provenance, save_network, load_network                  # noqa: F401,E402
 torch.set_default_dtype(torch.float64)
 
 # ---- topology x size matrix ------------------------------------------------------------------
@@ -92,58 +101,8 @@ def make_topology_affine(topo_id, N, seed=0):
 
 
 # ---- PREFERRED lattice constructor (square real-space region, PBC via periodic Delaunay) -----
-def _ny_commensurate(phi, Lx, row_h):
-    """Row count = multiple of the period p (smallest with p·φ/2 integer, so a rectangular box is a
-    true periodic supercell) whose height Ny·row_h is CLOSEST to Lx (→ box as square as possible)."""
-    period = 2
-    for base in (2, 3, 4, 5, 6, 8, 10, 12):
-        if abs(base * phi / 2 - round(base * phi / 2)) < 1e-9:
-            period = base
-            break
-    ny_real = Lx / row_h
-    lo = max(period, (int(ny_real) // period) * period)
-    hi = lo + period
-    return lo if abs(lo * row_h - Lx) <= abs(hi * row_h - Lx) else hi
 
 
-def _periodic_delaunay(pts, Lx, Ly):
-    """Periodic Delaunay of a point cloud in [0,Lx)x[0,Ly) via the 3x3-tile trick -> geo dict with
-    an axis-aligned SQUARE-ish box BL1=(Lx,0), BL2=(0,Ly)."""
-    n = len(pts); box = np.array([Lx, Ly])
-    shifts = np.array([(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)])
-    tiled = np.concatenate([pts + s * box for s in shifts], axis=0)
-    shift_of = np.repeat(shifts, n, axis=0)
-    simp_t = Delaunay(tiled).simplices
-    cen = tiled[simp_t].mean(1)
-    keep = (cen[:, 0] >= 0) & (cen[:, 0] < Lx) & (cen[:, 1] >= 0) & (cen[:, 1] < Ly)
-    simp_t = simp_t[keep]; nt = len(simp_t)
-    canon = simp_t % n; sft = shift_of[simp_t]
-    p0, p1, p2 = tiled[simp_t[:, 0]], tiled[simp_t[:, 1]], tiled[simp_t[:, 2]]
-    centroids = (p0 + p1 + p2) / 3.0                     # TRUE centroids (image-correct, in the box)
-    tri_verts = np.stack([p0, p1, p2], 1)               # (nt,3,2) image-correct vertices (for fills)
-    edge_vecs = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    l2 = (edge_vecs ** 2).sum(2)
-    areas = 0.5 * np.abs(edge_vecs[:, 0, 0] * edge_vecs[:, 1, 1]
-                         - edge_vecs[:, 0, 1] * edge_vecs[:, 1, 0])
-    pairs = [(0, 1, 0), (0, 2, 1), (1, 2, 2)]
-    keymap = {}; bonds = []; tri_bond = np.zeros((nt, 3), np.int64)
-    for ti in range(nt):
-        for ka, kb, ei in pairs:
-            ca, cb = int(canon[ti, ka]), int(canon[ti, kb])
-            d = sft[ti, kb] - sft[ti, ka]; dp = (int(d[0]), int(d[1])); R = edge_vecs[ti, ei]
-            if (ca, dp[0], dp[1]) <= (cb, -dp[0], -dp[1]):
-                key, Rk = (ca, cb, dp[0], dp[1]), R
-            else:
-                key, Rk = (cb, ca, -dp[0], -dp[1]), -R
-            if key not in keymap:
-                keymap[key] = len(bonds); bonds.append((key[0], key[1], Rk))
-            tri_bond[ti, ei] = keymap[key]
-    return dict(pts=pts, simplices=canon, edge_vecs=edge_vecs, actual_len2=l2,
-                bond_u=np.array([b[0] for b in bonds], np.int64),
-                bond_v=np.array([b[1] for b in bonds], np.int64),
-                bond_R=np.array([b[2] for b in bonds], float),
-                tri_bond=tri_bond, areas=areas, centroids=centroids, tri_verts=tri_verts,
-                BL1=np.array([Lx, 0.0]), BL2=np.array([0.0, Ly]))
 
 
 def _bond_kv(pts, bond_u, bond_v, bond_R, k):
@@ -179,26 +138,6 @@ def glue(pieces, Lx, Ly):
     return geo, np.array([key not in kv for key in keys])
 
 
-def make_lattice(phi, psi, half=10.0, seed=0, eta=0.0, half_y=None):
-    """Preferred constructor. Base vectors v1=(1,0), v2=(φ/2, ψ·√3/2) (φ=ψ=1 → regular triangular);
-    lattice = all m·v1+n·v2; keep a SQUARE real-space region (|x|,|y| ≤ half) as an axis-aligned
-    PERIODIC box. Optional eta perturbs positions (disordered); optional half_y makes a RECTANGULAR
-    ribbon (y half-height half_y instead of half). Returns a geo dict (k not set)."""
-    Nx = max(4, int(round(2 * half)))
-    row_h = psi * np.sqrt(3) / 2
-    Lx = float(Nx)
-    Ny = _ny_commensurate(phi, 2 * half_y if half_y is not None else Lx, row_h)
-    Ly = Ny * row_h
-    m, n = np.meshgrid(np.arange(Nx), np.arange(Ny), indexing='ij')
-    x = (m.ravel() + n.ravel() * phi / 2.0) % Nx
-    y = n.ravel() * row_h
-    pts = np.stack([x, y], 1).astype(float)
-    if eta > 0:
-        rng = np.random.default_rng(seed)
-        ang = rng.uniform(0, 2 * np.pi, len(pts))
-        pts = pts + eta * np.stack([np.cos(ang), np.sin(ang)], 1)
-        pts[:, 0] %= Lx; pts[:, 1] %= Ly
-    return _periodic_delaunay(pts, Lx, Ly)
 
 
 def make_crystal(phi, psi, half=4.0):
@@ -405,9 +344,6 @@ def region_shape(prob, spec):
     return idx, spec
 
 
-def box(geo):
-    """(Lx, Ly) -- the box edge lengths (BL1 along x, BL2 along y) as plain floats."""
-    return float(geo['BL1'][0]), float(geo['BL2'][1])
 
 
 def triangle_verts(cx, cy, s):
@@ -695,31 +631,8 @@ def solver_region_nuE(prob, k_bond, region=None):
 
 
 # ---- directional response nu(theta), E(theta) (for the anisotropy case) ----------------------
-def _compliance_tensor(C6):
-    Cv = np.array([[C6[0], C6[2], C6[1]], [C6[2], C6[5], C6[4]], [C6[1], C6[4], C6[3]]])
-    S = np.linalg.inv(Cv)
-    Sc = np.zeros((2, 2, 2, 2))
-    Sc[0, 0, 0, 0] = S[0, 0]; Sc[1, 1, 1, 1] = S[1, 1]
-    Sc[0, 0, 1, 1] = Sc[1, 1, 0, 0] = S[0, 1]
-    for i in [(0, 0, 0, 1), (0, 0, 1, 0), (0, 1, 0, 0), (1, 0, 0, 0)]:
-        Sc[i] = S[0, 2] / 2
-    for i in [(1, 1, 0, 1), (1, 1, 1, 0), (0, 1, 1, 1), (1, 0, 1, 1)]:
-        Sc[i] = S[1, 2] / 2
-    for i in [(0, 1, 0, 1), (0, 1, 1, 0), (1, 0, 0, 1), (1, 0, 1, 0)]:
-        Sc[i] = S[2, 2] / 4
-    return Sc
 
 
-def nu_E_theta(C6, thetas):
-    """Directional Poisson ratio nu(theta) and Young's modulus E(theta) from a 6-vector."""
-    Sc = _compliance_tensor(C6)
-    nu, E = [], []
-    for th in thetas:
-        m = np.array([np.cos(th), np.sin(th)]); n = np.array([-np.sin(th), np.cos(th)])
-        Emm = np.einsum('ijkl,i,j,k,l', Sc, m, m, m, m)
-        Emn = np.einsum('ijkl,i,j,k,l', Sc, m, m, n, n)
-        nu.append(-Emn / Emm); E.append(1.0 / Emm)
-    return np.array(nu), np.array(E)
 
 
 # ---- reference tensors (for isotropize / anisotropize cross-targets) -------------------------
@@ -749,73 +662,12 @@ def networks_dir(case):
     return d
 
 
-_GIT_STATE = None            # memoised: git is shelled out ONCE per process, not once per save
 
 
-def _provenance():
-    """(commit, dirty, saved_utc) for the artifact-traceability stamp.
-
-    The git query is cached for the process — a campaign saves hundreds of designs and the tree does
-    not change under a running job. Never raises: a missing git, a detached checkout or a non-repo
-    cwd must not be able to fail a long design run; provenance is best-effort and degrades to ''."""
-    global _GIT_STATE
-    import datetime
-    import subprocess
-    if _GIT_STATE is None:
-        here = os.path.dirname(os.path.abspath(__file__))
-
-        def _git(*a):
-            try:
-                return subprocess.run(('git',) + a, cwd=here, capture_output=True, text=True,
-                                      timeout=10).stdout.strip()
-            except Exception:                                # noqa: BLE001 — best-effort by design
-                return ''
-        _GIT_STATE = (_git('rev-parse', '--short', 'HEAD'), bool(_git('status', '--porcelain')))
-    return (*_GIT_STATE,
-            datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'))
 
 
-def save_network(path, geo, bond_k, C6_per=None, seed=None, **meta):
-    """Persist a DESIGNED network so later analysis/plots can reload it (load_network) WITHOUT
-    re-running the minimizer. Stores geometry + designed per-bond k + (optional) per-triangle
-    physical tensor + metadata (topo, size, target, region, achieved...).
-
-    Also stamps PROVENANCE automatically — `commit`, `dirty`, `saved_utc`, and `seed` — so every
-    saved artifact satisfies the charter's "traceable to (code version, config, seed)" rule
-    (audit B-3: none of this was recorded). `dirty=True` means the tree had uncommitted changes when
-    the design was produced, so `commit` alone does NOT reproduce it — that distinction is exactly
-    what made the B-1 investigation expensive. Pass `seed=` explicitly; an unpassed seed is stored as
-    None rather than silently invented."""
-    import json
-    k = bond_k.detach().numpy() if torch.is_tensor(bond_k) else np.asarray(bond_k)
-    commit, dirty, saved = _provenance()
-    meta.setdefault('commit', commit)
-    meta.setdefault('dirty', dirty)
-    meta.setdefault('saved_utc', saved)
-    meta.setdefault('seed', seed)
-    np.savez_compressed(path, pts=geo['pts'], tri_verts=geo['tri_verts'], centroids=geo['centroids'],
-                        simplices=geo['simplices'], bond_u=geo['bond_u'], bond_v=geo['bond_v'],
-                        bond_R=geo['bond_R'], tri_bond=geo['tri_bond'], areas=geo['areas'],
-                        BL1=geo['BL1'], BL2=geo['BL2'], bond_k=k,
-                        C6_per=(np.asarray(C6_per) if C6_per is not None else np.zeros(0)),
-                        meta=json.dumps(meta))
 
 
-def load_network(path):
-    """Reload (geo, bond_k, C6_per, meta) written by save_network. geo has bond_k/tri_k installed,
-    plus edge_vecs/actual_len2 rebuilt from tri_verts (needed by tri_metric_change/bare_tensor and
-    the open_stretch* family) -- so it plugs straight into draw_network / fill_local_map /
-    region_phys_C6 / nu_E_theta / open_stretch_nu with no extra per-caller reconstruction."""
-    import json
-    d = np.load(path, allow_pickle=True)
-    geo = {k: d[k] for k in ['pts', 'tri_verts', 'centroids', 'simplices', 'bond_u', 'bond_v',
-                             'bond_R', 'tri_bond', 'areas', 'BL1', 'BL2']}
-    geo['bond_k'] = d['bond_k']; geo['tri_k'] = d['bond_k'][geo['tri_bond']]
-    tv = geo['tri_verts']; p0, p1, p2 = tv[:, 0], tv[:, 1], tv[:, 2]
-    geo['edge_vecs'] = np.stack([p1 - p0, p2 - p0, p2 - p1], 1)
-    geo['actual_len2'] = (geo['edge_vecs'] ** 2).sum(2)
-    C6 = d['C6_per']; C6 = None if C6.size == 0 else C6
-    return geo, d['bond_k'], C6, json.loads(str(d['meta']))
 
 
 def _detail_row(axr, name, geo, kb, C6, region, show_titles):
