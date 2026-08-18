@@ -294,16 +294,28 @@ class ElasticSolver(nn.Module):
 
     def _assemble_dense_J(self, use_kkt, use_angle):
         """Dense (M_c × 3N) constraint matrix for the differentiable intrinsic Woodbury:
-        edge and/or curvature rows on the per-triangle metric field [dg11,dg12,dg22]."""
+        edge and/or curvature rows on the per-triangle metric field [dg11,dg12,dg22].
+
+        CACHED per (use_kkt, use_angle) — audit B-5. The constraint Jacobian is built purely from
+        `self._J_edge_sp` / `self._C_curv_sp`, both fixed for the lifetime of the solver, so this is
+        loop-invariant; it was previously re-assembled (scipy `vstack` + `toarray`) on EVERY
+        `forward()`, i.e. up to n_iter × n_restarts times per design. Consumers treat the result as
+        read-only (`_woodbury_solve_aw` only reads `J3`), so handing back the same tensor is safe."""
         import scipy.sparse as sp
+        cache = self.__dict__.setdefault('_dense_J_cache', {})
+        ck = (bool(use_kkt), bool(use_angle))
+        if ck in cache:
+            return cache[ck]
         blocks = []
         if use_kkt and self._J_edge_sp.shape[0] > 0:
             blocks.append(self._J_edge_sp)
         if use_angle and self._C_curv_sp.shape[0] > 0:
             blocks.append(self._C_curv_sp)
         if not blocks:
+            cache[ck] = None
             return None
-        return torch.as_tensor(sp.vstack(blocks).toarray(), dtype=torch.float64)
+        cache[ck] = torch.as_tensor(sp.vstack(blocks).toarray(), dtype=torch.float64)
+        return cache[ck]
 
     def forward(self, rigidities, rest_lengths=None, method='intrinsic',
                 area_weighted=None, use_kkt=None, use_angle_kkt=None,
@@ -724,131 +736,13 @@ def _woodbury_solve(A_blocks, B_blocks, dA_vecs, J=None, weights=None):
     return (W0.reshape(-1) - PinvJt @ Lambda).reshape(N, 9)
 
 
-def _woodbury_kkt_sparse(A_blocks, B_blocks, dA_vecs, kkt_arrays):
-    """Memory-efficient KKT correction using sparse G_local + rank-9 decomposition.
+# `_woodbury_kkt_sparse` (edge-length constraints ONLY) was REMOVED 2026-08-18 - audit B-5.
+# It had ZERO call sites repo-wide (re-verified by import graph and by name-string search);
+# `_woodbury_kkt_sparse_combined` below is the live routine and carries edge-length AND
+# vertex-angle (curvature) constraints, which is the verified default - dropping C2 is the
+# classic single-site mean-field over-compliance error (CLAUDE.md section 3). Recover from
+# git history if an edge-only variant is ever wanted again.
 
-    G = J P⁻¹ Jᵀ = G_local + (1/N) H IminusS⁻¹ Kᵀ
-
-    where:
-      G_local = J A_diag⁻¹ Jᵀ  (sparse, ~9 nnz/row)
-      H[i,:]  = (J A_diag⁻¹ U)[i,:]  (M_c × 9)
-      K[i,:]  = (V A_diag⁻¹ Jᵀ)[i,:]  (M_c × 9)
-
-    Solves via Woodbury on G_local (sparse LU) + rank-9 correction.
-    Returns W as numpy array (N, 9) — no gradient.
-    """
-    import scipy.sparse as sp
-    import scipy.sparse.linalg as spla
-
-    s1_arr, s2_arr, q_arr = kkt_arrays
-    E_int = len(s1_arr)
-    M_c   = 3 * E_int
-    N     = A_blocks.shape[0]
-
-    A_np = A_blocks.detach().double().numpy()  # (N, 9, 9)
-    B_np = B_blocks.detach().double().numpy()
-    dA_np = dA_vecs.detach().double().numpy()
-
-    eps = 1e-14 * np.abs(A_np).max()
-    I9  = np.eye(9)
-    A_reg = A_np + eps * I9[None]
-    A_inv = np.linalg.inv(A_reg)              # (N, 9, 9)
-
-    # Woodbury base solve → W0
-    y    = np.einsum('nij,nj->ni', A_inv, dA_np)
-    Vy   = np.einsum('nij,nj->i',  B_np, y)
-    S    = np.einsum('nij,njk->ik', B_np, A_inv) / N
-    IminusS = I9 - S
-    z    = np.linalg.solve(IminusS, Vy)
-    W0   = -(y + np.einsum('nij,j->ni', A_inv, z) / N)  # (N, 9)
-
-    # ── H and K  (M_c × 9) ──────────────────────────────────────────────────
-    # H[k*E+e, j] = Σ_loc q[e,loc] * (A_inv[s1, 3*loc+k, j] − A_inv[s2, 3*loc+k, j])
-    # K[k*E+e, j] = Σ_loc q[e,loc] * (BA_inv[s1, j, 3*loc+k] − BA_inv[s2, j, 3*loc+k])
-    BA_inv = np.einsum('nij,njk->nik', B_np, A_inv)  # (N, 9, 9)
-
-    # H[k*E+e, :] and K[k*E+e, :] each have a unique row index, so plain
-    # += is safe (no duplicate row indices within one (k, loc) pass).
-    H = np.zeros((M_c, 9))
-    K = np.zeros((M_c, 9))
-    for k in range(3):
-        rk = np.arange(E_int) + k * E_int
-        for loc in range(3):
-            col = 3 * loc + k
-            H[rk] += q_arr[:, loc:loc+1] * (A_inv[s1_arr, col, :] - A_inv[s2_arr, col, :])
-            K[rk] += q_arr[:, loc:loc+1] * (BA_inv[s1_arr, :, col] - BA_inv[s2_arr, :, col])
-
-    # ── Sparse G_local = J A_diag⁻¹ Jᵀ ────────────────────────────────────
-    # G_local[k1*E+e1, k2*E+e2] = Σ_{n shared} sg1*sg2 * q[e1] @ A_sub(n,k1,k2) @ q[e2]
-    # A_sub(n,k1,k2)[loc1,loc2] = A_inv[n, 3*loc1+k1, 3*loc2+k2]  (3×3 sub-block)
-    from collections import defaultdict
-    tri_edges = defaultdict(list)
-    for e in range(E_int):
-        tri_edges[s1_arr[e]].append((e, +1))
-        tri_edges[s2_arr[e]].append((e, -1))
-
-    rows_g, cols_g, data_g = [], [], []
-    LOC_ROWS = [np.array([k, 3+k, 6+k]) for k in range(3)]  # row idx sets per loading group
-
-    for n, elist in tri_edges.items():
-        An = A_inv[n]  # (9, 9)
-        for e1, sg1 in elist:
-            for e2, sg2 in elist:
-                val_sg = sg1 * sg2
-                for k1 in range(3):
-                    row = k1 * E_int + e1
-                    for k2 in range(3):
-                        col = k2 * E_int + e2
-                        A_sub = An[np.ix_(LOC_ROWS[k1], LOC_ROWS[k2])]  # 3×3
-                        val = val_sg * q_arr[e1] @ A_sub @ q_arr[e2]
-                        rows_g.append(row)
-                        cols_g.append(col)
-                        data_g.append(val)
-
-    G_local = sp.coo_matrix((data_g, (rows_g, cols_g)), shape=(M_c, M_c)).tocsc()
-    reg_gl  = 1e-12 * abs(max(data_g, default=1.0))
-    G_local = G_local + reg_gl * sp.eye(M_c, format='csc')
-
-    # ── r = J W₀ ────────────────────────────────────────────────────────────
-    # r[k*E+e] = Σ_{loc} q[e,loc] * (W0[s1*9+3*loc+k] - W0[s2*9+3*loc+k])
-    # Each row of J has a unique index (k*E+e), so plain += is safe here.
-    W0_flat = W0.reshape(-1)
-    r = np.zeros(M_c)
-    for k in range(3):
-        rk = np.arange(E_int) + k * E_int
-        for loc in range(3):
-            col = 3 * loc + k
-            r[rk] += q_arr[:, loc] * (W0_flat[s1_arr * 9 + col] - W0_flat[s2_arr * 9 + col])
-
-    # ── Woodbury solve on (G_local + (1/N) H IminusS⁻¹ Kᵀ) Λ = r ──────────
-    # Woodbury: (A + (1/N) H T Kᵀ)⁻¹ r  with T = IminusS⁻¹
-    # C = (1/N) T  →  C⁻¹ = N IminusS  →  M_mat = N*IminusS + Kᵀ G_local⁻¹ H
-    G_lu  = spla.factorized(G_local)
-    Lam0  = G_lu(r)                                   # G_local⁻¹ r
-    Y     = np.column_stack([G_lu(H[:, j]) for j in range(9)])  # G_local⁻¹ H (M_c,9)
-    M_mat = N * IminusS + K.T @ Y                     # 9×9  (C⁻¹ + V A⁻¹ U)
-    c     = np.linalg.solve(M_mat, K.T @ Lam0)        # 9-vec
-    Lambda = Lam0 - Y @ c                             # M_c-vec
-
-    # ── W = W₀ − P⁻¹ (Jᵀ Λ) ────────────────────────────────────────────────
-    # Jᵀ Λ — multiple edges can map to the same (triangle, col) index,
-    # so np.add.at is required to correctly accumulate duplicates.
-    JtLam = np.zeros(9 * N)
-    for k in range(3):
-        rk = np.arange(E_int) + k * E_int
-        Lk  = Lambda[rk]
-        for loc in range(3):
-            col = 3 * loc + k
-            np.add.at(JtLam, s1_arr * 9 + col, q_arr[:, loc] * Lk)
-            np.add.at(JtLam, s2_arr * 9 + col, -q_arr[:, loc] * Lk)
-
-    JtLam_b  = JtLam.reshape(N, 9)
-    AinvJtLam = np.einsum('nij,nj->ni', A_inv, JtLam_b)
-    gs        = np.einsum('nij,nj->i', B_np, AinvJtLam)
-    z_c       = np.linalg.solve(IminusS, gs)
-    PinvJtLam = AinvJtLam + np.einsum('nij,j->ni', A_inv, z_c) / N
-
-    return W0 - PinvJtLam
 
 
 def _woodbury_kkt_sparse_combined(A_blocks, B_blocks, dA_vecs,
