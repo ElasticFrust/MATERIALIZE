@@ -28,6 +28,20 @@ Gated by `Phase 2/test_forward_solver.py` [7]/[8] and `Phase 3/test_inverse_desi
 
 Each writes into `plots/<name>/` with a results `.md` beside its outputs.
 
+**`dg_analysis_data/` was RETIRED 2026-08-18** (audit **A-19** cleanup, user-approved): 62 files,
+134.6 MB of per-triangle Δg raw data, **untracked by git so the deletion is permanent**. It is
+**regenerable** — `pbc_dg_analysis.py` is its producer (`DATA_DIR` points there; it writes via
+`np.savez_compressed`). Consumers that will need it re-made first: `compat_projection.py`,
+`test_angle_response.py`, `test_curvature_operator.py`, `test_mean_isolation.py` (all §2, live) and
+`test_intrinsic_metric.py` (§3, dead). A file-by-file inventory of what was removed is kept at
+`validation_2026-08/retired_dg_analysis_data.txt`.
+
+*Recorded because the first version of this cleanup proposal claimed the island "does not run" and
+so the data was dead. That was wrong — §3's dead island is only the six `test_cluster_*` /
+`test_intrinsic_*` files, and `dg_analysis_data` is the input/output of a LIVE chain. It was retired
+anyway, on the correct grounds that it is regenerable intermediate data, not on the wrong grounds
+that nothing uses it.*
+
 ## 3. The legacy `test_cluster_*` / early `verify_*` island — SUPERSEDED, DOES NOT RUN
 
 `test_cluster_Ceff.py`, `test_cluster_VD.py`, `test_cluster_rigidity.py`,

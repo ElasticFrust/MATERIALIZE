@@ -1,0 +1,70 @@
+# verification_tools/dg_analysis_data - DELETED 2026-08-18 (audit A-19 cleanup)
+# Untracked by git, so this inventory is the only record that these existed.
+# REGENERATE: python verification_tools/pbc_dg_analysis.py  (it is the producer;
+#   DATA_DIR points here and it writes via np.savez_compressed).
+# Consumers (README section 2, LIVE): compat_projection, test_angle_response,
+#   test_curvature_operator, test_mean_isolation. Also test_intrinsic_metric (dead, section 3).
+# 62 files, 134.6 MB
+
+        2839  2026-07-09  README.md
+      150828  2026-07-09  sample_eta0.00_trial0.npz
+      150829  2026-07-09  sample_eta0.00_trial1.npz
+      150829  2026-07-09  sample_eta0.00_trial2.npz
+      150829  2026-07-09  sample_eta0.00_trial3.npz
+      150829  2026-07-09  sample_eta0.00_trial4.npz
+      150829  2026-07-09  sample_eta0.00_trial5.npz
+      150829  2026-07-09  sample_eta0.00_trial6.npz
+      150829  2026-07-09  sample_eta0.00_trial7.npz
+      150829  2026-07-09  sample_eta0.00_trial8.npz
+      150829  2026-07-09  sample_eta0.00_trial9.npz
+     1756124  2026-07-09  sample_eta0.10_trial0.npz
+     1755988  2026-07-09  sample_eta0.10_trial1.npz
+     1756013  2026-07-09  sample_eta0.10_trial2.npz
+     1755981  2026-07-09  sample_eta0.10_trial3.npz
+     1756084  2026-07-09  sample_eta0.10_trial4.npz
+     1756147  2026-07-09  sample_eta0.10_trial5.npz
+     1756126  2026-07-09  sample_eta0.10_trial6.npz
+     1756190  2026-07-09  sample_eta0.10_trial7.npz
+     1755927  2026-07-09  sample_eta0.10_trial8.npz
+     1755873  2026-07-09  sample_eta0.10_trial9.npz
+     1756509  2026-07-09  sample_eta0.20_trial0.npz
+     1756836  2026-07-09  sample_eta0.20_trial1.npz
+     1756819  2026-07-09  sample_eta0.20_trial2.npz
+     1756821  2026-07-09  sample_eta0.20_trial3.npz
+     1756828  2026-07-09  sample_eta0.20_trial4.npz
+     1756880  2026-07-09  sample_eta0.20_trial5.npz
+     1757019  2026-07-09  sample_eta0.20_trial6.npz
+     1756980  2026-07-09  sample_eta0.20_trial7.npz
+     1756893  2026-07-09  sample_eta0.20_trial8.npz
+     1756742  2026-07-09  sample_eta0.20_trial9.npz
+     1759344  2026-07-09  sample_eta0.30_trial0.npz
+     1759354  2026-07-09  sample_eta0.30_trial1.npz
+     1759367  2026-07-09  sample_eta0.30_trial2.npz
+     1759511  2026-07-09  sample_eta0.30_trial3.npz
+     1759569  2026-07-09  sample_eta0.30_trial4.npz
+     1759555  2026-07-09  sample_eta0.30_trial5.npz
+     1759526  2026-07-09  sample_eta0.30_trial6.npz
+     1759154  2026-07-09  sample_eta0.30_trial7.npz
+     1759442  2026-07-09  sample_eta0.30_trial8.npz
+     1759536  2026-07-09  sample_eta0.30_trial9.npz
+     1759218  2026-07-09  sample_eta0.40_trial0.npz
+     1759355  2026-07-09  sample_eta0.40_trial1.npz
+     1758623  2026-07-09  sample_eta0.40_trial2.npz
+     1759900  2026-07-09  sample_eta0.40_trial3.npz
+     1760223  2026-07-09  sample_eta0.40_trial4.npz
+     1759636  2026-07-09  sample_eta0.40_trial5.npz
+     1759888  2026-07-09  sample_eta0.40_trial6.npz
+     1759448  2026-07-09  sample_eta0.40_trial7.npz
+     1759506  2026-07-09  sample_eta0.40_trial8.npz
+     1761154  2026-07-09  sample_eta0.40_trial9.npz
+     1684272  2026-07-09  sample_eta0.50_trial0.npz
+     1628487  2026-07-09  sample_eta0.50_trial1.npz
+     1653052  2026-07-09  sample_eta0.50_trial2.npz
+     1635710  2026-07-09  sample_eta0.50_trial3.npz
+     1659455  2026-07-09  sample_eta0.50_trial4.npz
+     1635345  2026-07-09  sample_eta0.50_trial5.npz
+     1633590  2026-07-09  sample_eta0.50_trial6.npz
+     1615256  2026-07-09  sample_eta0.50_trial7.npz
+     1655518  2026-07-09  sample_eta0.50_trial8.npz
+     1620333  2026-07-09  sample_eta0.50_trial9.npz
+    46324023  2026-07-09  summary.npz
