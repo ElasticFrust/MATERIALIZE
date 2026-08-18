@@ -231,6 +231,22 @@ it early if tilings are needed before flips.
 
 ## 4. `designer.py` — the search-based inverse designer (M1 core)
 
+> **⚠ THE CODE IS AUTHORITATIVE FOR THIS API — audit C-6, reconciled 2026-08-18.** The sketches
+> below are the ORIGINAL implementation spec and have drifted from `Phase 5/designer.py`. Verified
+> differences as of today:
+>
+> | | spec below | actual |
+> |---|---|---|
+> | `design_on_topology` | `(geo, nu_target, E_target, n_iter=120, n_restarts=3, reg=0.02)` | **+ `nu_weight=1.0, E_weight=1.0`** — needed to trade ν against E, and the position polish must be passed the same weights or it silently optimises a different loss |
+> | `search` | `(nu_target, E_target, topology_pool, keep=5)` | `(nu_target, E_target, pool, keep=5, **design_kw)` |
+> | — | not specified | `verify()`, `design()` (the real entry point), `run_physicality_checks()`, `DesignReports`, `topology_pool()` |
+>
+> Also: **`target_err_sim` was REDEFINED 2026-08-16** (relative and channel-resolved — register
+> **A-2**), so its values are **not comparable** to any stored in pre-existing `.npz`.
+>
+> Read `Phase 5/designer.py` docstrings for the live API; treat everything below as design intent.
+
+
 **Goal:** given target profiles `nu_target(θ)`, `E_target(θ)` (length-37 arrays) and a candidate pool of topologies, return
 the best network(s): explicit triangulation (`geo`) + rigidities `k`, verified.
 

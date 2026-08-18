@@ -696,7 +696,10 @@ change at all (perfect crystal deforms affinely). See `dg_corr_ratio_vs_eta.png`
 NOTE: the legacy `breakdown/periodic_mesh.py` / `pbc_simulation.py` modules were NOT used;
 mesh + PBC solve here are independent implementations validated by the checks above.
 """
-    with open(os.path.join(DATA_DIR, 'README.md'), 'w') as f:
+    # encoding='utf-8' REQUIRED: this README contains Delta-g, F-transpose and other
+    # non-ASCII, and Windows defaults to cp1252 -> UnicodeEncodeError AFTER the whole
+    # analysis has run and before anything is written (audit B-5).
+    with open(os.path.join(DATA_DIR, 'README.md'), 'w', encoding='utf-8') as f:
         f.write(txt)
 
 
