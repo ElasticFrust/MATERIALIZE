@@ -1,5 +1,28 @@
 # Phase 5 — Inverse designer for triangulated metamaterials (implementation spec)
 
+> ## ✅ STATUS 2026-08-18 — the stale designs have been RE-RUN
+>
+> Regenerated under the fixed code by the clean validation sweep (`validation_2026-08/`, 27 scripts /
+> 11.1 h; summary in its `MANIFEST.md`). Current numbers, all sim-confirmed:
+>
+> - **`goal1`** — 110 runs, 93 trustworthy. Reachable ν collapses [−0.78, +0.45] → [+0.20, +0.33]
+>   as the stiffness band tightens.
+> - **`g1_2`** — 110 runs, 45 trustworthy. **No topology reaches negative ν trustworthily**; every
+>   auxetic target returns a solver-sim gap of 0.475–1.004. `square_octagon` yields nothing
+>   trustworthy *even though its mesh was repaired* — the A-17 repair was necessary, not sufficient.
+> - **`goal2`** — 13/13 trustworthy, all gaps 0.000; positions helped in 10/13.
+> - **`goal2_attempts`** — redesigned; attempts cluster away from target in **13/13** cases.
+>
+> **Still stale, and now known to be so:** the **M2 training set** — 37/41 labels drift, worst
+> |Δν| = 1.73, so `m2/checkpoint.pt` is **unverified until retrained** (`Phase 5/m2/M2.md`, audit
+> **A-19**). Pre-fix data archived at `validation_2026-08/attic/m2_dataset_2026-07_pre-A0/`.
+>
+> **The rule that outlived the incident:** `save_network` stamps commit/dirty/seed (**B-3**), so any
+> artifact *without* that stamp predates the fixes and is suspect.
+> `validation_2026-08/scan_provenance.py` is the detector.
+>
+> <details><summary>Original 2026-08-14 banner — kept for the record</summary>
+>
 > ## ⚠ STATUS 2026-08-14 — the saved designs are stale; the designer is sound
 >
 > A defect in the protected core's homogenisation contraction (`C_xyxy` over-stiff wherever
@@ -30,6 +53,8 @@
 > **Still open:** §4 of this file's API notes have drifted from the code (C-6). **`target_err_sim`
 > was REDEFINED on 2026-08-16** (now relative and channel-resolved — register A-2), so its values are
 > **not comparable** to those stored in existing `Phase 5/networks/*.npz`.
+>
+> </details>
 
 > **Purpose of this document.** A self-contained, step-by-step spec an independent implementer can follow to build
 > **Milestone 1 (M1)**: a *search-based inverse designer* that, given a target directional response **ν(θ), E(θ)** and a
