@@ -89,7 +89,30 @@ stiffness eigenvalue where the linear readback diverges from the true nonlinear 
 *detect* this after the fact (independent nonlinear check) and *discourage* it indirectly
 (`homogeneity` penalty, `reg`). A direct **stability term** would prevent it.
 
-**What to do:** add a differentiable penalty on the smallest eigenvalue of the design's stiffness
+> **⚠ CORRECTION 2026-08-18 — the rationale above predates audit A-15, and the proposed target is
+> probably the WRONG QUANTITY.**
+>
+> *Wording:* "diverges from the true **nonlinear** response" and "independent **nonlinear** check" are
+> false. **A-15** established the oracle is **linear** (small-displacement `assemble_K_faff`) and that
+> nothing in the repo computes the nonlinear relaxation.
+>
+> *Substance:* `CLAUDE.md` §3 records that a mechanism and per-triangle `A(s)` rank loss are
+> **independent failures**. On a regular lattice driven to ν=−0.2 the Hessian had **zero** eigenvalues
+> below 1e-8·max and condition 8.6e4 — perfectly rigid — while `A(s)` was rank-deficient on 7 % of
+> triangles and the read-back was wrong by 0.25 in ν, **opposite in sign** to the sim. §3's conclusion:
+> *"check for a floppy mode" gives a FALSE ALL-CLEAR for the A(s) failure.* A smallest-stiffness-
+> eigenvalue barrier is exactly that check.
+>
+> *Supporting evidence from the 2026-08 campaign:* `ab_quality_floor` shows a `min(k)` floor (this
+> entry's cheap "S" option) cuts the median solver-sim gap 0.66 → 0.37 but **cannot close it** — the
+> signature of attacking a correlate rather than the cause.
+>
+> **Suggested re-aim:** penalise the **per-triangle conditioning of `A(s)`** — the solver's actual
+> validity condition — optionally alongside a Hessian term. It is differentiable, local (3×3 per
+> triangle, cheap), and `verify_lattice`'s regular-lattice ν=−0.2 case is an immediate pass/fail test:
+> the constraint works iff that design stops flipping sign against the sim.
+
+**What to do (as originally written):** add a differentiable penalty on the smallest eigenvalue of the design's stiffness
 (or of the per-region response Hessian) — e.g. a soft-plus barrier `−λ·min_eig` or a penalty on the
 condition number of the KKT solve — as an opt-in `Objective('stability', ...)` or a global option in
 `optimize`. Cheap eigen-estimates (a few Lanczos/power iterations on the sparse operator) keep it
