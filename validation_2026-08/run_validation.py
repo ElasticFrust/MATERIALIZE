@@ -65,7 +65,12 @@ SCRIPTS = [
 
     ('phase3', 'Phase 3/verifications/showcase/fig1_recreate_pointy.py'),
     ('phase3', 'Phase 3/verifications/showcase/fig1b_recreate_pointy_regular.py'),
-    ('phase3', 'Phase 3/verifications/showcase/fig1cd_rotated_substrate.py'),
+    # Takes a substrate argument: `regular` -> fig1c, `disorder_hi` -> fig1d. Queued with NO argument
+    # it silently defaults to `regular`, so fig1d never ran on the first pass. fig1c is the NEGATIVE
+    # result (the rotated regular lattice provably cannot reproduce the leaning ν(θ)); fig1d is the
+    # positive control that carries the actual claim, so omitting it drops the point of the pair.
+    ('phase3', 'Phase 3/verifications/showcase/fig1cd_rotated_substrate.py', ['regular']),
+    ('phase3', 'Phase 3/verifications/showcase/fig1cd_rotated_substrate.py', ['disorder_hi']),
     ('phase3', 'Phase 3/verifications/showcase/fig2_triangular_nu.py'),
     ('phase3', 'Phase 3/verifications/showcase/fig3_isotropize.py'),
     ('phase3', 'Phase 3/verifications/showcase/fig4_uniform_nu.py'),
@@ -84,18 +89,31 @@ WATCH = ['Phase 2', 'Phase 3', 'Phase 5']
 SKIP_DIRS = {'__pycache__', '.git', 'validation_2026-08', 'networks_old'}
 
 
-def slug(rel):
+def norm(entry):
+    """(phase, rel, args) from a 2- or 3-tuple SCRIPTS entry."""
+    return (entry[0], entry[1], list(entry[2]) if len(entry) > 2 else [])
+
+
+def key(rel, args):
+    """Manifest/resume identity. Includes ARGS: one script is run twice with different substrates,
+    and keying on the path alone would make the resume skip the second."""
+    return ' '.join([rel, *args])
+
+
+def slug(rel, args=()):
     """Destination folder name for a script — from its FULL relative path, not its basename.
 
     Four scripts are called `design_and_verify.py` and two `make_maps.py`; keying on the basename
     made them share one folder, and the second run's log OVERWROTE the first's (cost: the
-    auxetic_sweep log — its numbers survived only because the script also writes a CSV)."""
+    auxetic_sweep log — its numbers survived only because the script also writes a CSV). Args are
+    appended for the same reason."""
     rel = os.path.splitext(rel)[0]
     for pre in ('Phase 3/verifications/', 'Phase 5/verifications/', 'Phase 2/', 'Phase 3/', 'Phase 5/'):
         if rel.startswith(pre):
             rel = rel[len(pre):]
             break
-    return rel.replace('/', '__').replace('\\', '__')
+    s = rel.replace('/', '__').replace('\\', '__')
+    return s + ''.join('__' + a for a in args)
 
 
 def already_done(csv_path):
@@ -151,7 +169,7 @@ def main():
     ap.add_argument('--only', default=None, help='run only scripts whose path contains this')
     args = ap.parse_args()
 
-    todo = [s for s in SCRIPTS if not args.only or args.only in s[1]]
+    todo = [norm(s) for s in SCRIPTS if not args.only or args.only in s[1]]
     commit, dirty = provenance()
     started = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec='seconds')
     print(f'commit {commit}{" (DIRTY)" if dirty else ""}   {len(todo)} scripts   {started}',
@@ -160,8 +178,8 @@ def main():
     print('stowing design caches so nothing re-renders a stale design (A-19):', flush=True)
     stow_caches(args.dry_run)
     if args.dry_run:
-        for ph, rel in todo:
-            print(f'  would run [{ph}] {rel}', flush=True)
+        for ph, rel, a in todo:
+            print(('  would run [%s] %s %s' % (ph, rel, ' '.join(a))).rstrip(), flush=True)
         return
 
     csv_path = os.path.join(HERE, 'manifest.csv')
@@ -174,32 +192,34 @@ def main():
         if new:
             w.writerow(['phase', 'script', 'exit', 'seconds', 'n_outputs', 'commit', 'dirty',
                         'finished_utc'])
-        for i, (phase, rel) in enumerate(todo, 1):
-            if rel in done_already:
+        for i, (phase, rel, sargs) in enumerate(todo, 1):
+            kid = key(rel, sargs)
+            if kid in done_already:
                 print(f'[{i}/{len(todo)}] {rel}\n   already in manifest — skipped (resume)', flush=True)
                 continue
-            stem = slug(rel)
+            stem = slug(rel, sargs)
             dest = os.path.join(HERE, phase, stem)
             os.makedirs(dest, exist_ok=True)
             src = os.path.join(REPO, rel)
-            print(f'[{i}/{len(todo)}] {rel}', flush=True)
+            print(f'[{i}/{len(todo)}] {kid}', flush=True)
             if not os.path.exists(src):
                 print('   MISSING — skipped', flush=True)
-                w.writerow([phase, rel, 'MISSING', 0, 0, commit, dirty, ''])
+                w.writerow([phase, kid, 'MISSING', 0, 0, commit, dirty, ''])
                 fh.flush()
                 continue
 
             before = snapshot()
             t0 = time.perf_counter()
             env = dict(os.environ, PYTHONIOENCODING='utf-8', MPLBACKEND='Agg')
-            proc = subprocess.run([PY, '-u', src], cwd=os.path.dirname(src), env=env,
-                                  capture_output=True, text=True, errors='replace')
+            proc = subprocess.run([PY, '-u', src, *sargs], cwd=os.path.dirname(src), env=env,
+                                  capture_output=True, text=True, encoding='utf-8',
+                                  errors='replace')
             dt = time.perf_counter() - t0
             after = snapshot()
 
             log = os.path.join(dest, f'{stem}.log')
             with open(log, 'w', encoding='utf-8') as lf:
-                lf.write(f'# {rel}\n# commit {commit} dirty={dirty}\n'
+                lf.write(f'# {kid}\n# commit {commit} dirty={dirty}\n'
                          f'# exit {proc.returncode}  {dt:.1f} s\n\n=== stdout ===\n{proc.stdout}\n'
                          f'=== stderr ===\n{proc.stderr}\n')
 
@@ -213,7 +233,7 @@ def main():
             tail = (proc.stdout.strip().splitlines() or ['(no stdout)'])[-1][:110]
             print(f'   exit {proc.returncode}  {dt:7.1f} s  {len(produced)} outputs   {tail}',
                   flush=True)
-            w.writerow([phase, rel, proc.returncode, f'{dt:.1f}', len(produced), commit, dirty,
+            w.writerow([phase, kid, proc.returncode, f'{dt:.1f}', len(produced), commit, dirty,
                         _dt.datetime.now(_dt.timezone.utc).isoformat(timespec='seconds')])
             fh.flush()
     print('DONE', flush=True)
