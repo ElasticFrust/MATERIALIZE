@@ -43,11 +43,21 @@ July files are the evidence for A-19).
   measurement (−0.110 / +0.136) to ~0.002, so the `A(s)` rank-loss regime survives the instrument
   repairs. Everything else in that script passed, including all five geometries agreeing to three
   decimals. **The script is doing its job**; "all green" is not the success criterion for this sweep.
-- **`verify_positions` (exit 1)** — **an open failure, not yet diagnosed.** (a) position polish
+- **`verify_positions` — RESOLVED 2026-08-18: the test was under-budgeted, not the code.** (a) position polish
   *raised* the design loss 1.8090e-03 → 1.8217e-03, and (b) `solver_sim_gap` 0.0646 exceeds the 0.05
-  tolerance. `CLAUDE.md` §3 says the polished design replaces the top only if it **both** lowers the
-  loss **and** passes the honesty check — so either that gate is not applied on this path, or the
-  test probes the raw polish before it. Until then, treat position-polish claims as unverified.
+  tolerance. The test calls `positions.design_with_positions()` **directly**, i.e. without the `CLAUDE.md` §3
+  safety gate (which lives in `designer.design()` — that is what check (d) covers, and (d) always
+  passed). Measured over three seeds, its budget was a coin flip:
+
+  | spsa/outer | seed 0 | seed 1 | seed 2 |
+  |---|---|---|---|
+  | 25 / 2 (old) | **+14.6 %**, gap 0.071 | −8.0 %, gap 0.125 | −69.1 %, gap 0.000 |
+  | 60 / 3 (new) | −94.4 %, gap 0.000 | −98.4 %, gap 0.000 | −98.7 %, gap 0.000 |
+
+  SPSA is derivative-free and stochastic, so "the raw polish always lowers the loss" is not something
+  it promises at 25 steps — the test was measuring an **unconverged optimiser**. Budget raised;
+  now PASSES (a) −52.5 %, (b) gap 0.0000, (d) gap 0.0000. The old numbers are kept in the file so the
+  budget is not casually re-lowered. *Position optimisation itself was never broken.*
 
 ### fig1c / fig1d — the pair, finally complete
 
@@ -112,5 +122,8 @@ on `FAILED`/`UNTRUSTWORTHY`/traceback in stdout, not just the exit code) and `st
   numbers are intact; only the console transcript is gone.
 - Logs written before commit `0c235f4` carry cp1252 mojibake (`Î½` for `ν`). Numbers are ASCII and
   unaffected.
-- `fig5_bullseye_strain` still renders a July network; its producer `strain_stress/large16k_rings.py`
-  is outside the agreed scope.
+- ~~`fig5_bullseye_strain` still renders a July network~~ — **FIXED 2026-08-18.** Its producer
+  `strain_stress/large16k_rings.py` was re-run (band errors vs the independent sim 0.0003–0.0007) and
+  fig5 re-rendered from the stamped network. **The field changed materially**: dilation range
+  [−7.744, +19.175] → [−3.425, +15.844], so the old figure was misrepresenting the result, not merely
+  lacking provenance.

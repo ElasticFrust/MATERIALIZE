@@ -23,7 +23,17 @@ sys.path.insert(0, os.path.join(REPO, 'Phase 5'))
 import designer, positions, gallery, plot_responses
 
 nu_target, E_target = -0.15, 1.0
-N_ITER, N_RESTARTS, REG = 60, 1, 0.02          # small budget — CPU is contended
+N_ITER, N_RESTARTS, REG = 60, 1, 0.02
+SPSA_STEPS, N_OUTER = 60, 3
+# BUDGET (raised 2026-08-18). This ran at spsa_steps=25, n_outer=2 "small budget — CPU is
+# contended", and check (a) FAILED: the polish made the loss WORSE. Measured over 3 seeds,
+# that budget is a coin flip — 1/3 seeds worse, 2/3 breaching the 0.05 honesty tolerance:
+#     spsa=25,outer=2:  +14.6% (gap 0.071) | -8.0% (gap 0.125) | -69.1% (gap 0.000)
+#     spsa=60,outer=3:  -94.4% (gap 0.000) | -98.4% (gap 0.000) | -98.7% (gap 0.000)
+# SPSA is derivative-free and stochastic, so "the raw polish always lowers the loss" is not
+# something it promises at 25 steps — the test was measuring an UNCONVERGED optimiser, not a
+# defect. Note this exercises positions.design_with_positions() directly, i.e. WITHOUT the
+# CLAUDE.md §3 safety gate (which lives in designer.design() and is what check (d) covers).
 
 print("=" * 88)
 print(f"POSITION-OPTIMIZATION VERIFICATION — target nu={nu_target}, E={E_target} "
@@ -44,7 +54,7 @@ print(f"  sim mean E  = {rep0['E_sim'].mean():+.4f}  vs target {E_target:+.4f}")
 # ---- k + positions: the alternating SPSA loop -------------------------------------------------
 print("\nrunning design_with_positions (n_outer=2, spsa_steps=25) ...")
 geoP, kP, hist = positions.design_with_positions(
-    nu_target, E_target, geo0, n_outer=2, spsa_steps=25,
+    nu_target, E_target, geo0, n_outer=N_OUTER, spsa_steps=SPSA_STEPS,
     n_iter=N_ITER, n_restarts=N_RESTARTS, reg=REG, seed=0, verbose=True)
 LP = positions.loss_at(geoP, kP, nu_target, E_target)
 print(f"\nk+positions design: loss = {LP:.4e}   "
