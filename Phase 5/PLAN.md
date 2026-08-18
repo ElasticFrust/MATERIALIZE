@@ -7,9 +7,14 @@
 >
 > - **`goal1`** — 110 runs, 93 trustworthy. Reachable ν collapses [−0.78, +0.45] → [+0.20, +0.33]
 >   as the stiffness band tightens.
-> - **`g1_2`** — 110 runs, 45 trustworthy. **No topology reaches negative ν trustworthily**; every
->   auxetic target returns a solver-sim gap of 0.475–1.004. `square_octagon` yields nothing
+> - **`g1_2`** — 110 runs, 45 trustworthy. **Within this experiment's setup** (k-only design on
+>   FIXED tiling topologies with braced fictional edges) no topology reaches negative ν trustworthily;
+>   every auxetic target returns a solver-sim gap of 0.475–1.004. **This is NOT a general limit** —
+>   see `auxetic_sweep`, which reaches ν = −0.60 sim-confirmed on five topologies including both
+>   disorder families. The difference is design freedom, not physics. `square_octagon` yields nothing
 >   trustworthy *even though its mesh was repaired* — the A-17 repair was necessary, not sufficient.
+> - **`auxetic_sweep`** — **36 of 70 rows reach sim ν < −0.05, all stable**, down to −0.6009 with
+>   solver and sim agreeing to 4 decimals (regular, aniso_shr, aniso_str, disorder_hi, disorder_lo).
 > - **`goal2`** — 13/13 trustworthy, all gaps 0.000; positions helped in 10/13.
 > - **`goal2_attempts`** — redesigned; attempts cluster away from target in **13/13** cases.
 >

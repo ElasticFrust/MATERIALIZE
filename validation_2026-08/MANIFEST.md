@@ -73,8 +73,13 @@ first pass invoked it with none, so it silently produced only the negative half 
 
 ### g1_2 — read this one carefully
 
-Not one topology reaches negative ν trustworthily; every auxetic target comes back with a solver-sim
-gap of 0.475–1.004. The optimiser does emit sub-zero numbers (ν=−0.294 for a −0.95 target) but the
+Within **this experiment's setup** — k-only design on FIXED tiling topologies with braced fictional
+edges — not one topology reaches negative ν trustworthily; every auxetic target comes back with a
+solver-sim gap of 0.475–1.004. **This is a statement about g1_2, not about the solver or the
+material class:** `auxetic_sweep` in this same sweep reaches **ν = −0.60, sim-confirmed, on five
+topologies** (regular, aniso_shr, aniso_str, disorder_hi, disorder_lo), `verify_lattice` hits −0.238
+at gap 0.000, and `goal1`'s soft band spans [−0.78, +0.45]. The difference is DESIGN FREEDOM — free k
+and larger cells versus k-only on a braced fixed tiling. The optimiser does emit sub-zero numbers (ν=−0.294 for a −0.95 target) but the
 independent sim disagrees. **Within g1_2's setup, ν<0 is reachable only by entering the
 near-mechanism regime where the read-back cannot be trusted.** Two caveats: `run_goal2` *did* land a
 negative-ν full-tensor target trustworthily, so "we cannot reach ν<0" would be the wrong general
