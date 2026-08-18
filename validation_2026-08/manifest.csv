@@ -23,3 +23,6 @@ phase3,Phase 3/verifications/showcase/fig6_different_nu.py,0,1698.8,1,5c2fd83,Tr
 phase5,Phase 5/verifications/run_goal1.py,0,3845.9,112,5c2fd83,True,2026-08-18T05:11:23+00:00
 phase5,Phase 5/verifications/run_g1_2.py,0,6554.8,114,5c2fd83,True,2026-08-18T07:00:38+00:00
 phase5,Phase 5/verifications/run_goal2.py,0,662.2,97,5c2fd83,True,2026-08-18T07:11:41+00:00
+phase3,Phase 3/verifications/showcase/fig1cd_rotated_substrate.py disorder_hi,0,3145.9,2,5e48ee9,True,2026-08-18T09:01:40+00:00
+phase5,Phase 5/verifications/run_goal2_attempts.py,0,255.0,157,5e48ee9,True,2026-08-18T09:05:55+00:00
+phase5,Phase 5/verifications/verify_positions.py,1,87.9,7,5e48ee9,True,2026-08-18T09:07:23+00:00
