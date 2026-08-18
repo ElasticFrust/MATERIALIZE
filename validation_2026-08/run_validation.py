@@ -89,6 +89,48 @@ WATCH = ['Phase 2', 'Phase 3', 'Phase 5']
 SKIP_DIRS = {'__pycache__', '.git', 'validation_2026-08', 'networks_old'}
 
 
+FAIL_MARKERS = ('FAILED', 'UNTRUSTWORTHY', 'Traceback (most recent call last)')
+
+
+def verdict(returncode, stdout):
+    """Exit code AND stdout. Three scripts this sweep printed a failure and still returned 0
+    (`verify_positions` most clearly: two of three checks failed, exit 0), so trusting the exit code
+    alone records a broken validation as a success. Returns (ok, reason)."""
+    hits = sorted({m for m in FAIL_MARKERS if m in stdout})
+    if returncode != 0:
+        return False, f'exit {returncode}'
+    if hits:
+        return False, 'stdout says ' + ','.join(hits)
+    return True, ''
+
+
+def stale_inputs(produced, before):
+    """Unstamped .npz the script READ but did not write — the A-19 consumer trap.
+
+    `fig5_bullseye_strain` rendered a 9-July network in 7.5 s and exited 0; `run_goal2_attempts`
+    reloaded 115 July designs in 42 s. Neither is visible in an exit code, and stowing their inputs
+    would only make them crash, since they have no redesign path. Flagging is the honest option."""
+    import glob
+    import json
+    out = []
+    try:
+        import numpy as np
+    except ImportError:
+        return out
+    for f in glob.glob(os.path.join(REPO, 'Phase *', '**', '*.npz'), recursive=True):
+        if f in produced or os.path.getmtime(f) != before.get(f, -1):
+            continue
+        try:
+            z = np.load(f, allow_pickle=True)
+            m = z['meta'].item() if 'meta' in z.files else {}
+            m = json.loads(m) if isinstance(m, str) else (m or {})
+        except Exception:
+            continue
+        if not m.get('commit'):
+            out.append(os.path.relpath(f, REPO))
+    return out
+
+
 def norm(entry):
     """(phase, rel, args) from a 2- or 3-tuple SCRIPTS entry."""
     return (entry[0], entry[1], list(entry[2]) if len(entry) > 2 else [])
@@ -230,9 +272,13 @@ def main():
                     shutil.copy2(p, os.path.join(dest, rp))
                 except OSError as e:
                     print(f'   copy failed {p}: {e}', flush=True)
-            tail = (proc.stdout.strip().splitlines() or ['(no stdout)'])[-1][:110]
-            print(f'   exit {proc.returncode}  {dt:7.1f} s  {len(produced)} outputs   {tail}',
-                  flush=True)
+            ok, why = verdict(proc.returncode, proc.stdout)
+            tail = (proc.stdout.strip().splitlines() or ['(no stdout)'])[-1][:100]
+            flag = 'OK  ' if ok else f'FAIL[{why}] '
+            print(f'   {flag}{dt:7.1f} s  {len(produced)} outputs   {tail}', flush=True)
+            if len(produced) == 0 and dt < 60:
+                print('   NOTE: fast and produced nothing — check it is not reading a stale cache',
+                      flush=True)
             w.writerow([phase, kid, proc.returncode, f'{dt:.1f}', len(produced), commit, dirty,
                         _dt.datetime.now(_dt.timezone.utc).isoformat(timespec='seconds')])
             fh.flush()

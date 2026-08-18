@@ -116,29 +116,41 @@ def solver_nu(geo, k0):
         return float('nan'), float('nan')
 
 
-ds = [2.0, 1.6, 1.2, 1.0, 0.8, 0.5, 0.3]
-n = len(ds); ncols = 4; nrows = int(np.ceil(n / ncols))
-fig, axes = plt.subplots(nrows, ncols, figsize=(3.7 * ncols, 4.0 * nrows), squeeze=False)
-print(f"{'d':>5} {'regime':13s} {'nu':>8} {'E':>8} {'n_node':>6} {'n_bond':>6} {'n_soft':>6}")
-for idx, d in enumerate(ds):
-    geo, k0, is_soft = build_dhex(4, 4, d)
-    nu, E = solver_nu(geo, k0)
-    regime = 'regular' if abs(d - 2) < 1e-9 else ('re-entrant' if d < 1 else 'squeezed')
-    ax = axes[idx // ncols][idx % ncols]
-    draw_dhex_tiled(ax, geo, is_soft)                        # navy=hard perimeter, grey=soft radial
-    tag = ' (auxetic)' if (np.isfinite(nu) and nu < -1e-3) else ''
-    ax.set_title(f"d={d} ({regime})\n" + r"$\nu$=" + f"{nu:+.3f}{tag}", fontsize=9)
-    print(f"{d:>5.2f} {regime:13s} {nu:>8.3f} {E:>8.3f} {len(geo['pts']):>6} "
-          f"{len(geo['bond_u']):>6} {int(is_soft.sum()):>6}")
-    C.apply_k_to_geo(geo, k0)
-    C.save_network(os.path.join(NETDIR, f"dhex_d{d}.npz"), geo, k0,
-                   note=f"diameter-hexagon d={d} nu={nu:+.3f} (perimeter hard, radial soft)",
-                   is_fictional=is_soft.tolist())
-for idx in range(n, nrows * ncols):
-    axes[idx // ncols][idx % ncols].axis('off')
-fig.suptitle('Hexagon-with-centre, squeeze x-diameter d (perimeter edges=1 fixed, radial soft); 3x3 tiled+cropped',
-             fontsize=12)
-fig.tight_layout(rect=[0, 0, 1, 0.96])
-out = os.path.join(RESDIR, 'dhex_family.png')
-fig.savefig(out, dpi=200, bbox_inches='tight'); plt.close(fig)
-print(f"\nsaved {out}")
+def main():
+    """Sweep the diameter family, print the table, save the networks and the figure.
+
+    Wrapped in main() + the __main__ guard (audit B-6): this body used to run AT IMPORT, so
+    `from dhex_family import build_dhex` (hex_solver_validation.py:55) silently re-ran a
+    7-point design sweep and rewrote 7 .npz + 1 .png. Two gates paid that cost on every run,
+    and `git status` churned after merely running a test."""
+    ds = [2.0, 1.6, 1.2, 1.0, 0.8, 0.5, 0.3]
+    n = len(ds); ncols = 4; nrows = int(np.ceil(n / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.7 * ncols, 4.0 * nrows), squeeze=False)
+    print(f"{'d':>5} {'regime':13s} {'nu':>8} {'E':>8} {'n_node':>6} {'n_bond':>6} {'n_soft':>6}")
+    for idx, d in enumerate(ds):
+        geo, k0, is_soft = build_dhex(4, 4, d)
+        nu, E = solver_nu(geo, k0)
+        regime = 'regular' if abs(d - 2) < 1e-9 else ('re-entrant' if d < 1 else 'squeezed')
+        ax = axes[idx // ncols][idx % ncols]
+        draw_dhex_tiled(ax, geo, is_soft)                        # navy=hard perimeter, grey=soft radial
+        tag = ' (auxetic)' if (np.isfinite(nu) and nu < -1e-3) else ''
+        ax.set_title(f"d={d} ({regime})\n" + r"$\nu$=" + f"{nu:+.3f}{tag}", fontsize=9)
+        print(f"{d:>5.2f} {regime:13s} {nu:>8.3f} {E:>8.3f} {len(geo['pts']):>6} "
+              f"{len(geo['bond_u']):>6} {int(is_soft.sum()):>6}")
+        C.apply_k_to_geo(geo, k0)
+        C.save_network(os.path.join(NETDIR, f"dhex_d{d}.npz"), geo, k0,
+                       note=f"diameter-hexagon d={d} nu={nu:+.3f} (perimeter hard, radial soft)",
+                       is_fictional=is_soft.tolist())
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].axis('off')
+    fig.suptitle('Hexagon-with-centre, squeeze x-diameter d (perimeter edges=1 fixed, radial soft); 3x3 tiled+cropped',
+                 fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    out = os.path.join(RESDIR, 'dhex_family.png')
+    fig.savefig(out, dpi=200, bbox_inches='tight'); plt.close(fig)
+    print(f"\nsaved {out}")
+
+
+
+if __name__ == '__main__':
+    main()

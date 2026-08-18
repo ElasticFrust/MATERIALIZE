@@ -1,0 +1,25 @@
+phase,script,exit,seconds,n_outputs,commit,dirty,finished_utc
+phase2,Phase 2/test_forward_solver.py,0,5.7,0,85789b1,False,2026-08-17T21:03:43+00:00
+phase3,Phase 3/test_inverse_design.py,0,1601.2,0,85789b1,False,2026-08-17T21:30:24+00:00
+phase5,Phase 5/verifications/test_designer_surface.py,0,8.7,8,85789b1,False,2026-08-17T21:30:33+00:00
+phase5,Phase 5/verifications/test_hex_closed_form.py,0,8.6,8,85789b1,False,2026-08-17T21:30:42+00:00
+phase5,Phase 5/verifications/sanity.py,0,14.8,0,85789b1,False,2026-08-17T21:30:57+00:00
+phase3,Phase 3/verifications/verify_lattice.py,1,604.3,0,85789b1,False,2026-08-17T21:41:01+00:00
+phase3,Phase 3/verifications/auxetic_sweep/design_and_verify.py,0,3580.1,78,85789b1,False,2026-08-17T22:40:42+00:00
+phase3,Phase 3/verifications/auxetic_patch/design_and_verify.py,0,367.7,15,85789b1,False,2026-08-17T22:46:49+00:00
+phase3,Phase 3/verifications/auxetic_patch/make_maps.py,0,58.2,13,85789b1,False,2026-08-17T22:47:48+00:00
+phase3,Phase 3/verifications/anisotropy/design_and_verify.py,0,1290.1,46,5c2fd83,True,2026-08-17T23:11:46+00:00
+phase3,Phase 3/verifications/anisotropy/make_maps.py,0,10.2,6,5c2fd83,True,2026-08-17T23:11:56+00:00
+phase3,Phase 3/verifications/two_region/demo.py,0,318.1,6,5c2fd83,True,2026-08-17T23:17:14+00:00
+phase3,Phase 3/verifications/strain_stress/design_and_verify.py,0,429.9,19,5c2fd83,True,2026-08-17T23:24:24+00:00
+phase3,Phase 3/verifications/showcase/fig1_recreate_pointy.py,0,1680.5,2,5c2fd83,True,2026-08-17T23:52:25+00:00
+phase3,Phase 3/verifications/showcase/fig1b_recreate_pointy_regular.py,0,897.4,1,5c2fd83,True,2026-08-18T00:07:23+00:00
+phase3,Phase 3/verifications/showcase/fig1cd_rotated_substrate.py regular,0,2946.3,2,5c2fd83,True,2026-08-18T00:56:32+00:00
+phase3,Phase 3/verifications/showcase/fig2_triangular_nu.py,0,7.1,1,5c2fd83,True,2026-08-18T00:56:39+00:00
+phase3,Phase 3/verifications/showcase/fig3_isotropize.py,0,7966.9,1,5c2fd83,True,2026-08-18T03:09:26+00:00
+phase3,Phase 3/verifications/showcase/fig4_uniform_nu.py,0,1763.8,1,5c2fd83,True,2026-08-18T03:38:50+00:00
+phase3,Phase 3/verifications/showcase/fig5_bullseye_strain.py,0,7.5,1,5c2fd83,True,2026-08-18T03:38:58+00:00
+phase3,Phase 3/verifications/showcase/fig6_different_nu.py,0,1698.8,1,5c2fd83,True,2026-08-18T04:07:17+00:00
+phase5,Phase 5/verifications/run_goal1.py,0,3845.9,112,5c2fd83,True,2026-08-18T05:11:23+00:00
+phase5,Phase 5/verifications/run_g1_2.py,0,6554.8,114,5c2fd83,True,2026-08-18T07:00:38+00:00
+phase5,Phase 5/verifications/run_goal2.py,0,662.2,97,5c2fd83,True,2026-08-18T07:11:41+00:00

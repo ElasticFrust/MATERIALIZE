@@ -103,4 +103,10 @@ print(f"  loss={r0['loss']:.4e}  target_err_sim={r0['target_err_sim']:.4f}  "
       f"solver_sim_gap={r0['solver_sim_gap']:.4f}")
 print(("PASSED" if ok_d else "FAILED") + " (d): default design() path, solver_sim_gap < 0.05")
 
-print("\nVERIFY_POSITIONS " + ("PASSED" if (ok_a and ok_b and ok_d) else "FAILED"))
+ok_all = ok_a and ok_b and ok_d
+print("\nVERIFY_POSITIONS " + ("PASSED" if ok_all else "FAILED"))
+
+# EXIT NON-ZERO when a check fails. Without this the script printed FAILED and still
+# returned 0, so the clean-validation runner recorded a genuinely failing check as a
+# success -- (a) position polish RAISED the loss, (b) solver_sim_gap 0.0646 > 0.05.
+sys.exit(0 if ok_all else 1)
