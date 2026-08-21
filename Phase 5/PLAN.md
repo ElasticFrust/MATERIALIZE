@@ -7,12 +7,15 @@
 >
 > - **`goal1`** — 110 runs, 93 trustworthy. Reachable ν collapses [−0.78, +0.45] → [+0.20, +0.33]
 >   as the stiffness band tightens.
-> - **`g1_2`** — 110 runs, 45 trustworthy. **Within this experiment's setup** (k-only design on
->   FIXED tiling topologies with braced fictional edges) no topology reaches negative ν trustworthily;
->   every auxetic target returns a solver-sim gap of 0.475–1.004. **This is NOT a general limit** —
->   see `auxetic_sweep`, which reaches ν = −0.60 sim-confirmed on five topologies including both
->   disorder families. The difference is design freedom, not physics. `square_octagon` yields nothing
->   trustworthy *even though its mesh was repaired* — the A-17 repair was necessary, not sufficient.
+> - **`g1_2`** — 110 runs (**positions-only, k ≡ 1 exactly**, connectivity frozen), 45 clearing the
+>   solver-vs-sim agreement gate. **Distortion alone DOES reach auxetic ν:** 43 designs reach ν < 0,
+>   all 43 auxetic in BOTH code paths (median |ν_solver − ν_sim| = 0.008), deepest **−0.436** sim /
+>   −0.488 solver on `honeycomb`, on 9 of 10 topologies. None of them clears `gap < 0.05`, because that
+>   gate is a *relative per-angle* ν(θ),E(θ) agreement test that tightens as |ν| grows — it marks where
+>   the two codes diverge, **not** where the material stops. Negative-target runs span gap 0.060–2.348
+>   (median 0.488). *(CORRECTED 2026-08-21: this bullet previously described g1_2 as "k-only design on
+>   fixed tiling topologies with braced fictional edges" — that is a different experiment — and read
+>   its gate rejections as an absence of auxetic reach. Both wrong; see `results/g1_2/G1_2.md`.)*
 > - **`auxetic_sweep`** — **36 of 70 rows reach sim ν < −0.05, all stable**, down to −0.6009 with
 >   solver and sim agreeing to 4 decimals (regular, aniso_shr, aniso_str, disorder_hi, disorder_lo).
 > - **`goal2`** — 13/13 trustworthy, all gaps 0.000; positions helped in 10/13.

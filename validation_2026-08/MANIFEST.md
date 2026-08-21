@@ -32,7 +32,7 @@ July files are the evidence for A-19).
 | `fig1` | **redesigned**: ν [−3.63,+7.18] = target, sim-confirmed (was [−18.1,+19.1] from the July cache) |
 | `fig1c` / `fig1d` | the pair now makes its point — see below |
 | `run_goal1` | 110 runs, 93 trustworthy, median ν-err 0.098; reachable ν collapses [−0.78,+0.45] → [+0.20,+0.33] as the stiffness band tightens |
-| `run_g1_2` | 110 runs, **45** trustworthy; every topology reaches only **positive** ν ≈ [+0.10,+0.34] |
+| `run_g1_2` | 110 runs (positions-only, k ≡ 1), **45** clear `gap < 0.05`. **CORRECTED 2026-08-21:** the "only positive ν" reading was a reporting artifact — 43 designs reach ν < 0, all auxetic in BOTH code paths (deepest −0.436 sim / −0.488 solver), they simply fail the *relative per-angle* agreement gate. See `Phase 5/results/g1_2/G1_2.md` |
 | `run_goal2` | **13/13 trustworthy**, all gaps 0.000; positions helped in 10/13 |
 | `run_goal2_attempts` | redesigned: attempts cluster away from target in **13/13** cases |
 

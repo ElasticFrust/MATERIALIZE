@@ -106,8 +106,13 @@ vertex `v`:
 one scalar per interior vertex; `θ^{(s)}_v` is the interior angle triangle `s`
 contributes at `v`. `κ_v` is the discrete analogue of an Airy stress potential.
 Without this term the solve minimises over a space ~`n_int` dimensions too large
-(spurious disclinations), producing the ≈1.4× over-compliant overshoot that the old
-mean field showed. Built in `_build_intrinsic_constraints` → `_C_curv_sp` (tensor
+(spurious disclinations), producing the over-compliant overshoot that the old
+mean field showed. **The size of that overshoot is NOT a constant** (re-derived
+2026-08-17): it is strongly mesh-dependent — measured 1.015 (frozen η=0.15), 1.038
+(η=0.25), 1.120 (VD a=−2), 1.166 (η=0.35), 1.642 (VD a=+5), 228 (VD a=+10, near a
+mechanism); median 1.14. Only the DIRECTION is universal (omitting C2 is always
+over-compliant). The “≈1.4×” once quoted here came through the tombstoned
+area-weighted `Ceff_nuE` (audit A-7) — quote a range, never that constant. Built in `_build_intrinsic_constraints` → `_C_curv_sp` (tensor
 convention, **no** engineering-Voigt `/2`); toggle `use_angle_kkt` (default True).
 
 > Note: the legacy `woodbury` path implemented the same physics as a fragile

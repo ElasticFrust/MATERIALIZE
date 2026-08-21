@@ -460,7 +460,8 @@ def sim_region_C6(geo, region=None):
 
     `region=None` (the whole cell) now routes to the **INDEPENDENT** `sim_bulk_C6` — that is the
     better answer to the same question, and most callers asking for the whole cell were labelling
-    the result "independent sim" when it was not (audit A-9). Costs 3 relaxations instead of 1.
+    the result "independent sim" when it was not (audit A-9). Costs the SAME ONE relaxation
+    (3 mode solves) as the non-independent route — pass `u_modes` via `sim_bulk_C6` to share it.
 
     A genuine sub-region still goes through `sim_per_triangle_C6`, which is NOT independent; use
     `physical_homog.energy_C_region` when independence matters there."""

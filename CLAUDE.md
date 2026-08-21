@@ -107,9 +107,10 @@ Principles specific here:
 ## 3. Conventions & working habits
 
 > All subsections below are **settled** (see the date on each) and authoritative — co-developed in
-> the complete formalism. **NB:** some canonical docs referenced for "full statements" still carry
-> pre-correction wording (e.g. the ℓ₀-"degeneracy" and cos4θ framings) pending the code-vs-docs
-> consistency sweep; **on any conflict, this file's settled statement wins.**
+> the complete formalism. **On any conflict with another doc, this file's settled statement wins.**
+> *(The code-vs-docs consistency sweep that this note used to flag as pending is DONE: the
+> ℓ₀-"degeneracy" wording is corrected in `MATERIALIZE.md` §4.3/§10 and `SOLVER_GUIDE.md` §7, and
+> no cos4θ-BOUND claim remains in any doc — re-checked 2026-08-20. Drift is still a bug; report it.)*
 
 ### Maths & physics conventions  *(settled 2026-08-09)*
 
