@@ -12,7 +12,8 @@ coordination histogram and differ only by distortion.  Every edge is a REAL unif
 NO soft 'fictional' edges (that would be huge k-variation).
 
 Outputs (Phase 5/results/g1_2/): results.csv, results.npz, eta_reference.npz, topologies.csv.
-Each trustworthy final design -> Phase 5/networks/g1_2/design_g12_<topo>_<nu>.npz (add-only).
+Every final design -> Phase 5/networks/g1_2/ (add-only); `UNTRUSTED_` prefix where the two code
+paths disagree by more than GAP_TOL, which is recorded, NOT used to discard (audit A-12).
 
 Run:  C:\\Users\\doron\\anaconda3\\python.exe "Phase 5/verifications/run_g1_2.py"
       (optional first arg 'smoke' -> triangular + 3 targets only)
@@ -40,6 +41,11 @@ NU_GRID = np.array([-0.95, -0.75, -0.5, -0.3, -0.1, 0.1, 0.2, 0.3, 0.4, 0.6, 0.9
 # SPSA stalls; the jitter gives it a non-zero gradient to follow) and uses a distinct step size
 # `a` (small = safe/near-target + trustworthy; large = aggressive/far-reaching but risks a big
 # solver-vs-sim gap).  We VERIFY every restart and keep the CLOSEST-to-target TRUSTWORTHY one.
+SCORE_LAMBDA = 0.5            # selection score = target_err + SCORE_LAMBDA * solver_sim_gap.
+                              # Weighs honesty against doing the job instead of vetoing on it. The
+                              # value is a JUDGEMENT, not a fit: on the 110 saved designs every
+                              # lambda in [0, 1] picks the same per-target winners, so the data
+                              # cannot distinguish them -- what matters is that the veto is gone.
 A_LIST = [0.15, 0.25]         # per-restart SPSA step sizes (SEEDS_PER = len(A_LIST))
 SEEDS_PER = len(A_LIST)
 JITTER = 0.10                 # symmetry-break jitter std (fraction of unit spacing); conn. frozen
@@ -241,7 +247,8 @@ def design_one(topo, nu_target):
     SEEDS_PER restarts, each from an INDEPENDENT symmetry-break jitter and a distinct SPSA step
     size (A_LIST); connectivity FROZEN (redelaunay_every=0); E free (E_weight=0).  Every restart
     is INDEPENDENTLY sim-VERIFIED; we keep the CLOSEST-to-target design among the TRUSTWORTHY ones
-    (solver-vs-sim gap < GAP_TOL) — falling back to the lowest-gap design if none is trustworthy.
+    SCORED by `err + SCORE_LAMBDA*gap` — the gap is a COST, not a veto (2026-08-21; the old
+    prefer-trustworthy-else-lowest-gap rule discarded designs that hit the target, see design_one).
     Returns (best_geo, k, rep, loss)."""
     geo0 = topo['geo']
     k = np.asarray(topo.get('k0', np.ones(topo['n_bond'])), float)   # ones unless USE_SEED_K0
@@ -267,9 +274,16 @@ def design_one(topo, nu_target):
         rep = designer.verify(geo0, k, nu_target, 1.0)     # the undistorted (healthy) topology
         return geo0, k, rep, positions.loss_at(geo0, k, nu_target, 1.0, 1.0, 0.0)
 
-    trust = [c for c in cands if c[5]]
-    best = (min(trust, key=lambda c: c[3]) if trust               # closest trustworthy to target
-            else min(cands, key=lambda c: c[4]))                  # else the most honest (min gap)
+    # SCORED selection: target error and solver-sim disagreement are WEIGHED, not vetoed
+    # (2026-08-21). The old rule kept the closest-to-target TRUSTWORTHY candidate and fell back to
+    # the lowest-gap one, which systematically preferred timid designs: measured on `triangular`,
+    # the a=0.15 restart barely moves, lands on a TARGET-INDEPENDENT endpoint (identical for
+    # nu*=-0.10 and -0.30) and scores gap 0.031, while the a=0.25 restart REACHES nu=-0.134 at gap
+    # 0.371 and was discarded -- so the experiment reported +0.038 for every negative target and
+    # read as "distortion cannot reach auxetic". Evidence: `g1_2_triangular_start_probe.py`.
+    # A large gap means the two CODE PATHS disagree about this network, not that the network is
+    # unreal; it belongs in the score as a cost, and in the report as a separate number.
+    best = min(cands, key=lambda c: c[3] + SCORE_LAMBDA * c[4])
     g, rep, L, _, _, _ = best
     return g, k, rep, L
 
@@ -378,12 +392,14 @@ def main():
                                topo=t['name'], topo_class=t['cls'], coord_sig=t['sig'],
                                nu_sim=nu_ach, E_sim=E_ach, nu_initial=nu_init[t['name']],
                                nu_aniso_std=aniso, solver_sim_gap=gap, trustworthy=bool(trust),
+                               select_score=float(err + SCORE_LAMBDA * gap),
                                note='G1.2 positions-only k=1')
                 rows.append(dict(run_id=run_id, topo=t['name'], topo_class=t['cls'],
                                  coord_sig=t['sig'], n_nodes=t['n_nodes'], n_bond=t['n_bond'],
                                  nu_target=float(nu_target), nu_initial=nu_init[t['name']],
                                  nu_achieved_sim=nu_ach, E_achieved_sim=E_ach, err=err,
                                  nu_aniso_std=aniso, solver_sim_gap=gap, trustworthy=trust,
+                                 select_score=float(err + SCORE_LAMBDA * gap),
                                  status='ok', error='',
                                  design_loss=float(loss), design_path=path))
                 print(f"[{run_id:3d}/{n_runs}] {t['name']:20s} nu*={nu_target:+.2f} | "
@@ -414,17 +430,24 @@ def main():
     print(f"\n[g1.2] DONE {len(rows)} runs in {dt/60:.1f} min ({len(trust)} trustworthy)",
           flush=True)
 
-    # per-topology reachable nu (trustworthy)
-    print('\n[g1.2] reachable nu per topology (trustworthy sim):', flush=True)
+    # Per-topology reach over EVERY run, with the two quality numbers reported SEPARATELY:
+    # `err` = achieved-vs-target (did it do the job) and `gap` = solver-vs-sim (do the two code
+    # paths agree about it). Reporting only gap-passing rows is what made this experiment read as
+    # "distortion never reaches negative nu" when 43 designs reach nu<0 in BOTH code paths.
+    print(chr(10) + '[g1.2] reach per topology -- ALL runs; err and gap reported separately:', flush=True)
     for t in topos:
-        b = [r for r in trust if r['topo'] == t['name']]
+        b = [r for r in rows if r['topo'] == t['name'] and r['status'] == 'ok']
         if not b:
-            print(f"    {t['name']:20s} : none trustworthy", flush=True); continue
+            print(f"    {t['name']:20s} : no successful run", flush=True); continue
         nus = [r['nu_achieved_sim'] for r in b]
-        errs = [r['err'] for r in b if abs(r['nu_target'] - r['nu_achieved_sim']) < 1e9]
+        bt = [r for r in b if r['trustworthy']]
+        tw = (f"[{min(r['nu_achieved_sim'] for r in bt):+.3f},"
+              f"{max(r['nu_achieved_sim'] for r in bt):+.3f}]" if bt else 'none')
         print(f"    {t['name']:20s} init={nu_init[t['name']]:+.3f}  reach "
-              f"[{min(nus):+.3f},{max(nus):+.3f}]  median|err|={np.median([r['err'] for r in b]):.3f} "
-              f"(n={len(b)})", flush=True)
+              f"[{min(nus):+.3f},{max(nus):+.3f}] (n={len(b)})  "
+              f"median|err|={np.median([r['err'] for r in b]):.3f}  "
+              f"median gap={np.median([r['solver_sim_gap'] for r in b]):.3f}  "
+              f"gap<{GAP_TOL} sub-range {tw} (n={len(bt)})", flush=True)
 
 
 if __name__ == '__main__':

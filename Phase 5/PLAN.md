@@ -16,6 +16,11 @@
 >   (median 0.488). *(CORRECTED 2026-08-21: this bullet previously described g1_2 as "k-only design on
 >   fixed tiling topologies with braced fictional edges" — that is a different experiment — and read
 >   its gate rejections as an absence of auxetic reach. Both wrong; see `results/g1_2/G1_2.md`.)*
+>   *(SELECTION FIXED 2026-08-21: `design_one` now scores `err + 0.5·gap` instead of vetoing on the
+>   gap. The old rule kept a timid a=0.15 restart at gap 0.031 over an a=0.25 restart that reached
+>   ν=−0.134 at gap 0.371 — so it discarded designs that did the job. **The numbers in this bullet
+>   predate that fix and understate reach**; regenerating `results.csv` (~110 min) is what makes them
+>   current. `designer.design()`'s own safety gate is unchanged and still vetoes.)*
 > - **`auxetic_sweep`** — **36 of 70 rows reach sim ν < −0.05, all stable**, down to −0.6009 with
 >   solver and sim agreeing to 4 decimals (regular, aniso_shr, aniso_str, disorder_hi, disorder_lo).
 > - **`goal2`** — 13/13 trustworthy, all gaps 0.000; positions helped in 10/13.

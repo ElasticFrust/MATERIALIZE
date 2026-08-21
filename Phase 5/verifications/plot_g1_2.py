@@ -77,7 +77,8 @@ def repeated_endpoints():
     is the proven case (`g1_2_triangular_start_probe.py`): at SPSA step size a=0.15 the search barely
     moves and lands on a TARGET-INDEPENDENT endpoint -- identical for nu*=-0.10 and -0.30 -- which is
     why one geometry was saved for all five negative targets. At a=0.25 the same setup reaches
-    nu=-0.134, but with a larger gap, so `design_one`'s prefer-trustworthy rule discards it."""
+    nu=-0.134, but with a larger gap, so `design_one`'s then prefer-trustworthy rule discarded it
+    (that rule was replaced by a scored selection on 2026-08-21; results.csv predates the fix)."""
     path = os.path.join(RESDIR, 'solver_recheck.npz')
     if not os.path.exists(path):
         return set()
