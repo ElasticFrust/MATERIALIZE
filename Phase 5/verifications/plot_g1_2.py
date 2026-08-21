@@ -73,9 +73,11 @@ def repeated_endpoints():
 
     One configuration reported for several targets means the search stopped there. At the positive
     end that is genuine saturation at the nu ~ +1/3 cap (those clusters are trustworthy); at the
-    negative end it is the search giving up, so the endpoint is a LOWER BOUND on what the topology
-    can do, never an upper bound. `triangular` is the proven case: all five of its negative targets
-    share one geometry, yet random eta-disorder of the SAME topology reaches nu = -0.109."""
+    negative end it is a LOWER BOUND on what the topology can do, never an upper bound. `triangular`
+    is the proven case (`g1_2_triangular_start_probe.py`): at SPSA step size a=0.15 the search barely
+    moves and lands on a TARGET-INDEPENDENT endpoint -- identical for nu*=-0.10 and -0.30 -- which is
+    why one geometry was saved for all five negative targets. At a=0.25 the same setup reaches
+    nu=-0.134, but with a larger gap, so `design_one`'s prefer-trustworthy rule discards it."""
     path = os.path.join(RESDIR, 'solver_recheck.npz')
     if not os.path.exists(path):
         return set()
