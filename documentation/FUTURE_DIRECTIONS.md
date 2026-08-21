@@ -103,14 +103,34 @@ stiffness eigenvalue where the linear readback diverges from the true nonlinear 
 > *"check for a floppy mode" gives a FALSE ALL-CLEAR for the A(s) failure.* A smallest-stiffness-
 > eigenvalue barrier is exactly that check.
 >
-> *Supporting evidence from the 2026-08 campaign:* `ab_quality_floor` shows a `min(k)` floor (this
-> entry's cheap "S" option) cuts the median solver-sim gap 0.66 → 0.37 but **cannot close it** — the
-> signature of attacking a correlate rather than the cause.
+> *Supporting evidence from the 2026-08 campaign, CORRECTED 2026-08-22:* `ab_quality_floor` is **not**
+> a `min(k)` floor — it is a per-triangle **shape-quality** floor inside the SPSA loop; this entry and
+> that experiment's own results doc both mislabelled it. Re-run under the scored selection (40 runs):
+> a floor of 1e-3 is free (trustworthy 38% either way, median err 0.0061 → 0.0043), 0.01 costs ×8 in
+> error for −19% in gap, and 0.03+ doubles trustworthiness while raising median error **×17** — the
+> signature of forbidding the designs that were the point, not of fixing a cause. **`quality_floor`
+> now defaults to 1e-3** as a degeneracy guard only.
 >
 > **Suggested re-aim:** penalise the **per-triangle conditioning of `A(s)`** — the solver's actual
 > validity condition — optionally alongside a Hessian term. It is differentiable, local (3×3 per
 > triangle, cheap), and `verify_lattice`'s regular-lattice ν=−0.2 case is an immediate pass/fail test:
 > the constraint works iff that design stops flipping sign against the sim.
+>
+> ### ⚠ THE RE-AIM IS ALSO NOT SUFFICIENT AS STATED — measured 2026-08-21
+> **`rcond(A(s))` alone does not predict solver error.** On the hexagon closed-form family, sweeping
+> `k_spoke` 1e-2 → 1e-8 drives `A(s)` to numerical rank-1 while the error against the ANALYTIC form
+> *falls* by six orders: **corr(log10 rcond_min, log10|Δν|) = +0.73**, best accuracy (4.2e-18) at the
+> WORST conditioning (2.3e-09) — `Phase 5/verifications/hex_conditioning_check.py`. A penalty on
+> `rcond` would reject that family's most accurate configurations. A soft-spring limit is a *smooth,
+> well-posed* approach to free hinges; **DEAD k (exactly 0) and sliver geometry are the harmful
+> cases**, and CLAUDE.md §3 now separates them.
+>
+> Nor does conditioning explain the worst disagreement on record: goal1's largest, |Δν| = **0.311**
+> at ν = +0.286, has `rcond_min` = 5e-03, shape quality 0.475 and `k_min/mean` = 0.65 — healthy on
+> every axis (`conditioning_probe.py`). Where the mechanism IS confirmed is geometric distortion:
+> in g1_2 (k ≡ 1, so purely geometric) `frac_rcond<1e-4` correlates **+0.93** with the error.
+> **So there are at least two distinct failure modes and this constraint addresses one of them.**
+> Design the penalty against the CAUSE of singularity, not its symptom, and validate on both.
 
 **What to do (as originally written):** add a differentiable penalty on the smallest eigenvalue of the design's stiffness
 (or of the per-region response Hessian) — e.g. a soft-plus barrier `−λ·min_eig` or a penalty on the

@@ -5,7 +5,10 @@
 > maths/physics conventions & working habits (§3). It does **not** restate the charter.
 >
 > **Session start — don't start cold.** Before acting each session, read: this file (§1–3), the
-> relevant `Phase */PLAN.md`, `Phase 2/SOLVER_GUIDE.md`, and — for theory — `documentation/MATERIALIZE.md`.
+> relevant `Phase */PLAN.md`, `Phase 2/SOLVER_GUIDE.md`, — for theory — `documentation/MATERIALIZE.md`,
+> and **`documentation/VERIFICATION_CAMPAIGN.md`, the INDEX of what has already been measured**
+> (one line per analysis script saying which question it answers; `verification_tools/README.md`
+> indexes the rest).
 > Keep code, docs, and this file mutually consistent; drift is a bug (there is a standing
 > code-vs-docs consistency-sweep task).
 >
@@ -202,8 +205,17 @@ metric-space solve inverts the per-triangle bare tensor
 `A(s)` loses rank the inverse is set by that **regulariser, not by physics**, and `C(s)` for those
 triangles can be arbitrarily wrong. Since `C_eff` is the UNWEIGHTED mean over triangles, a handful of
 such triangles can swamp it. **Two independent routes to rank loss:**
-- **low k** — soft/dead edges (softplus underflows to exactly 0). Guarded *indirectly* by `reg`,
-  which penalises k-variance; **`reg` discourages but does not detect it**.
+- **DEAD k** — edges whose k underflows to **exactly 0** (softplus), removing the term outright.
+  Guarded *indirectly* by `reg`, which penalises k-variance; **`reg` discourages but does not detect
+  it**. **NOT the same as SOFT k, and the distinction is load-bearing** *(measured 2026-08-21)*: the
+  hexagon gate runs two of each triangle's three edges at `k_spoke = 1e-8`, so `A(s)` is numerically
+  rank-1 **by construction** — and the solver still matches the CLOSED FORM to **4.4e-06**, with the
+  residual first order in `k_spoke` (a tenfold drop divides it by ten) and solver-vs-sim at 2.95e-11.
+  Sweeping `k_spoke` 1e-2→1e-8 degrades `rcond(A(s))` by six orders while the error against the
+  closed form *falls* by six orders: **corr(log10 rcond, log10|Δν|) = +0.73**
+  (`Phase 5/verifications/hex_conditioning_check.py`). **So rank-deficient `A(s)` does NOT by itself
+  mean a wrong `C(s)`** — a smooth soft-spring limit is benign, and a gate on `rcond` alone would
+  reject this family's *most accurate* configurations. What matters is WHY `A(s)` is singular.
 - **degenerate geometry** — sliver triangles make the three `q_e` outer products near-coplanar.
   Guarded by `require_healthy_mesh`, but only via a triangle-AREA proxy.
 Neither guard inspects `A(s)` itself. *Measured 2026-08-16, regular lattice driven to ν=−0.2:* 11% of
@@ -305,6 +317,7 @@ Three DISTINCT quantities — keep them separate:
   | **per-triangle `C(s)`** | **yes** *(since 2026-08-15)* | `physical_homog.energy_C_per_triangle` | `test_forward_solver` **[8]** |
   | **regional `C(region)`** | **yes** *(since 2026-08-15)* | `physical_homog.energy_C_region` | `test_forward_solver` **[8]** |
   | open-boundary response | partial | separate nodal solve | suite incomplete (**A-8**) |
+  | **hexagon family ν(d)** | **yes — a THIRD path** | `test_hex_closed_form.py` → the ANALYTIC form ν(r) = (4r²−1)/(3+4r−4r²), independent of BOTH solver and sim | gate, matched to **4.4e-06** |
 
   **NOT independent, by construction:** `_common.sim_per_triangle_C6` and `region_phys_C6` push the
   sim's relaxation back through the solver's own `_compute_actual_elastic_tensor`. They are fine for
@@ -355,6 +368,22 @@ Three DISTINCT quantities — keep them separate:
   re-verified and blast radius checked.
 - **"Verified" (charter ladder), strongest first:** independent code path (the sim) → prior detailed
   results → a known value (ν=1/3, E=2/√3) → an analytical argument. Passing tests alone ≠ verified.
+- **A THIRD path already exists for one family — do not say "everything here compares two codes".**
+  `test_hex_closed_form.py` checks the solver against a CLOSED FORM that is independent of both the
+  solver and the sim (4.4e-06 over d∈[0.05,2]), and it is **sensitive to the shear channel**, so it
+  would have caught A-0 immediately. **A-18 is about GENERALISING this to arbitrary basis cells, not
+  about building the first analytic oracle.** Where solver and sim disagree, this is the only tool
+  that can say which is right — for the hexagon family today, for more once A-18 lands.
+- **CHECK FOR PRIOR ART BEFORE PROPOSING A NEW MEASUREMENT** *(added 2026-08-21, after proposing
+  two analyses that already existed)*. Search `documentation/VERIFICATION_CAMPAIGN.md`,
+  `verification_tools/README.md`, and the `plots/*/`-`results/*/` results docs first, and **say what
+  you found** — including "nothing". Both misses were expensive and both were indexed: the
+  per-triangle localisation of C(s) against the independent oracle, *with a ‖W(s)‖ field*, is
+  `verification_tools/per_triangle_C_comparison.py` (+ `plots/per_triangle_C/PER_TRIANGLE_C.md`,
+  which already records corr(|ΔC|,‖W‖) = +0.39 **and** that an earlier draft overstating it as
+  "tracks ‖W‖" was corrected); the sliver-vs-gap correlations are already in
+  `positions.tri_shape_quality`'s docstring. The habit this protects is the charter's "don't
+  reinvent", and the index exists precisely so it costs one read rather than a rediscovery.
 - **New functionality gets a test.** Core and any new capability get a structured test — compared vs
   an alternative code path or a known value — alongside the existing regressions.
 - **Regressions (the full gate set):** `Phase 2/test_forward_solver.py` (crystal ν, **gradients +

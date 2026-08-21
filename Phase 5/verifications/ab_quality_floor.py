@@ -20,7 +20,11 @@ A sliver has LONG edges and a tiny angle, so a minimum-DISTANCE constraint would
 **What this script does NOT do:** pick a threshold off that correlation. corr ~-0.5 says quality
 predicts the gap, not that any particular floor is right; calibrating a gate from correlational data
 at n=124 is the same "tolerance set from noise" error made and retracted over B-1 earlier that day.
-So `quality_floor` ships defaulting to 0.0 (OFF, historical behaviour) and this A/B sets it.
+So `quality_floor` shipped defaulting to 0.0 (OFF) until this A/B was run. **RESULT (2026-08-21,
+40 runs under the scored selection): the default is now 1e-3** — free (trustworthy 38% either way,
+median err 0.0061 -> 0.0043, within noise at n=8) and it blocks only the numerically broken, 2 of
+110 designs. Floors >= 0.03 double trustworthiness but raise median error 17x, i.e. they forbid the
+designs that were the point — see the table in `positions.spsa_positions`.
 
 **Design.** Same topologies, same targets, same seeds; the ONLY difference is `quality_floor`. Each
 arm reports the trustworthy fraction, the gap distribution, and the achieved design error -- because

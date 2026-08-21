@@ -45,7 +45,10 @@ proves nothing. **Everything else is clean now, so this is the top correctness i
 Worth doing early because it is the *cause* of failures this audit kept hitting (g1_2's auxetic
 targets, `verify_lattice`, what `ab_quality_floor` could only mitigate). **But #2 as written targets
 the wrong quantity** — see the correction block now at the top of that entry. Penalise the
-**per-triangle conditioning of `A(s)`**, not the smallest global stiffness eigenvalue; `CLAUDE.md` §3
+**per-triangle conditioning of `A(s)`**, not the smallest global stiffness eigenvalue — **but read
+FD #2's 2026-08-21 block first: `rcond(A(s))` alone is measurably NOT a predictor of solver error
+(hexagon: corr +0.73, best accuracy at worst conditioning), and goal1's worst case is healthy on
+every conditioning axis**; `CLAUDE.md` §3
 shows the latter gives a *false all-clear* for the dominant failure. Ready-made test:
 `verify_lattice`'s regular-lattice ν=−0.2 case (solver −0.112 vs sim +0.137) — the constraint works
 iff that stops flipping sign.

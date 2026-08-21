@@ -142,7 +142,7 @@ def tri_shape_quality(geo):
 
 def spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed=0,
                    redelaunay_every=0, verbose=False, nu_weight=1.0, E_weight=1.0,
-                   quality_floor=0.0):
+                   quality_floor=1e-3):
     """Derivative-free position polish of `geo` at FIXED designed `k` (SPSA, sign-normalized —
     see module docstring).  Per step: perturb ALL positions by +-c_k*Delta (Delta random +-1 per
     coordinate) ON THE SAME SIMPLICES (smooth geometry probe, no accidental edge flips), evaluate
@@ -150,13 +150,29 @@ def spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed
     accept-if-better-or-slightly-worse; reject any step that collapses a triangle below 1e-3 of
     the mean area, or below `quality_floor` in SHAPE QUALITY.
 
-    `quality_floor` (default 0.0 = OFF, preserving historical behaviour) rejects steps that make any
-    triangle a sliver — see `tri_shape_quality`. **Why this exists:** the area floor alone does not
-    work. On the 124 saved `g1_2` designs the UNTRUSTED ones have median min/mean area 0.047, i.e.
-    **47x above the 1e-3 floor**, so that guard essentially never fires while only ~24% of runs come
-    back trustworthy. Slivers are an ANGLE failure, and area is a poor proxy for it.
-    The default is 0.0 rather than a calibrated value on purpose: the right threshold is being set by
-    an A/B against the 24% baseline, not read off a correlation.
+    `quality_floor` rejects steps that make any triangle a sliver — see `tri_shape_quality`.
+    **Why this exists:** the area floor alone does not work. On the saved `g1_2` designs the
+    UNTRUSTED ones have median min/mean area 0.047, i.e. **47x above the 1e-3 area floor**, so that
+    guard essentially never fires. Slivers are an ANGLE failure, and area is a poor proxy for it.
+
+    **DEFAULT 1e-3, set 2026-08-21 from the A/B the earlier default deferred to**
+    (`ab_quality_floor.py`, 40 runs, 4 topologies x 2 targets x 5 floors, under the scored
+    selection). It is a DEGENERACY guard, deliberately not an accuracy gate:
+
+        floor    trustworthy   median gap   median err
+        0.000        38%          0.1034      0.0061
+        0.001        38%          0.1020      0.0043     <- free: costs nothing, blocks nothing real
+        0.010        38%          0.0840      0.0490     <- gap -19%, error x8
+        0.030        75%          0.0000      0.1028     <- gap ->0, error x17
+        0.050        75%          0.0000      0.1236
+
+    At 0.03+ trustworthiness and error move TOGETHER, i.e. the floor forbids the designs that were
+    the point (the deepest auxetic result, nu=-0.436, has q_min=0.0090 and would be destroyed).
+    1e-3 (~0.03 deg) blocks only the numerically broken: 2 of 110 designs sit below it, both with
+    |dnu| > 0.1. **Do not raise it to buy agreement** — that is the veto mistake one level down.
+    NB the tail predicts error better than the worst triangle (`quality_p05` corr -0.86 vs
+    `quality_min` -0.69), so `min` is the right statistic for a DEGENERACY floor but the wrong one
+    for an accuracy criterion.
 
     Every `redelaunay_every` steps the points are re-Delaunayed: if the topology
     is unchanged the same bond ordering (hence `k`) is kept; if it CHANGED, the new-topology geo
@@ -252,7 +268,7 @@ def spsa_positions(geo, k, nu_target, E_target, n_steps=40, a=0.02, c=0.01, seed
 def design_with_positions(nu_target, E_target, geo0, n_outer=3, spsa_steps=40, n_iter=80,
                           n_restarts=1, reg=0.02, spsa_a=0.02, spsa_c=0.01,
                           redelaunay_every=0, seed=0, verbose=True,
-                          nu_weight=1.0, E_weight=1.0, quality_floor=0.0):
+                          nu_weight=1.0, E_weight=1.0, quality_floor=1e-3):
     """Joint position+k design by alternation, starting from topology `geo0`:
 
         round = [k-design (designer.design_on_topology)] -> [SPSA position polish at fixed k]
