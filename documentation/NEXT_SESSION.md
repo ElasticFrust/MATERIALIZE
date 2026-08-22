@@ -33,11 +33,22 @@ Evidence in `Phase 3/verifications/b1_dumps/` (harness auto-dump
   isolated for the first time), but at **1.5e-33**, thirty orders below the failure, consistent with
   the 1–2 ulp envelope already on record.
 
-**The plan (agreed):** an overnight loop of the **FULL suite** (`Phase 3/test_inverse_design.py`,
-~12 min/run), **paired 1-thread vs default** so the thread question is answered at the same time.
-~40 runs/night, ~2 expected events. **Write each run's verdict incrementally** — a suspend at hour
-six must not cost the night (one g1_2 design already recorded 18266 s from a machine suspend despite
-`_keep_awake`).
+**READY TO LAUNCH — `Phase 3/verifications/b1_overnight.py`** (written 2026-08-22, not yet run):
+
+```
+python "Phase 3/verifications/b1_overnight.py" 10          # 10-hour budget, arms 1-thread / default
+python "Phase 3/verifications/b1_overnight.py" 10 --arms 1,0
+```
+
+Each iteration is a fresh subprocess running the full suite (~12 min), alternating a **1-thread** arm
+and a **default-threads** arm, so the thread question is answered alongside. It appends one CSV row
+and **flushes + fsyncs after every run** — a suspend at hour six must not cost the night (one g1_2
+design already recorded 18266 s of wall clock from exactly that). Re-running APPENDS, so the CSV is
+cumulative across nights. Output: `b1_dumps/overnight_<UTC>.{csv,log}`.
+
+It flags two things: an outright `FAIL`, and `PASS_DRIFT` — a pass whose [15] line no longer shows
+the usual `solver-vs-physical(tensor)=1.6e-12`, i.e. a quiet change in the number that is not yet
+large enough to trip the assert. ~40 runs/night, ~2 expected events at the observed rate.
 
 Useful control that fell out: `torch.set_num_threads(1)` makes the forward path bit-reproducible, so
 "noise or real state change?" becomes decidable.
@@ -76,7 +87,11 @@ metrics this time (`M2.md` still has `<FILL>`).
 `Phase 5/results/reach_summary/REACH_SUMMARY.md` for the reachable envelope on one axis.
 
 ### 4. Deferred, deliberately
-- **The tiling discrepancy — LEFT AS IS, no run-time guard** (user's call, 2026-08-22). See below.
+- **The tilings themselves are FIXED** (crossing chords → phantom-centre fan, see below). What is
+  left as-is, by the user's call: **no run-time geometry guard**, and no re-measurement of whether
+  the residual `tiling_honeycomb_r3` disagreement survives the fix.
+- **`build_topologies` accepts meshes that `check_mesh_preconditions` rejects** — it only checks
+  `areas > 0`. That is how an invalid mesh reached production. Deliberately not guarded.
 - goal2 over its full target range — its target set has never been scoped (directional/full-tensor).
 - `A-8` open-boundary suite · `A-17` tail (centre-vertex re-representation) · `A-18` analytic-oracle
   generalisation · TODO 2.6 `open_stretch` guard.
@@ -137,7 +152,10 @@ better than the worst triangle).
 **6. A THIRD verification path already exists** — `test_hex_closed_form.py` is analytic and
 independent of both solver and sim (4.4e-06). **A-18 generalises it; it is not the first.**
 
-**7. New instruments:** `plotting.plot_ranges` (reach intervals; pale = full reach, solid = agreeing
+**7. The tilings had CROSSING CHORDS — fixed.** See the section below; every result involving a
+`tiling` topology predates the fix.
+
+**8. New instruments:** `plotting.plot_ranges` (reach intervals; pale = full reach, solid = agreeing
 sub-range, filled/hollow markers), `Phase 5/results/reach_summary/` (every ν achieved, on one axis),
 `conditioning_probe.py`, `hex_conditioning_check.py`, `g1_2_solver_recheck.py`,
 `g1_2_triangular_start_probe.py`, `b1_reproduce.py threads`.
