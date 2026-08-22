@@ -376,6 +376,80 @@ def plot_overlay_grid(panels, xlabel='x', ylabel='y', suptitle=None, ncols=3,
     return fig
 
 
+def plot_ranges(groups, xlabel='x', bounds=None, landmarks=None, title=None,
+                trust_key='trust', ax=None):
+    """Horizontal reach INTERVALS, one row per group — "how far does each of these get?".
+
+    `groups` = ordered dict/list of (name, values) or (name, dict(all=..., trust=...)):
+      - a bare sequence  -> one interval [min, max]
+      - dict form        -> `all` = the values, `trust` = a BOOLEAN MASK over them. Draws a PALE
+        interval over all of them plus a SOLID one over the trusted subset, the project convention
+        that a design failing the solver-vs-sim agreement gate is DATA, not an absence (drawing only
+        the agreeing subset is what made g1_2 read as "never reaches negative nu").
+    Individual values are drawn as points on the row: filled where trustworthy, HOLLOW where not.
+    `trust` is a MASK, not a value list, deliberately: matching trusted runs by float equality
+    silently fails (np.round and round disagree in the last ulp) and every point renders hollow.
+
+    `bounds` = (lo, hi) shaded as the physically admissible band (e.g. isotropic 2D -1 < nu < 1).
+    `landmarks` = list of (x, label) drawn as labelled verticals — known values worth comparing
+    against (nu = 1/3 for the uniform triangular lattice, an analytic limit, a reference band).
+
+    Added 2026-08-22: three call sites wanted an interval chart and each had rolled its own
+    (`plot_g1_2._reach_axis`, `plot_goal1._frontier_axis`, the reach summary), which is exactly what
+    the single-source-of-truth policy exists to prevent. Returns the Axes."""
+    if ax is None:
+        _fig, ax = plt.subplots(figsize=(8.0, 0.42 * len(groups) + 2.2))
+    items = list(groups.items()) if isinstance(groups, dict) else list(groups)
+    cm = plt.get_cmap('tab10')
+
+    if bounds is not None:
+        ax.axvspan(bounds[0], bounds[1], color='0.92', zorder=0,
+                   label=f'physically admissible ({bounds[0]:+g}, {bounds[1]:+g})')
+    for x, lab in (landmarks or []):
+        ax.axvline(x, color='0.45', lw=1.0, ls=':', zorder=1)
+        ax.annotate(lab, (x, -0.62), rotation=90, fontsize=7, color='0.35',
+                    ha='right', va='bottom')      # bottom margin: never collides with a row
+
+    for i, (name, v) in enumerate(items):
+        col = cm(i % 10)
+        d = v if isinstance(v, dict) else {'all': v}
+        allv = np.asarray(d['all'], float)
+        if allv.size == 0:
+            continue
+        ax.plot([allv.min(), allv.max()], [i, i], color=col, lw=7, alpha=0.30,
+                solid_capstyle='round', zorder=2)
+        m = np.asarray(d.get(trust_key, np.zeros(len(allv), bool)), bool)
+        if m.size != allv.size:
+            raise ValueError(f"'{trust_key}' must be a boolean mask over 'all' "
+                             f"({m.size} vs {allv.size} for group {name!r})")
+        if m.any():
+            ax.plot([allv[m].min(), allv[m].max()], [i, i], color=col, lw=7, alpha=0.55,
+                    solid_capstyle='round', zorder=3)
+        # Every run as a point: FILLED = agrees with the independent sim, HOLLOW = does not.
+        # The markers sit ON a bar of the same hue, so a col-filled marker with a white edge reads
+        # as a white RING and becomes indistinguishable from the hollow one — hence the dark edge
+        # for filled and a WHITE face for hollow, which stay legible against the bar.
+        for x, ok in zip(allv, m):
+            ax.plot(x, i, 'o', markersize=4.6,
+                    markerfacecolor=col if ok else 'white',
+                    markeredgecolor='#0b0b0b' if ok else col,
+                    markeredgewidth=0.7 if ok else 1.2, zorder=4)
+        ax.annotate(f'{allv.min():+.3f}', (allv.min(), i), textcoords='offset points',
+                    xytext=(-6, 0), ha='right', va='center', fontsize=7.5)
+        ax.annotate(f'{allv.max():+.3f}', (allv.max(), i), textcoords='offset points',
+                    xytext=(6, 0), ha='left', va='center', fontsize=7.5)
+
+    ax.set_yticks(range(len(items)))
+    ax.set_yticklabels([n for n, _ in items], fontsize=9)
+    ax.set_ylim(-0.7, len(items) - 0.3)
+    ax.set_xlabel(xlabel)
+    if title:
+        ax.set_title(title, fontsize=11)
+    ax.grid(True, axis='x', color='#e1e0d9', lw=0.8)
+    ax.set_axisbelow(True)
+    return ax
+
+
 def save_fig(fig, path, dpi=STYLE.DPI_ELEMENT, close=True):
     """Save `fig` to `path` at `dpi` (default the ≥300 element DPI); make parent dirs."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
