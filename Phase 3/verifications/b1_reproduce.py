@@ -318,6 +318,69 @@ def mode_imports():
     print('\n  identical hashes => import order is NOT the mechanism (warm-up controlled for).')
 
 
+def mode_threads(n, arms=(1, 4)):
+    """Does TORCH THREAD COUNT change the B-1 hit rate? Suite context once, then n probes per arm.
+
+    Why this mode exists (2026-08-22): `mode_fingerprint` RECORDS `torch.get_num_threads()` but
+    nothing ever VARIED it, so thread count was the one environmental knob never tested — while
+    `imports` was tested and refuted. Measured directly: 40 identical `forward()` calls on the
+    regular lattice give **2 distinct bit patterns at 4 threads and 1 (bit-exact) at 1 thread**, so
+    threading demonstrably makes the forward path nondeterministic.
+
+    That alone does NOT explain B-1: the variation is ~1e-33 against the 1.18e-02 excursion captured
+    on 2026-08-22 (`b1_dumps/b1_anomaly_20260822T142234Z_eta0.0_s0.json`) — thirty orders apart, and
+    consistent with the 1-2 ulp envelope already on record. The open question this mode answers is
+    whether threading nevertheless changes the RATE of the large excursion, e.g. by seeding a
+    divergence at an unstable branch. A rate difference implicates it; equal rates exonerate it.
+
+    Cheap by construction: context is rebuilt ONCE (the 13 preceding tests, the expensive part) and
+    then each probe is 3 small cases — seconds, against ~12 min for a full-suite run. That is the
+    whole point: enough samples to MEASURE a rate rather than infer one from one or two events.
+
+    NOTE `torch.set_num_threads` is process-global and applies to the probes only; the context is
+    built once at whatever the process started with, so the arms share one context by design.
+    """
+    import test_inverse_design as T
+    BASE = {0: 2.205e-13, 1: 1.604e-12, 2: 2.202e-13}          # isolated, measured
+    torch.manual_seed(0)
+    print(f'  establishing suite context once (13 preceding tests), then {n} probes x '
+          f'{len(arms)} arms...', flush=True)
+    for name in PRECEDING:
+        try:
+            getattr(T, name)()
+        except Exception as e:
+            print(f'   ({name} raised {type(e).__name__}: {e})', flush=True)
+    print('  context established' + chr(10), flush=True)
+
+    summary = {}
+    for nt in arms:
+        torch.set_num_threads(int(nt))
+        hits, worst, bitsets = 0, 0.0, [set(), set(), set()]
+        for r in range(n):
+            for ci, case in enumerate(CASES):
+                cs, cp = probe_case_full(*case)
+                scale = np.abs(cp).max()
+                vs = float(np.abs(cs - cp).max() / scale)
+                bitsets[ci].add(cs.tobytes())
+                worst = max(worst, vs / BASE[ci])
+                if vs > 100 * BASE[ci]:
+                    hits += 1
+                    print(f'  threads={nt} rep {r+1:4d} case{ci+1} vs={vs:.4e}'
+                          f'   *** {vs / BASE[ci]:.1e}x BASELINE ***', flush=True)
+        summary[nt] = (hits, worst, [len(b) for b in bitsets])
+        print(f'  threads={nt}: {n} reps x 3 cases -> {hits} hit(s) above 100x baseline; '
+              f'worst {worst:.2e}x; distinct bit patterns per case {summary[nt][2]}', flush=True)
+
+    print(chr(10) + '  RATE COMPARISON (hits per 3n probes):')
+    for nt in arms:
+        h, w, b = summary[nt]
+        print(f'    threads={nt}: {h}/{3*n} hits, worst {w:.2e}x baseline, bit patterns {b}')
+    if all(summary[nt][0] == 0 for nt in arms):
+        print('  -> NO excursion in either arm. Threading not implicated at this sample size; the '
+              'cheap harness may simply not reproduce it (then use an overnight full-suite loop).')
+    return summary
+
+
 def mode_commits(revs):
     """Probe each revision in a throwaway worktree — separates nondeterminism from a moving tree."""
     child = os.path.join(HERE, os.path.basename(__file__))
@@ -354,6 +417,8 @@ def main():
         mode_bisect()
     elif mode == 'suitectx':
         mode_suitectx(int(sys.argv[2]) if len(sys.argv) > 2 else 5)
+    elif mode == 'threads':
+        mode_threads(int(sys.argv[2]) if len(sys.argv) > 2 else 40)
     elif mode == 'stages':
         mode_stages(int(sys.argv[2]) if len(sys.argv) > 2 else 20,
                     ctx=(len(sys.argv) < 4 or sys.argv[3] != 'noctx'))

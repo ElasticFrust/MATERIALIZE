@@ -89,14 +89,23 @@ independent of both solver and sim (4.4e-06). A-18 *generalises* it; it is not t
    bit-reproducible, which turns "is this run-to-run noise or a real state change?" into a decidable
    question.
 
-   **Next experiment (agreed plan):** add a `threads` mode to `b1_reproduce.py` built on
-   `mode_suitectx` — it establishes suite context ONCE (~10 min, the 13 preceding tests) and then
-   takes cheap probes of the 3 cases, with baselines `{0: 2.205e-13, 1: 1.604e-12, 2: 2.202e-13}`
-   where **case 1 is exactly the number test [15] prints**. That is seconds per sample instead of
-   12 minutes for a full-suite run — enough samples to *measure* a 1-thread vs 4-thread rate
-   difference rather than infer it from one or two events. Fall back to an overnight full-suite loop
-   at 1 thread if the cheap harness comes back empty (its assumption is that the reconstructed
-   context suffices).
+   **`threads` mode added and RUN — came back EMPTY, which is itself informative.**
+   `b1_reproduce.py threads 60`: suite context built once, then 60 probes x 3 cases per arm at 1 and
+   4 threads. **0/180 hits in BOTH arms**, every probe at exactly 1.00x baseline
+   (`b1_dumps/2026-08-22_threads_mode_360probes_empty.log`).
+   - Threading is not implicated *at this sample size* — but that is weak, because
+   - **the cheap harness does not reproduce the phenomenon at all.** ~360 samples against a nominal
+     1-in-21 rate should have produced ~17 hits. Zero. So **rebuilding context by replaying the 13
+     preceding tests is NOT sufficient** to produce the excursion — which fits the documented
+     "clusters in time with a persistent state transition": the transition has to *happen*, and a
+     replay does not trigger it. It also suggests the "~1 in 21" on record refers to something other
+     than these probes.
+   - Incidental: in suite context 1 thread gave MORE distinct bit patterns (3) than 4 threads (2),
+     contradicting the isolated 40-run test where 1 thread was bit-exact. Do not over-read either.
+
+   **So the route is the expensive one:** an overnight loop of the FULL suite
+   (`Phase 3/test_inverse_design.py`, ~12 min/run), ideally paired 1-thread vs default so the thread
+   question is answered at the same time. ~40 runs a night, ~2 expected events at the observed rate.
 4. **M2 rebuild + retrain** — parked by request. Labels verified stale (37/41 drift, worst |Δν| 1.73),
    so `checkpoint.pt` is unverified. Two questions before any training: **what M2 is meant to be**
    (CLAUDE.md calls it a GNN *edit-policy* in four places while `m2/model.py` says *forward
