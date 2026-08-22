@@ -42,6 +42,20 @@ six must not cost the night (one g1_2 design already recorded 18266 s from a mac
 Useful control that fell out: `torch.set_num_threads(1)` makes the forward path bit-reproducible, so
 "noise or real state change?" becomes decidable.
 
+### 1b. A PROPER CHORD TILING (small, before M2)
+The tilings now use a **phantom-centre fan** (`seeds._fan_and_tag`, 2026-08-22) because the Delaunay
+chord split produced **crossing edges** — 4 on `tiling_honeycomb_r3`, 5 on `_r4`, 2 on
+`tiling_kagome_r2`, i.e. overlapping triangles rather than a mesh. The fan is correct by
+construction and is the representation `test_hex_closed_form` already validates (4.4e-06).
+
+**Still wanted:** a proper CHORD-based tiling — choose a non-crossing diagonal set per face instead
+of adding a vertex. A chord tiling keeps the vertex set of the actual tiling (no phantom nodes,
+no extra DOF), which matters for anything that reasons about the tiling's own coordination or feeds
+node counts to M2. Small, self-contained, and the fan is a correct fallback until it exists.
+
+*(`_reentrant_honeycomb` still uses the Delaunay chord split and is still tagged `mesh_ok=False` —
+A-17's tail. Giving it the fan is the obvious follow-up.)*
+
 ### 2. M2 — two decisions, then it is unblocked
 - **What M2 IS.** `CLAUDE.md` calls it a GNN **edit-policy** in four places (§1 twice, the
   entry-point line, §2's table); `Phase 5/m2/model.py` says **forward surrogate**. A straight
@@ -130,7 +144,30 @@ sub-range, filled/hollow markers), `Phase 5/results/reach_summary/` (every ν ac
 
 ---
 
-## The discrepancy we are LEAVING OPEN (user's call)
+## RESOLVED 2026-08-22 (end of session): the tilings had CROSSING CHORDS
+
+The user found it: the chord triangulation produced **edges that cross other edges**. Measured —
+`tiling_honeycomb_r3` **4 crossings**, `_r4` **5**, `tiling_kagome_r2` **2**; all three already
+tagged `mesh_ok=False` by A-17, and all three **still entered `goal1`'s design pool**, because
+`build_topologies` only checks `areas > 0` and never calls `check_mesh_preconditions`. So the
+worst-disagreement network in every goal1 run was an **invalid mesh**, not a subtle solver problem.
+
+**Fixed** by `seeds._fan_and_tag`: a phantom centre vertex inside every non-triangular face, fanned
+to its corners. A fan cannot cross — every added edge joins a face's own centre to its own corner.
+All seven tilings now have **0 crossings and `mesh_ok=True`** (three were False). Euler V−E+F = 0
+confirms the face traversal on the torus. `test_designer_surface` [5] used to *assert* the honeycomb
+tiling must fail as not-closed; it now asserts it passes.
+
+**Consequence:** every result involving a `tiling` topology predates the fix — `goal1` (all three
+runs) and `g1_2` both draw from this pool. Node and bond counts changed (honeycomb_r3: 36→54 nodes,
+110→162 bonds), so those runs are not comparable to future ones and should be re-run before any
+tiling-based conclusion is trusted.
+
+**Still open, and deliberately unguarded:** `build_topologies` accepts meshes that
+`check_mesh_preconditions` rejects. The gate exists and is correct; nothing calls it at pool-build
+time. No run-time guard was added (user's call) — but this is why an invalid mesh reached production.
+
+## The residual discrepancy (probably explained by the above)
 
 `tiling_honeycomb_r3` — a 36-node chord-triangulated honeycomb — is the worst solver-vs-sim
 disagreement in every goal1 run: **0.311 → 0.323 → 0.708** as the position budget grew. It is **one

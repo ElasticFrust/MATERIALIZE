@@ -202,16 +202,25 @@ def test_mesh_preconditions():
     # and EXACT (gap 0.0000000) where they used to read 0.22-0.38. They must PASS now.
     for lab, rec in (('square_octagon', seeds.seed_tiling('square_octagon', 3)),
                      ('rotating_squares', seeds._rotating_squares(reps=4, theta_deg=25.0)),
-                     ('honeycomb', seeds.honeycomb(reps=4))):
+                     ('honeycomb', seeds.honeycomb(reps=4)),
+                     # REPAIRED 2026-08-22 by the PHANTOM-CENTRE FAN (`seeds._fan_and_tag`). These
+                     # used to be tagged mesh_ok=False and asserted to FAIL below: the Delaunay
+                     # chord split produced edges that CROSSED each other (4 on honeycomb_r3, 5 on
+                     # _r4, 2 on kagome_r2) — overlapping triangles, not a mesh. A fan cannot cross:
+                     # every added edge joins a face's own centre to its own corner. The old comment
+                     # here said "no tie-break gives both a manifold AND every native rib", which is
+                     # true of DELAUNAY and is exactly why the representation was changed.
+                     ('honeycomb tiling', seeds.seed_tiling('honeycomb', 3)),
+                     ('kagome tiling', seeds.seed_tiling('kagome', 2))):
         ok, f = MB.check_mesh_preconditions(rec['geo'], periodic=True)
         assert ok, f'{lab} should be REPAIRED and PASS now, got {f}'
         assert rec.get('mesh_ok', True), f'{lab} should be tagged mesh_ok=True'
 
-    # STILL not closed: a honeycomb's ribs are not all Delaunay edges of its vertex set, so no
-    # tie-break gives both a manifold AND every native rib. These are TAGGED, not raised, so the
-    # gate rejects them at point of use instead of crashing every driver that builds them.
-    for lab, rec in (('honeycomb tiling', seeds.seed_tiling('honeycomb', 3)),
-                     ('reentrant_honeycomb', seeds._reentrant_honeycomb(reps=4))):
+    # STILL not closed: `_reentrant_honeycomb` still uses the Delaunay chord split
+    # (`_triangulate_and_tag`), so A-17's tail applies to it. TAGGED, not raised, so the gate
+    # rejects it at point of use instead of crashing every driver that builds it. Giving it the fan
+    # treatment is the obvious follow-up.
+    for lab, rec in (('reentrant_honeycomb', seeds._reentrant_honeycomb(reps=4)),):
         ok, f = MB.check_mesh_preconditions(rec['geo'], periodic=True)
         assert not ok and any('not closed' in x or 'torus' in x for x in f), \
             f'{lab} should FAIL as not-closed, got {f}'
@@ -235,7 +244,8 @@ def test_mesh_preconditions():
     ok_all, fails = designer.run_physicality_checks(np.zeros(6), geo=bad)
     assert not ok_all and any(n == 'mesh' for n, _ in fails), \
         f'registry did not surface the mesh failure: {fails}'
-    print('  [5] mesh preconditions: 5 good meshes pass, 3 not-closed + 1 folded fail, open mesh '
+    print('  [5] mesh preconditions: 7 good meshes pass (honeycomb+kagome tilings REPAIRED by '
+          'the phantom-centre fan), 1 not-closed + 1 folded fail, open mesh '
           'passes only when judged open, registry wired  OK')
 
 

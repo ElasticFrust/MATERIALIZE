@@ -358,6 +358,112 @@ def _delaunay_nondegenerate(name, pts, Lx, Ly, seeds_=24, required=None):
     return pts, tris, geo, False
 
 
+def _native_adjacency(pts, box, bond_len, tol=1e-3):
+    """i -> [(j, d)] for native edges, `d` the minimal-image displacement i->j."""
+    adj = {i: [] for i in range(len(pts))}
+    for i in range(len(pts)):
+        d = pts - pts[i]
+        d -= np.round(d / box) * box
+        L = np.hypot(d[:, 0], d[:, 1])
+        for j in np.where(np.abs(L - bond_len) < tol)[0]:
+            if j != i:
+                adj[i].append((int(j), d[j].copy()))
+    return adj
+
+
+def _native_faces(adj):
+    """Faces of the periodic native graph, by next-edge-clockwise traversal of half-edges.
+
+    At `j`, arriving along `d`, the next half-edge of the (CCW) face is the neighbour one step
+    CLOCKWISE from the reversed incoming direction. Returns a list of faces, each a list of
+    (vertex, incoming displacement). Verify with Euler: on a torus V - E + F = 0."""
+    order, idx = {}, {}
+    for i, nb in adj.items():
+        order[i] = sorted(nb, key=lambda t: np.arctan2(t[1][1], t[1][0]))      # CCW by angle
+        for p, (j, d) in enumerate(order[i]):
+            idx[(i, j, round(d[0], 6), round(d[1], 6))] = p
+    seen, out = set(), []
+    for i in order:
+        for (j, d) in order[i]:
+            he = (i, j, round(d[0], 6), round(d[1], 6))
+            if he in seen:
+                continue
+            face, cur = [], he
+            while cur not in seen:
+                seen.add(cur)
+                ci, cj, dx, dy = cur
+                face.append((ci, np.array([dx, dy])))
+                p = idx[(cj, ci, round(-dx, 6), round(-dy, 6))]
+                nxt = order[cj][(p - 1) % len(order[cj])]
+                cur = (cj, nxt[0], round(nxt[1][0], 6), round(nxt[1][1], 6))
+            out.append(face)
+    return out
+
+
+def _fan_and_tag(name, pts, native, Lx, Ly, bond_len, eps):
+    """Triangulate a tiling by adding a PHANTOM CENTRE VERTEX inside every non-triangular face and
+    fanning to its corners. Natives keep k0=1.0; the added SPOKES are `is_fictional` with k0=eps.
+
+    **Why this replaces Delaunay-with-chords (2026-08-22).** `_triangulate_and_tag` Delaunay-
+    triangulates the tiling's vertices, which splits each polygon with CHORDS. On the honeycomb and
+    kagome the periodic cocircular ties produce chords that **cross each other** — measured 4
+    crossings on `tiling_honeycomb_r3`, 5 on `_r4`, 2 on `tiling_kagome_r2` — i.e. overlapping
+    triangles, not a mesh. Those three were correctly flagged `mesh_ok=False` (audit A-17) and yet
+    still entered `goal1`'s design pool, where `tiling_honeycomb_r3` was the worst solver-vs-sim
+    disagreement in every run (0.311 -> 0.323 -> 0.708 as the position budget grew).
+
+    A fan cannot produce a crossing: every added edge joins the face's own centre to its own corner,
+    so added edges meet only at that centre and never leave the face. It is also the representation
+    the project has already VALIDATED — `test_hex_closed_form` builds a hexagon as centre + 6 spokes
+    and recovers the analytic free-hinge nu(r) to 4.4e-06, with the residual first order in k_spoke,
+    because a soft SPOKE lets the polygon hinge whereas a soft CHORD must still carry its shear.
+
+    A proper chord-based tiling (choosing a non-crossing diagonal set) is a separate TODO; this is
+    the correct-by-construction option and it is what ships now."""
+    box = np.array([Lx, Ly])
+    adj = _native_adjacency(pts, box, bond_len)
+    faces = _native_faces(adj)
+    nV, nE = len(pts), sum(len(v) for v in adj.values()) // 2
+    assert nV - nE + len(faces) == 0,         f'{name}: face traversal gives V-E+F = {nV - nE + len(faces)}, expected 0 on a torus'
+
+    new_pts, tris = [p.copy() for p in pts], []
+
+    def shift(base, world):
+        return np.round((world - new_pts[base]) / box).astype(int)
+
+    for face in faces:
+        corners, acc = [], np.zeros(2)
+        for (vi, d) in face:
+            corners.append((vi, acc.copy()))
+            acc = acc + d
+        if not np.allclose(acc, 0.0, atol=1e-6):        # closes only around the torus: not a face
+            continue
+        world = [pts[face[0][0]] + off for (_, off) in corners]
+        if len(corners) == 3:
+            tris.append([[corners[t][0], *shift(corners[t][0], world[t])] for t in range(3)])
+            continue
+        centre = np.mean(world, axis=0)
+        ci = len(new_pts)
+        new_pts.append(np.mod(centre, box))
+        for t in range(len(corners)):
+            a, b = t, (t + 1) % len(corners)
+            tris.append([[ci, *shift(ci, centre)],
+                         [corners[a][0], *shift(corners[a][0], world[a])],
+                         [corners[b][0], *shift(corners[b][0], world[b])]])
+
+    geo = geo_from_simplices(np.array(new_pts), np.array(tris, np.int64), Lx, Ly)
+    A = geo['pts'][geo['bond_u']]
+    sigs = [_edge_sig(A[bi], A[bi] + geo['bond_R'][bi], box) for bi in range(len(geo['bond_u']))]
+    is_fic = np.array([sg not in native for sg in sigs], bool)
+    missing = native - set(sigs)
+    assert not missing, f'{name}: fan dropped {len(missing)} of {len(native)} native edges'
+    assert is_fic.sum() > 0, f'{name}: no spokes produced (nothing to triangulate?)'
+    assert (geo['areas'] > 0).all(), f'{name}: non-positive triangle area'
+    rec = make_record(name, geo, k0=np.where(is_fic, eps, 1.0), is_fictional=is_fic)
+    rec['mesh_ok'] = True            # correct by construction; asserted by the caller's checks
+    return rec
+
+
 def _triangulate_and_tag(name, pts, native, Lx, Ly, eps, required=None):
     """Delaunay-triangulate the tiling vertices, tag each geo bond native/fictional by matching its
     signature against `native`, and assert every REQUIRED edge survived (else the mesh is
@@ -426,7 +532,9 @@ def seed_tiling(name, reps, eps=1e-3):
     raw, Lx, Ly, bond_len = _TILINGS[name](reps)
     pts = _dedupe_pts(raw, Lx, Ly)
     native = _native_by_distance(pts, np.array([Lx, Ly]), bond_len)
-    return _triangulate_and_tag(f'tiling_{name}_r{reps}', pts, native, Lx, Ly, eps)
+    # PHANTOM-CENTRE FAN, not Delaunay chords (2026-08-22): chords CROSS on honeycomb/kagome —
+    # measured 4/5/2 crossings — which is overlapping triangles, not a mesh. See `_fan_and_tag`.
+    return _fan_and_tag(f'tiling_{name}_r{reps}', pts, native, Lx, Ly, bond_len, eps)
 
 
 # ---- 5. Phase 4 point layouts (OPTIONAL, best-effort) ----------------------------------------
