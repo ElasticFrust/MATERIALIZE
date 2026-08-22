@@ -48,6 +48,10 @@ accuracy by six orders (corr **+0.73**, best accuracy at worst conditioning). So
 hard (`quality_p05` corr −0.86), but **goal1's worst disagreement, |Δν| = 0.311, is healthy on every
 axis** — conditioning, shape quality and k-contrast. At least two failure modes; FD #2 addresses one.
 
+**5b. `designer.design()` is now consistent with `run_g1_2`** (2026-08-22): PHYSICALITY vetoes,
+the gap is a **cost** in the ranking score, and the position polish accepts on the score. Physicality
+stays a veto because non-SPD / non-finite / |ν|≥ν_max is a statement about the network (audit A-5).
+
 **6. A THIRD verification path already exists** — `test_hex_closed_form.py` is analytic and
 independent of both solver and sim (4.4e-06). A-18 *generalises* it; it is not the first.
 
@@ -56,29 +60,51 @@ independent of both solver and sim (4.4e-06). A-18 *generalises* it; it is not t
 ## What to do next
 
 ### Highest value
-1. **Re-run goal1 (and scope goal2) over a symmetric −1 < ν < 1 grid, under the new selection.**
-   goal1's grid stops at +0.45 — precisely the censoring `goal1_frontier` had to be built to expose —
-   and both predate the scored selection that moved g1_2's floors substantially. ν = **+0.906** is
-   already reached trustworthily; ν = 1 is attainable in principle (hexagon closed form at d = 2).
-   `Phase 5/results/reach_summary/REACH_SUMMARY.md` has the whole picture on one axis: **contrast is
-   the lever on both ends, and positions alone (k ≡ 1) cannot exceed the uniform-lattice +1/3.**
-   goal2's target set has **not** been scoped — it is directional/full-tensor, so "the full range"
-   means something different there.
-2. **B-1** — solver nondeterminism localised to `W`, ~1 run in 21, up to 6 %. Still the only
+1. **goal2 over its full target range — goal1 is DONE.** goal1 was re-run 2026-08-22 on a symmetric
+   13-point grid over [−0.95, +0.95] (130 runs, 114 trustworthy): at f=0 it now reaches
+   **[−0.825, +0.901]**, most of the physical range, and `goal1_frontier` is subsumed (it survives as
+   an independent cross-check: +0.63 vs +0.658 for the f=0.1 frontier). **goal2's target set has NOT
+   been scoped** — it is directional/full-tensor, so "the full range" means something different there
+   and needs a look before a grid can be proposed.
+   `Phase 5/results/reach_summary/REACH_SUMMARY.md` has the whole picture on one axis.
+   *(Note `run_goal1` never vetoed on the gap, so unlike g1_2 its reach was never censored — an
+   earlier claim here said otherwise and was wrong.)*
+3. **B-1** — solver nondeterminism localised to `W`, ~1 run in 21, up to 6 %. Still the only
    correctness blocker. Harness `Phase 3/verifications/b1_reproduce.py`. It has to be caught.
-3. **M2 rebuild + retrain** — parked by request. Labels verified stale (37/41 drift, worst |Δν| 1.73),
+4. **M2 rebuild + retrain** — parked by request. Labels verified stale (37/41 drift, worst |Δν| 1.73),
    so `checkpoint.pt` is unverified. Two questions before any training: **what M2 is meant to be**
    (CLAUDE.md calls it a GNN *edit-policy* in four places while `m2/model.py` says *forward
    surrogate* — an unresolved docs-vs-code contradiction, deliberately left for the user to settle),
    and what the training target and success criterion are.
 
+2. **goal1's POSITION BUDGET is effectively zero — re-run needed** *(found 2026-08-22, kept separate
+   from the B-1 work by request)*. `design_iso` calls `spsa_positions` without passing `a`/`c`, so
+   positions move at the library defaults (a=0.02, c=0.01): **0.202 lattice spacings** of travel per
+   coordinate over 20 steps × 2 outer, against **2.68** for `g1_2` at a=0.25 — **13× less**, and an
+   eighth of even the a=0.15 arm measured *failing* to reach auxetic ν.
+   **Consequence:** goal1's high-f rows are **search-limited, not physics-limited**, and the
+   conclusion "forbid contrast and the design space collapses to +1/3" is NOT supported — `g1_2`
+   reaches −0.436 at k ≡ 1 *exactly*, which is more restrictive than f = 0.99. Fix: thread
+   `spsa_a`/`spsa_c` through `design_iso` (goal1's `KW` already threads `n_outer`/`spsa_steps`) and
+   re-run at a g1_2-comparable budget. **This is the third instance of the same class of error** —
+   a null result attributed to the design space that was really an artefact of the search
+   configuration (after g1_2's selection veto and g1_2's step size).
+
 ### Also open
-- **`designer.design()`'s safety gate still VETOES** on `solver_sim_gap < gap_tol`. Only
-  `run_g1_2.design_one` was changed. Deliberate: it reaches into the design path and needs its own
-  blast-radius check.
-- **goal1's |Δν| = 0.311 is unexplained.** Suspect |W| — but note the prior art:
+- ~~`designer.design()`'s safety gate still vetoes~~ **DONE 2026-08-22** — it now filters on
+  PHYSICALITY only and ranks by `target_err_sim + 0.5·solver_sim_gap`; the position polish accepts on
+  the score rather than on `gap_tol`. `gap_tol` sets only the reported `trustworthy` flag. Verified:
+  designer gate 5/5 plus an end-to-end smoke keeping two `trustworthy=False` designs ranked by score.
+- **goal1's unexplained disagreement — now REPRODUCED and LOCALISED, and it is the best open lead.**
+  2026-08-18: |Δν| = 0.311 at ν = +0.286, `tiling`, `medium` band (f=0.5). 2026-08-22, different grid
+  and independently drawn topologies: **0.323 at ν = +0.296, `tiling`, `medium`**. Same class, band,
+  ν and magnitude. Meanwhile the `soft` band spans [−0.82, +0.90] with a worst case of **0.0068** —
+  **50× better while reaching 10× further**, so extreme ν is NOT where the codes disagree. The old
+  instance was healthy on every conditioning axis (rcond 5e-03, quality 0.475, k_min/mean 0.65), so
+  neither §3 route applies. Suspect |W| — but note the prior art:
   `verification_tools/plots/per_triangle_C/PER_TRIANGLE_C.md` already measures corr(|ΔC|, ‖W‖) = +0.39
   for the *contraction-isolation* residual, which is not the same quantity as end-to-end disagreement.
+  **Start here: a `tiling` cell at f=0.5 targeting ν ≈ +0.29 is a reproducible instance to dissect.**
 - **FD #2 needs redesign, not re-aiming** — both proposed targets are now measured insufficient.
 - A-8 open-boundary suite · A-17 tail · A-18 generalisation · TODO 2.6 `open_stretch` guard.
 
@@ -103,5 +129,5 @@ independent of both solver and sim (4.4e-06). A-18 *generalises* it; it is not t
 - **Wall-clock timings in logs may be fiction.** One g1_2 design recorded 18266 s because the machine
   suspended mid-run despite `_keep_awake`; that run's "431.9 min" total is meaningless (real ≈ 2.4 h).
 - **ν < 0 is reached and sim-confirmed** in `auxetic_sweep` (36/70 rows below −0.05, to −0.6009),
-  `g1_2` (49 designs, 49/49 sign-agreeing, to −0.436) and goal1 f=0 (−0.789). Any future claim that
+  `g1_2` (49 designs, 49/49 sign-agreeing, to −0.436) and goal1 f=0 (−0.825). Any future claim that
   some setup "cannot reach negative ν" should be checked against these before it is written down.

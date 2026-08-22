@@ -60,6 +60,21 @@ EPS_NU = 0.05
 # assertion cannot drift apart (audit A-6: the assert hardcoded 0.05, shadowing the argument).
 GAP_TOL = 0.05
 
+# Selection score: target error and solver-vs-sim disagreement WEIGHED, not one vetoing the other
+# (2026-08-22). A large gap means the two CODE PATHS disagree about a network, not that the network
+# is unreal, so it belongs in the ranking as a cost and in the report as its own number. Vetoing on
+# it discarded designs that did the job: measured in `run_g1_2`, the rule kept a barely-moved design
+# at gap 0.031 over one that reached nu=-0.134 at gap 0.371, and a whole experiment then read as
+# "distortion cannot reach auxetic nu". PHYSICALITY stays a veto — that IS a statement about the
+# network (non-SPD, non-finite, |nu|>=nu_max), and it catches what the gap cannot (audit A-5).
+# 0.5 is a judgement, not a fit: on 110 saved designs every lambda in [0,1] picked the same winners.
+SCORE_LAMBDA = 0.5
+
+
+def _score(rep):
+    """Selection score, lower is better: achieved-vs-target plus SCORE_LAMBDA x solver-vs-sim."""
+    return float(rep['target_err_sim'] + SCORE_LAMBDA * rep['solver_sim_gap'])
+
 
 # ---- small helpers ---------------------------------------------------------------------------
 def _profile(x):
@@ -283,21 +298,27 @@ def design(nu_target, E_target, tag, pool=None, keep=5, gap_tol=GAP_TOL,
 
     `optimize_positions` (default True): after selecting the kept designs, additionally run the
     derivative-free VERTEX-POSITION optimization (positions.design_with_positions) on the TOP
-    design only (budget); if it improves the design loss AND still passes the independent-sim
-    gap check it replaces the top design (seed_name gets '+pos').  `pos_budget` is an optional
+    design only (budget); if it improves the design loss AND is physical AND improves the SCORE it
+    replaces the top design (seed_name gets '+pos').  `pos_budget` is an optional
     dict overriding the modest default polish budget
     dict(n_outer=2, spsa_steps=25, n_iter=60, n_restarts=1).
 
     Pipeline: build/accept a pool -> rank topologies by (cheap, solver) design loss -> VERIFY a
-    generous candidate set with the INDEPENDENT sim -> DROP untrustworthy designs (solver-vs-sim
-    `gap >= gap_tol`: e.g. soft-edged tilings that optimise to a low solver loss but are really
-    near-mechanisms the solver mis-predicts) -> rank the trustworthy survivors by how well the
-    INDEPENDENT SIM hits the target (`target_err_sim`) -> keep the best `keep` -> SAVE each to
+    generous candidate set with the INDEPENDENT sim -> DROP the UNPHYSICAL (non-SPD, non-finite,
+    |nu|>=nu_max — a statement about the network) -> rank the survivors by `_score` =
+    `target_err_sim + SCORE_LAMBDA*solver_sim_gap` -> keep the best `keep` -> SAVE each to
     Phase 5/networks/design_<tag>_<rank>.npz.  Returns a list of report dicts.
+
+    **The gap is a COST, not a veto** (2026-08-22). It says the two CODE PATHS disagree about a
+    network, not that the network is unreal; vetoing on it discards designs that did the job (see
+    SCORE_LAMBDA). `gap_tol` therefore no longer filters — it only sets the `trustworthy` FLAG on
+    each report and annotates rejected ones. Kept designs may include some the codes disagree about,
+    which is why every report carries `solver_sim_gap` alongside `target_err_sim`: two numbers,
+    never merged into one verdict.
 
     Why rank by the sim, not the solver loss: a low solver loss can be a mirage on exotic/floppy
     topologies; the honest ranking is the independent simulation's distance to the requested target.
-    To satisfy §10 criterion 5 a (trustworthy) NON-Delaunay design is swapped in if none is kept.
+    To satisfy §10 criterion 5 a NON-Delaunay design is swapped in if none is kept.
     If NO candidate is trustworthy, we fall back to all verified (so the caller still gets results,
     flagged `trustworthy=False`)."""
     if pool is None:
@@ -319,17 +340,17 @@ def design(nu_target, E_target, tag, pool=None, keep=5, gap_tol=GAP_TOL,
         except PH.UnhealthyGeometryError as e:
             unhealthy.append((geo, k, loss, str(e)))
 
-    # (iii) SELECT: a design must be both trustworthy (small solver-vs-sim gap) AND physical.
-    #       The two catch DIFFERENT failures — the gap catches "solver and sim disagree", the
-    #       physicality checks catch "they agree and the answer is still unphysical" (non-SPD, E out
-    #       of range, |nu|>=nu_max, reciprocity), which passes the gap check (audit A-5).
+    # (iii) SELECT: PHYSICALITY is the veto — non-SPD / non-finite / |nu|>=nu_max is a statement
+    #       about the network itself, and it catches what the gap cannot (they can agree and still
+    #       be unphysical, audit A-5). The solver-vs-sim GAP is NOT a veto (2026-08-22): it says the
+    #       two code paths disagree, which is a reason to weigh a design down, not to pretend it
+    #       does not exist. It enters the ranking via `_score` and is reported as its own number.
     #       Fall back to all verified if nothing qualifies, so a caller always gets results.
-    ok = [v for v in verified
-          if v[3]['solver_sim_gap'] < gap_tol and v[3]['physical_ok']]
+    ok = [v for v in verified if v[3]['physical_ok']]
     usable = ok if ok else verified
 
-    # (iv) rank survivors by how well the INDEPENDENT sim hits the target
-    usable.sort(key=lambda v: v[3]['target_err_sim'])
+    # (iv) rank survivors by the SCORE (sim's distance to target + weighted disagreement)
+    usable.sort(key=lambda v: _score(v[3]))
     kept = usable[:keep]
 
     # (v) ensure a (trustworthy) NON-Delaunay design appears (§10 criterion 5)
@@ -359,7 +380,11 @@ def design(nu_target, E_target, tag, pool=None, keep=5, gap_tol=GAP_TOL,
                 repP = verify(geoP, kP, nu_target, E_target)   # "keep the unpolished top" (A-4)
             except PH.UnhealthyGeometryError:
                 repP = None
-            if repP is not None and repP['solver_sim_gap'] < gap_tol and repP['physical_ok']:
+            # polished design replaces the top only if it is PHYSICAL and its SCORE improves —
+            # previously it also had to clear `gap_tol`, which rejected polishes that reached the
+            # target while the two codes drifted apart (same veto mistake as site iii).
+            if (repP is not None and repP['physical_ok']
+                    and _score(repP) < _score(kept[0][3])):
                 geoP = _tag(geoP, str(geo_t.get('seed_name', 'unknown')) + '+pos')
                 kept[0] = (geoP, kP, LP, repP)
 
@@ -415,8 +440,11 @@ def design(nu_target, E_target, tag, pool=None, keep=5, gap_tol=GAP_TOL,
         _save(geo, k, loss, rep, path)
         r = _report(None, geo, k, loss, rep, path)
         why = [f'{n}: {rs}' for n, rs in rep['physical_failures']]
+        # The gap is NOT a rejection reason any more (it is scored). Still recorded, because a large
+        # disagreement is the main thing a reader of a rejected design wants to know.
         if rep['solver_sim_gap'] >= gap_tol:
-            why.append(f"solver-vs-sim gap {rep['solver_sim_gap']:.4f} >= gap_tol {gap_tol}")
+            why.append(f"(not a rejection) solver-vs-sim gap {rep['solver_sim_gap']:.4f} "
+                       f">= gap_tol {gap_tol}")
         r['rejected_because'] = why or ['not in the top `keep` (no defect)']
         r['outscored_kept'] = bool(rep['target_err_sim'] < best_kept)
         rejected.append(r)
@@ -458,8 +486,8 @@ def _demo():
     print("-" * 92)
 
     # honest acceptance summary (§10) --------------------------------------------------------
-    # design() already dropped untrustworthy designs (large solver-vs-sim gap), so the kept set is
-    # trustworthy; rank the honest best by the INDEPENDENT sim's distance to the target.
+    # design() no longer DROPS on the gap (it scores it), so the kept set may include designs the
+    # two code paths disagree about — `trustworthy` below reports that, it does not define the set.
     trustworthy = [r for r in reports if r['trustworthy']]
     best = min(trustworthy or reports, key=lambda r: r['target_err_sim'])
     max_gap_kept = max((r['solver_sim_gap'] for r in reports), default=0.0)

@@ -492,8 +492,15 @@ this policy. It is pure-render (numpy + matplotlib; callers pass already-loaded 
   - **Weight-matching (default):** pass the k-design's `nu_weight`/`E_weight` to the polish, else it
     silently optimises a different loss and destroys anisotropy. Opt-out only to change weights on purpose.
   - **Never re-triangulate** (`redelaunay_every=0`): distortion only, connectivity frozen.
-  - **Safety gate:** the polished design replaces the top ONLY IF it both lowers the design loss AND
-    passes the independent-sim honesty check (`solver_sim_gap < gap_tol`).
+  - **Safety gate (CHANGED 2026-08-22):** the polished design replaces the top only if it lowers the
+    design loss, is PHYSICAL, and improves the **score** `target_err_sim + 0.5·solver_sim_gap`. The
+    gap is a **cost, not a veto**, here and in `design()`'s selection: it says the two CODE PATHS
+    disagree about a network, not that the network is unreal, and vetoing on it discards designs that
+    did the job (`run_g1_2` kept a barely-moved design at gap 0.031 over one reaching ν=−0.134 at gap
+    0.371, and the experiment then read as "distortion cannot reach auxetic ν"). **PHYSICALITY stays
+    a veto** — non-SPD / non-finite / |ν|≥ν_max is a statement about the network (audit A-5).
+    `gap_tol` now only sets the reported `trustworthy` flag. **Report `err` and `gap` separately;
+    never merge them into one verdict.**
   - Positions help isotropic targets / loss but NOT the **anisotropy-amplitude ceiling** — an
     *empirical* topology/size bound (not a harmonic limit); to push further, change topology or grow
     the cell, don't burn budget on positions.

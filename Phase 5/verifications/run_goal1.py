@@ -35,7 +35,12 @@ sys.path.insert(0, os.path.join(REPO, 'Phase 5'))          # so seeds/designer/d
 import seeds, designer, design_iso, triangulation
 
 # ---- the sweep grid --------------------------------------------------------------------------
-NU_GRID = np.array([-0.9, -0.7, -0.5, -0.3, -0.15, 0.0, 0.1, 0.2, 0.3, 0.4, 0.45])
+# SYMMETRIC over the isotropic 2D bound (2026-08-22). The old grid was
+# [-0.9 ... +0.45] -- asymmetric and undocumented, and its +0.45 top point was mistaken for a
+# frontier until `run_goal1_frontier.py` probed past it and found nu = +0.906 trustworthy.
+# 13 points now span [-0.95, +0.95] at every contrast band, subsuming that probe.
+NU_GRID = np.array([-0.95, -0.8, -0.6, -0.45, -0.3, -0.15, 0.0,
+                    0.15, 0.3, 0.45, 0.6, 0.8, 0.95])
 BANDS = [('soft', 0.0), ('large', 0.1), ('medium', 0.5), ('small', 0.9), ('none', 0.99)]
 REPS_PER_COMBO = 2                                          # distinct topologies per (nu,band)
 GAP_TOL = 0.05
