@@ -69,8 +69,34 @@ independent of both solver and sim (4.4e-06). A-18 *generalises* it; it is not t
    `Phase 5/results/reach_summary/REACH_SUMMARY.md` has the whole picture on one axis.
    *(Note `run_goal1` never vetoed on the gap, so unlike g1_2 its reach was never censored — an
    earlier claim here said otherwise and was wrong.)*
-3. **B-1** — solver nondeterminism localised to `W`, ~1 run in 21, up to 6 %. Still the only
-   correctness blocker. Harness `Phase 3/verifications/b1_reproduce.py`. It has to be caught.
+3. **B-1** — solver nondeterminism, ~1 run in 21, up to 6 %. Still the only correctness blocker.
+   **CAUGHT AGAIN 2026-08-22** during a routine gate run: `test_homogenization`, regular lattice
+   (φ=ψ=1, η=0, seed 0), **1.18e-02 against a 1.6e-12 baseline** — then 8/8 PASS on repeat in
+   isolation. Evidence: `Phase 3/verifications/b1_dumps/` (the harness auto-dumped
+   `b1_anomaly_20260822T142234Z_eta0.0_s0.json`, plus the suite log).
+
+   **Two things measured while chasing it, both new:**
+   - **Thread count causes run-to-run nondeterminism — isolated for the first time.** 40 identical
+     `forward()` calls on the regular lattice: at `torch.set_num_threads(4)` → **2 distinct bit
+     patterns**; at 1 thread → **1, bit-exact**. `b1_reproduce.py` *records* the thread count
+     (`fingerprint`) but no mode ever *varies* it, so this was untested.
+   - **But it cannot be the direct cause:** the variation is **1.5e-33** against a 1.18e-02 failure —
+     thirty orders apart, consistent with the 1–2 ulp envelope already on record. Reduction order
+     alone does not do it; whether it can *seed* a divergence through an unstable branch is untested
+     speculation.
+
+   **Useful control that falls out of this:** `torch.set_num_threads(1)` makes the forward path
+   bit-reproducible, which turns "is this run-to-run noise or a real state change?" into a decidable
+   question.
+
+   **Next experiment (agreed plan):** add a `threads` mode to `b1_reproduce.py` built on
+   `mode_suitectx` — it establishes suite context ONCE (~10 min, the 13 preceding tests) and then
+   takes cheap probes of the 3 cases, with baselines `{0: 2.205e-13, 1: 1.604e-12, 2: 2.202e-13}`
+   where **case 1 is exactly the number test [15] prints**. That is seconds per sample instead of
+   12 minutes for a full-suite run — enough samples to *measure* a 1-thread vs 4-thread rate
+   difference rather than infer it from one or two events. Fall back to an overnight full-suite loop
+   at 1 thread if the cheap harness comes back empty (its assumption is that the reconstructed
+   context suffices).
 4. **M2 rebuild + retrain** — parked by request. Labels verified stale (37/41 drift, worst |Δν| 1.73),
    so `checkpoint.pt` is unverified. Two questions before any training: **what M2 is meant to be**
    (CLAUDE.md calls it a GNN *edit-policy* in four places while `m2/model.py` says *forward

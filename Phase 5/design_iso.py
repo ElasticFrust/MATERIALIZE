@@ -122,11 +122,22 @@ def design_iso_k(geo, nu_target, f, n_iter=150, n_restarts=2, w_iso=0.5, seed=0,
 
 # ---- 2. alternation with SPSA position polish (nu only; E fixed by rescale) -------------------
 def design_iso(geo, nu_target, f, n_outer=2, spsa_steps=20, n_iter=150, n_restarts=2,
-               w_iso=0.5, seed=0, verbose=False, return_stages=False):
+               w_iso=0.5, seed=0, verbose=False, return_stages=False,
+               spsa_a=0.25, spsa_c=0.05):
     """Joint k + vertex-position isotropic design by alternation, starting from topology `geo`:
 
         round = [design_iso_k]  ->  [positions.spsa_positions at fixed k, nu-only]
                 -> [re-Delaunay inside SPSA; if topology changed, k re-designed next round]
+
+    **`spsa_a`/`spsa_c` are passed explicitly (2026-08-22) — they used to be omitted**, so positions
+    ran at the library defaults a=0.02, c=0.01. Over `spsa_steps=20` x `n_outer=2` that is **0.202
+    lattice spacings** of possible travel per coordinate, against **2.68** for `g1_2` at a=0.25:
+    13x less, and an eighth of even the a=0.15 arm measured FAILING to reach auxetic nu
+    (`g1_2_triangular_start_probe.py`). goal1's position optimisation was therefore effectively OFF,
+    and its high-contrast-floor rows were search-limited, not physics-limited — they reported little
+    more than the seed's own nu near 1/3 while `g1_2` reaches -0.436 at k=1 EXACTLY, which is a
+    stricter constraint than f=0.99. Defaults now a=0.25, c=0.05: travel 2.53, matching g1_2, at the
+    SAME step count and therefore the same runtime (travel scales linearly in `a`).
 
     SPSA polishes positions toward the FLAT nu target with E_weight=0 (E is set by the k-rescale,
     so the position polish must NOT chase it).  After any fixed-k position move, k is rescaled to
@@ -151,7 +162,7 @@ def design_iso(geo, nu_target, f, n_outer=2, spsa_steps=20, n_iter=150, n_restar
                 best = [cur_geo, cur_k, nu_k, E_k, err_k]
 
         geo2 = positions.spsa_positions(cur_geo, cur_k, nu_target=nu_target, E_target=1.0,
-                                        n_steps=spsa_steps, seed=seed + outer,
+                                        n_steps=spsa_steps, a=spsa_a, c=spsa_c, seed=seed + outer,
                                         nu_weight=1.0, E_weight=0.0)
         topo_changed = bool(geo2.get('topology_changed'))
         if not topo_changed:
