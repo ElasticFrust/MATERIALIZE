@@ -424,7 +424,7 @@ Three DISTINCT quantities — keep them separate:
 
 Policy here; **implemented in the root `plotting.py` module (the single source of truth).** **Every
 plotting task MUST start from `plotting.py`** — import it and use its primitives (`draw_network`,
-`draw_field`, `plot_directional`, `plot_means_spread`, `save_element`/`save_fig`, `montage`,
+`draw_field`, `plot_directional`, `plot_means_spread`, `plot_overlay_grid`, **`plot_ranges`** (reach intervals per group: pale = full reach, solid = the solver-sim-agreeing sub-range, points filled/hollow by trust — added 2026-08-22), `save_element`/`save_fig`, `montage`,
 `STYLE`); never roll a one-off `plot_*`/`draw_*`. Missing a primitive ⇒ add it *there* and update
 this policy. It is pure-render (numpy + matplotlib; callers pass already-loaded data).
 
