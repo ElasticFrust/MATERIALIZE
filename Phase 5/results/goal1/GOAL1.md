@@ -7,14 +7,19 @@ an *independent* full-PBC simulation (a different code path from the solver it w
 against), and the target error is tracked through three optimisation stages to prove the
 optimisation actually helps.
 
-> **RE-RUN 2026-08-22 on a SYMMETRIC ν grid** — 13 points over [−0.95, +0.95] × 5 contrast bands ×
-> 2 topologies = **130 runs, 112 min, 114 trustworthy (88 %)**. Every number and figure below comes
-> from that run. The headline: **with contrast unrestricted the designer now covers [−0.82, +0.90]**,
-> most of the physical range, and `run_goal1_frontier.py`'s separate high-ν probe is **subsumed**.
+> **RE-RUN 2026-08-22, twice.** (i) a SYMMETRIC ν grid — 13 points over [−0.95, +0.95] × 5 contrast
+> bands × 2 topologies = 130 runs; then (ii) the same grid with the **position budget repaired**
+> (`spsa_a` 0.02 → 0.25; the old value gave positions 13× too little travel — §3a's box).
+> **All numbers and figures below are from run (ii): 130 runs, 97 min, 67 trustworthy.**
 >
-> Two variables changed from the 2026-08-18 run, not one: the grid, and `positions.quality_floor`
-> (0.0 → 1e-3, a degeneracy guard enabled the same day). So this is not a clean grid-only A/B against
-> the old numbers (93/110 trustworthy, soft band [−0.78, +0.45]).
+> Two headlines. **With contrast unrestricted the designer covers [−0.823, +0.899]**, most of the
+> physical range, and `run_goal1_frontier.py`'s separate high-ν probe is **subsumed**. And **every
+> contrast band reaches negative ν**, including f = 0.99 — so the earlier reading that the design
+> space collapses onto +1/3 without contrast was a search artefact, not physics.
+>
+> Three variables have changed since the 2026-08-18 run (93/110 trustworthy, soft band
+> [−0.78, +0.45]): the grid, `positions.quality_floor` (0.0 → 1e-3), and the position budget. This is
+> **not** a clean A/B against those numbers on any single axis.
 >
 > Note the selection rule change of 2026-08-22 does **not** apply here: `run_goal1` never vetoed on
 > the gap — it records the gap as a number and discards nothing, so its reach was never censored the
@@ -103,46 +108,47 @@ design_iso(geo, nu_target, f, n_outer=2, spsa_steps=20, n_iter=150, n_restarts=2
 
 ## 3. Key results
 
-### 3a. The achievable-ν FRONTIER vs contrast band — stiffness contrast is the lever, at BOTH ends
+### 3a. Reachable ν vs contrast band — contrast raises the CEILING, positions supply the FLOOR
 
-The ν grid is now **symmetric**: 13 points spanning [−0.95, +0.95] at every band (see §1). Reachable
-(independent-sim) ν, over trustworthy runs:
+Symmetric 13-point ν grid over [−0.95, +0.95] at every band, **and positions optimised at a real
+budget** (`spsa_a = 0.25`; see the box below for why the previous run's was not). Reach is quoted over
+**ALL runs**, with the gap-passing sub-range beside it — they answer different questions, and quoting
+only the second is what hid this result the first time:
 
-| band | f | reachable ν [min, max] | median ν | n |
-|------|-----|------------------------|----------|---|
-| soft   | 0.00 | **[−0.82, +0.90]** | +0.08 | 24 |
-| large  | 0.10 | [−0.30, +0.66] | +0.15 | 23 |
-| medium | 0.50 | [+0.04, +0.38] | +0.29 | 22 |
-| small  | 0.90 | [+0.13, +0.34] | +0.30 | 21 |
-| none   | 0.99 | **[+0.18, +0.34]** | +0.28 | 24 |
+| band | f | reachable ν, ALL runs | sub-range where solver = sim | n trust |
+|------|-----|------------------------|------------------------------|---|
+| soft   | 0.00 | **[−0.823, +0.899]** | [−0.823, +0.899] | 22 |
+| large  | 0.10 | **[−0.573, +0.650]** | [−0.300, +0.650] | 15 |
+| medium | 0.50 | **[−0.377, +0.378]** | [+0.150, +0.378] | 12 |
+| small  | 0.90 | **[−0.287, +0.343]** | [+0.145, +0.343] | 10 |
+| none   | 0.99 | **[−0.336, +0.338]** | [+0.257, +0.338] | 8 |
 
-**With contrast unrestricted the designer covers most of the physical range** — [−0.82, +0.90] out of
-(−1, +1) — and the window narrows monotonically onto the uniform-lattice ν = 1/3 as the contrast floor
-rises, until at f = 0.99 it is [+0.18, +0.34].
+**Every band reaches negative ν — including f = 0.99, where k is effectively frozen.** The window at
+f = 0.99 is [−0.336, +0.338]: **near-symmetric about zero, spanning roughly ±1/3**, not a point near
++1/3. Consistent with `g1_2`, which reaches −0.436 at k ≡ 1 *exactly*.
 
-> ### ⚠ THE HIGH-f ROWS ARE SEARCH-LIMITED, NOT PHYSICS-LIMITED (found 2026-08-22)
-> Do **not** read this table as "forbid contrast and the design space collapses". `design_iso` calls
-> `spsa_positions` **without passing `a`/`c`**, so positions move at the library defaults
-> `a = 0.02, c = 0.01`: over 20 steps × 2 outer rounds that is **0.202 lattice spacings** of possible
-> travel per coordinate, against **2.68** for `g1_2` at a = 0.25 — **13× less**, and an eighth of even
-> the a = 0.15 arm that was *measured failing* to reach auxetic ν
-> (`g1_2_triangular_start_probe.py`). **goal1's position optimisation is effectively switched off.**
+So the lever is **asymmetric**, and the earlier "contrast is the lever at both ends" was wrong:
+
+- **High ν REQUIRES stiffness contrast.** +0.34 at f = 0.99 against +0.90 at f = 0. Geometry cannot
+  push ν above the uniform-lattice value; only contrast can.
+- **Auxetic ν does NOT require contrast.** Positions alone deliver −0.29 … −0.34 at every band, and
+  −0.436 in `g1_2`. Contrast deepens it (−0.82 at f = 0) but is not necessary for it.
+
+> ### ⚠ WHY THE PREVIOUS TABLE SAID OTHERWISE — a search artefact, now fixed
+> Until 2026-08-22 `design_iso` called `spsa_positions` **without passing `a`/`c`**, so positions ran
+> at the library defaults `a = 0.02, c = 0.01`: **0.202 lattice spacings** of possible travel per
+> coordinate over 20 steps × 2 outer, against **2.68** for `g1_2` at a = 0.25 — 13× less, and an
+> eighth of even the a = 0.15 arm measured *failing* to reach auxetic ν. **goal1's position
+> optimisation was effectively off**, so the high-f rows reported little more than the seed's own ν
+> and the table appeared to show the design space collapsing onto +1/3.
 >
-> So at high f, k is pinned AND positions cannot move, and the run reports little more than the seed's
-> own ν near 1/3. That is not a statement about the design space: `g1_2` reaches **−0.436** with
-> **k ≡ 1 exactly** (f = 1.0, *more* restrictive than f = 0.99) using positions alone, and even random
-> η-disorder of a triangular lattice reaches −0.115.
+> With `a = 0.25` (travel 2.53, matching g1_2, at the *same* step count and runtime) the high-f
+> floors move from +0.04 / +0.13 / +0.18 to **−0.377 / −0.287 / −0.336**. Target accuracy improves
+> too: median |err| **0.198 → 0.0063**, success rate 33 % → 55 %.
 >
-> **What this table does support:** contrast is the lever *for k-design*, and the low-f reach is real.
-> **What it does NOT support:** that the reachable set collapses at high f. Positions are a second,
-> independent lever this sweep barely exercised. Re-running with `spsa_a`/`spsa_c` threaded through
-> `design_iso` to a g1_2-comparable budget is a logged follow-up.
-
-*No cell in this table is censored by the grid.* The previous version's +0.45 maxima were the top
-grid point (`⚠` in earlier drafts) and needed a separate probe, `run_goal1_frontier.py`, to discover
-that the true f=0 ceiling was ≈ +0.91. That probe is now **subsumed**: the symmetric sweep reaches
-+0.90 at f=0 directly, and independently reproduces the probe's *measured* f=0.1 frontier
-(+0.66 here vs +0.63 there) — a genuine cross-check, since the two runs used different grids.
+> **Cost:** trustworthy runs fall **114 → 67**. Larger position moves produce more solver-sim
+> disagreement (median |Δν| 0.0022, max 0.708) — bigger distortions, more near-slivers. That is a
+> statement about where the two codes stop agreeing, not about where the material stops.
 
 ### 3b. Does optimisation reduce the error — k vs positions, per band
 
@@ -150,61 +156,59 @@ Mean target error `|ν_sim − ν*|` at each stage (trustworthy runs), initial �
 
 | band | f | initial | k-only | k + positions |
 |------|-----|---------|--------|---------------|
-| soft   | 0.00 | 0.533 | 0.026 | **0.021** |
-| large  | 0.10 | 0.495 | 0.197 | **0.176** |
-| medium | 0.50 | 0.522 | 0.454 | **0.435** |
-| small  | 0.90 | 0.488 | 0.478 | **0.459** |
-| none   | 0.99 | 0.544 | 0.543 | **0.526** |
+| soft   | 0.00 | 0.486 | 0.021 | **0.015** |
+| large  | 0.10 | 0.344 | 0.092 | **0.068** |
+| medium | 0.50 | 0.290 | 0.230 | **0.220** |
+| small  | 0.90 | 0.266 | 0.257 | **0.243** |
+| none   | 0.99 | 0.359 | 0.358 | **0.353** |
 
-- **In the soft band the designer hits the target across the WHOLE range**, ±0.95 included: mean
-  error 0.021 after 0.533 initial, a 25× reduction. k does nearly all of it (0.533 → 0.026);
-  positions trim the rest.
-- **The high-f errors ARE partly optimiser failures** *(corrected 2026-08-22)*. An earlier draft said
-  they were not — that with contrast forbidden the grid points were simply unreachable. But positions
-  were never given the budget to try (see §3a's box), so these numbers conflate "unreachable" with
-  "not searched for". The k-only → k+pos improvement of 0.005–0.02 in every band is the signature of a
-  position search that barely moved, not of positions having nothing to offer.
-- **Positions help by a similar small margin in every band** (0.005–0.02), including where k is inert.
+k does the heavy lifting where it is free (soft: 0.486 → 0.021), and positions then trim 20–30 % off
+what k leaves. In the high-f bands k is inert by construction and the residual error is dominated by
+grid points outside the reachable window — but note §3a: those bands *do* now reach ν < 0, so the
+residual is the distance to unreachable *targets*, not evidence that the band cannot move.
 
 ### 3c. Aggregate acceptance
 
-- **114 / 130 runs trustworthy** (88 %, solver-vs-sim gap < 0.05). The 16 dropped are dominated by
-  `tiling` (worst: `medium` ν*=−0.60 gap 1.55; `small` ν*=+0.95 gap 0.45).
-- **Median target error (k+pos) = 0.198; success rate |err| < 0.05 = 33 %.**
-- **Why the success rate is "only" 33 %, and why that is the correct outcome.** The grid deliberately
-  spans the full physical range at *every* contrast band, including combinations that are provably
-  unreachable (ν = ±0.95 at f = 0.99, where the reachable window is [+0.18, +0.34]). Those points
-  cannot be hit; they exist to **map the frontier**. Restricted to the soft band the error is 0.021
-  and essentially every point is a hit. The aggregate rate is a property of how aggressively the grid
-  samples beyond the frontier, not of the optimiser. It is also *lower* than the old asymmetric
-  grid's 45 % for exactly this reason — the symmetric grid asks harder questions.
+- **67 / 130 runs pass the agreement gate** (`solver_sim_gap < 0.05`), down from 114 before the
+  position budget was fixed — the price of letting the optimiser actually move.
+- **Median target error (k+pos) = 0.0063 over trustworthy runs; success rate |err| < 0.05 = 55 %**
+  (was 0.198 and 33 %).
+- Solver-vs-sim over all 130: **median |Δν| = 0.0022, max 0.708**.
 
-### 3c-bis. Where solver and sim disagree — REPRODUCED, and it is not the extremes
 
-Per-band solver-vs-sim |Δν| (all 130 runs; the median is 0.0000 in every band — the two codes agree
-*exactly* for most designs, and the spread lives entirely in a few outliers):
+### 3c-bis. Where solver and sim disagree — THREE independent reproductions of the same corner
+
+Per-band solver-vs-sim |Δν| (all 130 runs):
 
 | band | f | median \|Δν\| | max \|Δν\| | where the max sits |
 |---|---|---|---|---|
-| soft   | 0.00 | 0.0000 | **0.0068** | ν = −0.143, auxetic |
-| large  | 0.10 | 0.0000 | 0.0167 | ν = −0.175, tiling |
-| **medium** | 0.50 | 0.0000 | **0.3228** | **ν = +0.296, tiling** |
-| small  | 0.90 | 0.0000 | 0.0407 | ν = +0.274, tiling |
-| none   | 0.99 | 0.0000 | 0.0384 | ν = +0.235, tiling |
+| soft   | 0.00 | 0.0000 | **0.0535** | ν = −0.772, foam |
+| large  | 0.10 | 0.0003 | 0.2518 | ν = −0.403, tiling |
+| **medium** | 0.50 | 0.0241 | **0.7082** | **ν = +0.306, tiling** |
+| small  | 0.90 | 0.0205 | 0.1396 | ν = −0.134, flipped |
+| none   | 0.99 | 0.0143 | 0.1486 | ν = +0.048, foam |
 
-**The band that reaches furthest is the most reliable.** `soft` spans [−0.82, +0.90] with a worst-case
-disagreement of 0.0068; `medium` is confined to [+0.04, +0.38] and disagrees by 0.32 — **50× worse,
-at an unremarkable positive ν**. Extreme ν is emphatically *not* where the two codes part company.
+**The same corner, three times, across independent runs:**
 
-**And it reproduces.** The 2026-08-18 run's worst case was |Δν| = 0.311 at ν = +0.286, `tiling`,
-`medium` band; this run — different grid, independently drawn topologies — gives **0.323 at
-ν = +0.296, `tiling`, `medium` band**. Same class, same band, same ν, same magnitude. That is a
-phenomenon, not an outlier.
+| run | grid | position budget | worst \|Δν\| | where |
+|---|---|---|---|---|
+| 2026-08-18 | asymmetric | travel 0.202 | 0.311 | ν = +0.286, tiling, **medium** |
+| 2026-08-22 a | symmetric | travel 0.202 | 0.323 | ν = +0.296, tiling, **medium** |
+| 2026-08-22 b | symmetric | travel 2.53 | **0.708** | ν = +0.306, tiling, **medium** |
 
-It is also **unexplained**: `conditioning_probe.py` shows the old instance was healthy on every axis
-(`rcond_min` 5e-03, shape quality 0.475, `k_min/mean` 0.65), so neither route in `CLAUDE.md` §3 —
-dead k or sliver geometry — applies. A `tiling` + f=0.5 + ν≈+0.29 case is now the sharpest handle on
-that failure mode; see `../conditioning_probe/CONDITIONING_PROBE.md`.
+Different grids, independently drawn topologies, and a 13× change in position budget — and the worst
+disagreement lands on `tiling` + f = 0.5 + ν ≈ +0.30 every time. **This is a reproducible
+phenomenon, and it is the sharpest open lead in the project.**
+
+Two things it is *not*: it is not at extreme ν (the `soft` band spans [−0.823, +0.899] with a worst
+case of 0.0535, **13× better while reaching 3× further**), and it is not explained by conditioning —
+`conditioning_probe.py` found the 08-18 instance healthy on every axis (`rcond_min` 5e-03, shape
+quality 0.475, `k_min/mean` 0.65), so neither route in `CLAUDE.md` §3 applies. A `tiling` cell at
+f = 0.5 targeting ν ≈ +0.30 is a ready-made reproducer for whoever picks this up.
+
+*(The medians in the three high-f bands are no longer ~0 — 0.024 / 0.021 / 0.014 against 0.0000
+before. Larger position moves raise typical disagreement there, not just the worst case.)*
+
 
 ### 3d. Breakdown by topology class
 

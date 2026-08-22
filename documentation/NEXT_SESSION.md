@@ -112,28 +112,28 @@ independent of both solver and sim (4.4e-06). A-18 *generalises* it; it is not t
    surrogate* — an unresolved docs-vs-code contradiction, deliberately left for the user to settle),
    and what the training target and success criterion are.
 
-2. **goal1's POSITION BUDGET is effectively zero — re-run needed** *(found 2026-08-22, kept separate
-   from the B-1 work by request)*. `design_iso` calls `spsa_positions` without passing `a`/`c`, so
-   positions move at the library defaults (a=0.02, c=0.01): **0.202 lattice spacings** of travel per
-   coordinate over 20 steps × 2 outer, against **2.68** for `g1_2` at a=0.25 — **13× less**, and an
-   eighth of even the a=0.15 arm measured *failing* to reach auxetic ν.
-   **Consequence:** goal1's high-f rows are **search-limited, not physics-limited**, and the
-   conclusion "forbid contrast and the design space collapses to +1/3" is NOT supported — `g1_2`
-   reaches −0.436 at k ≡ 1 *exactly*, which is more restrictive than f = 0.99. Fix: thread
-   `spsa_a`/`spsa_c` through `design_iso` (goal1's `KW` already threads `n_outer`/`spsa_steps`) and
-   re-run at a g1_2-comparable budget. **This is the third instance of the same class of error** —
-   a null result attributed to the design space that was really an artefact of the search
-   configuration (after g1_2's selection veto and g1_2's step size).
+2. ~~goal1's position budget is effectively zero~~ **FIXED AND RE-RUN 2026-08-22.**
+   `design_iso` had called `spsa_positions` without passing `a`/`c`, so positions ran at the library
+   defaults: **0.202** lattice spacings of travel against g1_2's 2.68. Now `spsa_a = 0.25` (travel
+   **2.53**, same step count, same runtime — travel scales linearly in `a`).
+   **The result overturned a conclusion.** Every contrast band now reaches ν < 0, including f = 0.99
+   at **−0.336**, where k is effectively frozen. So "forbid contrast and the design space collapses
+   onto +1/3" was a *search* artefact. The corrected physics is asymmetric:
+   **contrast raises the CEILING (+0.34 at f=0.99 vs +0.90 at f=0); positions supply the FLOOR
+   (−0.29 … −0.34 at every band, −0.436 in g1_2 at k ≡ 1).**
+   Target accuracy improved with it: median |err| **0.198 → 0.0063**, success 33 % → 55 %.
+   Cost: trustworthy 114 → 67 — bigger position moves, more solver-sim disagreement.
 
 ### Also open
 - ~~`designer.design()`'s safety gate still vetoes~~ **DONE 2026-08-22** — it now filters on
   PHYSICALITY only and ranks by `target_err_sim + 0.5·solver_sim_gap`; the position polish accepts on
   the score rather than on `gap_tol`. `gap_tol` sets only the reported `trustworthy` flag. Verified:
   designer gate 5/5 plus an end-to-end smoke keeping two `trustworthy=False` designs ranked by score.
-- **goal1's unexplained disagreement — now REPRODUCED and LOCALISED, and it is the best open lead.**
-  2026-08-18: |Δν| = 0.311 at ν = +0.286, `tiling`, `medium` band (f=0.5). 2026-08-22, different grid
-  and independently drawn topologies: **0.323 at ν = +0.296, `tiling`, `medium`**. Same class, band,
-  ν and magnitude. Meanwhile the `soft` band spans [−0.82, +0.90] with a worst case of **0.0068** —
+- **goal1's unexplained disagreement — THREE independent reproductions; the best open lead.**
+  |Δν| = 0.311 at ν=+0.286 (08-18, asymmetric grid) → **0.323 at ν=+0.296** (08-22, symmetric grid)
+  → **0.708 at ν=+0.306** (08-22, symmetric grid + 13× position budget). **`tiling`, `medium` band
+  (f=0.5), ν ≈ +0.30 every time**, across different grids, independently drawn topologies and a large
+  change in search budget. Meanwhile the `soft` band spans [−0.82, +0.90] with a worst case of **0.0068** —
   **50× better while reaching 10× further**, so extreme ν is NOT where the codes disagree. The old
   instance was healthy on every conditioning axis (rcond 5e-03, quality 0.475, k_min/mean 0.65), so
   neither §3 route applies. Suspect |W| — but note the prior art:

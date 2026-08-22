@@ -17,11 +17,11 @@ already wanted an interval chart; that is what the single-source-of-truth policy
 
 | group | design freedom | n | agree | reach (independent sim) |
 |---|---|---:|---:|---|
-| goal1 | k-design, contrast f=0 | 26 | 24 | **[−0.825, +0.901]** |
-| goal1 | k-design, f=0.1 | 26 | 23 | [−0.296, +0.658] |
-| goal1 | k-design, f=0.5 | 26 | 22 | [+0.040, +0.385] |
-| goal1 | k-design, f=0.9 | 26 | 21 | [+0.130, +0.343] |
-| goal1 | k-design, f=0.99 | 26 | 24 | [+0.179, +0.339] |
+| goal1 | k-design, contrast f=0 | 26 | 22 | **[−0.823, +0.899]** |
+| goal1 | k-design, f=0.1 | 26 | 15 | [−0.573, +0.650] |
+| goal1 | k-design, f=0.5 | 26 | 12 | [−0.377, +0.378] |
+| goal1 | k-design, f=0.9 | 26 | 10 | [−0.287, +0.343] |
+| goal1 | k-design, f=0.99 | 26 | 8 | [−0.336, +0.338] |
 | **goal1_frontier** | k-design, high-ν probe | 24 | 17 | **[+0.490, +0.906]** |
 | g1_2 | **positions only, k ≡ 1** | 110 | 45 | [−0.436, +0.342] |
 | auxetic_sweep | k-design, deep auxetic | 70 | 68 | [−0.601, +0.301] |
@@ -31,23 +31,25 @@ Landmarks drawn: the isotropic 2D bound (−1, +1), ν = 0, the uniform triangul
 
 ## What it shows
 
-1. **Stiffness contrast is the lever FOR k-DESIGN.** goal1's reach narrows monotonically as the
-   contrast floor rises: **[−0.825, +0.901] at f=0 → [+0.179, +0.339] at f=0.99**. The grid is
-   symmetric at every band, so this is not a grid artefact — **but it IS partly a search artefact.**
-   `design_iso` runs positions at the library defaults (a=0.02), giving 0.202 lattice spacings of
-   travel against g1_2's 2.68 — **13× less**, effectively off. At high f, k is pinned and positions
-   cannot move either, so those rows report little more than the seed's ν. **Do not conclude that the
-   reachable set collapses without contrast**: the g1_2 row below reaches −0.436 at k ≡ 1 *exactly*,
-   which is more restrictive than f = 0.99. Positions are a second lever goal1 barely used.
+1. **The lever is ASYMMETRIC: contrast raises the CEILING, positions supply the FLOOR.**
+   *(Corrected 2026-08-22 after repairing goal1's position budget — the previous version of this
+   entry said contrast was the lever at both ends, which was a search artefact.)*
+   - **High ν needs contrast:** +0.899 at f = 0 against **+0.338** at f = 0.99. Geometry cannot push
+     ν above the uniform-lattice value; only stiffness contrast can.
+   - **Auxetic ν does not:** **every** band reaches ν < 0, including f = 0.99 at **−0.336**, where k
+     is effectively frozen. Positions alone deliver it — consistent with `g1_2`'s −0.436 at k ≡ 1
+     *exactly*, a stricter constraint than f = 0.99.
+   - So at f = 0.99 the window is **[−0.336, +0.338]** — near-symmetric, roughly ±1/3, *not* a point
+     near +1/3. Contrast widens that to [−0.823, +0.899].
 2. **ν → +1 is approachable: +0.901 in the main sweep, +0.906 in the probe, both trustworthy.**
    Several runs have a solver-sim gap of *exactly* zero to four decimals. The old goal1 ceiling of
    +0.45 was purely its top grid point. ν = 1 exactly is attainable in principle — the hexagon closed
    form gives it at d = 2. **At f=0 the reachable window is now [−0.825, +0.901]: near-symmetric, and
    most of the physical range.**
 3. **Positions alone cannot exceed +1/3, but reach far below it.** `g1_2` (k ≡ 1) tops out at +0.342,
-   the uniform-lattice value — geometry moves ν *down*, not up, so high ν does need k contrast. On the
-   auxetic side positions alone reach **−0.436**, deeper than goal1's f=0.9/0.99 rows manage with k,
-   which is the clearest evidence that those rows are search-limited rather than physics-limited.
+   the uniform-lattice value — geometry moves ν *down*, not up. Its −0.436 is now corroborated by
+   goal1's own high-f bands (−0.29 … −0.34 at f = 0.9/0.99), which are the same physical situation
+   reached by a different route.
 4. **The auxetic side is the mirror image.** −0.825 (goal1 f=0) and −0.601 (`auxetic_sweep`) with
    contrast; −0.436 with positions alone. At f=0 the window [−0.825, +0.901] is near-symmetric.
 5. **The white markers are where the two codes disagree**, and they cluster on the auxetic side of
