@@ -136,18 +136,25 @@ def fig_achieved(rows):
 # |nu_solver - nu_sim|, so a razor-thin bar means the two code paths agree and a fat bar means they
 # do not. Proportional (no offset) on purpose -- an offset would make "agrees exactly" look uncertain.
 # Median disagreement is 0.0000 in every band, which is why the MAX is the informative statistic.
-W_PER_NU = 2.4          # x-axis units per unit of |dnu|; band slots are 1.0 apart
-W_KEY = 0.10            # the reference width drawn in the legend, in |dnu|
+W_MAX_SLOT = 0.80       # the widest bar occupies this fraction of a band slot (slots are 1.0 apart)
+# The scale is ADAPTIVE, not a fixed units-per-dnu: it was hardcoded at 2.4, calibrated when the
+# worst band uncertainty was 0.311, and when the repaired position budget pushed that to 0.708 the
+# medium bar became 1.7 slots wide and overlapped its neighbours. Proportionality (a bar twice as
+# wide means twice the disagreement) is preserved within a figure; the absolute value is printed
+# under each bar, so nothing quantitative depends on the scale factor.
 
 
 def _frontier_axis(ax):
     rows = load_rows(trustworthy_only=False)
+    unc_max = max((max(abs(r['nu_sim_full'] - r['nu_solver_full'])
+                       for r in rows if r['band'] == bn)
+                   for bn in BAND_ORDER if any(r['band'] == bn for r in rows)), default=1.0) or 1.0
     for i, bn in enumerate(BAND_ORDER):
         g = [r for r in rows if r['band'] == bn]
         if not g:
             continue
         unc = max(abs(r['nu_sim_full'] - r['nu_solver_full']) for r in g)
-        w = W_PER_NU * unc
+        w = W_MAX_SLOT * unc / unc_max
         # Pale = full reach INCLUDING runs the honesty gate rejected; solid = trustworthy only.
         # Showing only the solid range is what made G1.2 read as "never reaches negative nu".
         nus_all = [r['nu_sim_full'] for r in g]
