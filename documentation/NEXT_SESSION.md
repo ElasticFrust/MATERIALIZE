@@ -1,95 +1,107 @@
 # NEXT SESSION — start here
 
-**Written 2026-08-18, end of the audit programme.** Repo state: working tree clean, everything
-pushed, all five gates green. Read `CLAUDE.md` §1–3, this file, then `documentation/AUDIT_2026-08.md`
-**§6 STATUS** (which lists what is left and why).
+**Rewritten 2026-08-22.** Repo state: working tree clean, everything pushed through `612e8cf` on
+`claude/funny-davinci-H4pdS`, all five gates green. Read `CLAUDE.md` §1–3, this file,
+`documentation/VERIFICATION_CAMPAIGN.md` (**the index of what has already been measured — read it
+before proposing any new measurement**), then `AUDIT_2026-08.md` §6 STATUS for the audit backlog.
 
 ---
 
-## The three things to do first
+## What changed on 2026-08-21/22, and why it matters
 
-### 1. Rebuild + retrain M2 — mechanical, unblocked, long compute
+The session began as a conformance sweep and turned into a correction, after the user objected on
+physical grounds that η-disorder alone reaches ν < 0, so a directed optimiser must at least match it.
+He was right, and three layers of reporting said otherwise.
 
-The training labels are **verified stale**: 37 of 41 sampled labels drift, worst |Δν| = **1.73**
-(`Phase 5/m2/M2.md` has the per-family table). `checkpoint.pt` learned a map the current solver
-disagrees with, so **every M2 number is unverified** until this is redone.
+**1. "Untrustworthy" is NOT "unreal" — the single most important thing to carry forward.**
+`trustworthy` is `gap = max_θ|Δν(θ)|/(|ν_sim(θ)|+0.05) + max_θ|ΔE(θ)|/|E_sim(θ)| < 0.05`: a
+**relative, PER-ANGLE agreement test between two code paths**, not a physicality verdict. Because the
+denominator carries a 0.05 floor it silently changes meaning — a ~5% relative test where |ν| ≫ 0.05,
+but an absolute |Δν| ≤ 0.0025 test where |ν| ≪ 0.05, i.e. ~20× stricter near ν = 0. Tabulating only
+gap-passing rows therefore **censors the extremes**, which is exactly what an inverse-design
+experiment exists to map. It made `g1_2` read as "distortion never reaches auxetic ν" when 49 designs
+reach ν < 0 with **49/49 sign agreement between the two codes**.
 
-```
-python "Phase 5/dataset.py"            # regenerate Phase 5/dataset/  (nets + dataset.npz)
-python "Phase 5/m2/build_dataset.py"   # regenerate Phase 5/m2/data/dataset.npz
-python "Phase 5/m2/train.py"           # retrain
-```
+**2. The selection rule was discarding good designs.** `run_g1_2.design_one` kept the
+closest-to-target *trustworthy* candidate and fell back to the lowest-gap one — which systematically
+preferred timid designs. It now scores `err + 0.5·gap` (`SCORE_LAMBDA`), the gap a **cost, not a
+veto**. Measured cause (`g1_2_triangular_start_probe.py`, 36 runs): the controlling variable is the
+SPSA **step size**. At `a = 0.15` the search barely moves and returns a *target-independent* endpoint
+— identical for ν* = −0.10 and −0.30, which is exactly the saved-data signature of one geometry
+written for all five negative targets; at `a = 0.25` it reaches ν = −0.134 with a larger gap, and the
+old rule threw that away.
 
-`Phase 5/dataset/` and `Phase 5/m2/data/` are **absent on purpose** so nothing can retrain on the old
-labels by accident. The July data is archived at
-`validation_2026-08/attic/m2_dataset_2026-07_pre-A0/` — **keep it**, it is the only record of what the
-current checkpoint learned and the baseline for a before/after comparison.
+**3. g1_2 re-run under the new rule: ALL TEN topologies reach auxetic ν.** `triangular` went
+**+0.038 → −0.217**, `flipped_tri_f8` −0.057 → −0.272, `tetrakis` −0.067 → −0.226,
+`rotating_squares` −0.259 → −0.398. Deepest overall −0.436 (honeycomb, solver −0.488) at k ≡ 1.
+Trustworthy count unchanged at 45/110 — the fix recovered *reach*, not agreement.
 
-Two things to fix while retraining, both already flagged in `M2.md`:
-- the smoke-train metrics were **never recorded** (`<FILL>` placeholders) — record them this time;
-- validate on **held-out topology FAMILIES** against the **independent sim**, not a random split
-  against the solver labels the model trained on.
+**4. `positions.quality_floor` is ON at 1e-3**, set from the A/B its old default deferred to
+(`ab_quality_floor.py`, 40 runs). It is a **degeneracy guard only**: 1e-3 is free, 0.03+ doubles
+trustworthiness while multiplying median error ×17 and would destroy the ν = −0.436 design.
+**Do not raise it to buy agreement — that is the veto mistake one level down.**
 
-### 2. B-1 — the one real blocker
+**5. A(s) conditioning is not the whole story.** `rcond(A(s))` alone does **not** predict solver
+error: on the hexagon closed form, driving `A(s)` to numerical rank-1 with soft spokes *improves*
+accuracy by six orders (corr **+0.73**, best accuracy at worst conditioning). Soft k is benign;
+**dead** k and **slivers** are not. In `g1_2` (k ≡ 1, purely geometric) the sliver route is confirmed
+hard (`quality_p05` corr −0.86), but **goal1's worst disagreement, |Δν| = 0.311, is healthy on every
+axis** — conditioning, shape quality and k-contrast. At least two failure modes; FD #2 addresses one.
 
-Solver nondeterminism, **localised to `W`** (the constrained solve): the first divergence is always
-there, never in geo/k/bare, and not in the contraction. ~1 run in 21, error up to **6 %**. Clusters in
-time with a persistent state transition; import order refuted. Harness: `Phase 3/verifications/b1_reproduce.py`
-(modes `fingerprint`, `repeat`, `bisect`, `commits`, `suitectx`, `stages`, `imports`).
-
-It cannot be scheduled — it has to be caught. It did not fire in any gate run on 2026-08-18, which
-proves nothing. **Everything else is clean now, so this is the top correctness item.**
-
-### 3. `FUTURE_DIRECTIONS` #2 — stability constraint, re-aimed
-
-Worth doing early because it is the *cause* of failures this audit kept hitting (g1_2's auxetic
-targets, `verify_lattice`, what `ab_quality_floor` could only mitigate). **But #2 as written targets
-the wrong quantity** — see the correction block now at the top of that entry. Penalise the
-**per-triangle conditioning of `A(s)`**, not the smallest global stiffness eigenvalue — **but read
-FD #2's 2026-08-21 block first: `rcond(A(s))` alone is measurably NOT a predictor of solver error
-(hexagon: corr +0.73, best accuracy at worst conditioning), and goal1's worst case is healthy on
-every conditioning axis**; `CLAUDE.md` §3
-shows the latter gives a *false all-clear* for the dominant failure. Ready-made test:
-`verify_lattice`'s regular-lattice ν=−0.2 case (solver −0.112 vs sim +0.137) — the constraint works
-iff that stops flipping sign.
+**6. A THIRD verification path already exists** — `test_hex_closed_form.py` is analytic and
+independent of both solver and sim (4.4e-06). A-18 *generalises* it; it is not the first.
 
 ---
 
-## Also ready, no blockers
+## What to do next
 
-| | |
-|---|---|
-| **A-8** open-boundary verification suite | was parked "until everything is clean" — **that condition is now met** |
-| **A-17 tail** | `honeycomb tiling`, `reentrant_honeycomb` are not Delaunay-representable; centre-vertex re-representation (the hexagon gate proves that representation is sound). Currently tagged `mesh_ok=False`, so nothing is silently wrong |
-| **A-18** | analytic basis-cell oracle — a genuine THIRD path (everything today compares two codes) and the basis for the interactive applet |
+### Highest value
+1. **Re-run goal1 (and scope goal2) over a symmetric −1 < ν < 1 grid, under the new selection.**
+   goal1's grid stops at +0.45 — precisely the censoring `goal1_frontier` had to be built to expose —
+   and both predate the scored selection that moved g1_2's floors substantially. ν = **+0.906** is
+   already reached trustworthily; ν = 1 is attainable in principle (hexagon closed form at d = 2).
+   `Phase 5/results/reach_summary/REACH_SUMMARY.md` has the whole picture on one axis: **contrast is
+   the lever on both ends, and positions alone (k ≡ 1) cannot exceed the uniform-lattice +1/3.**
+   goal2's target set has **not** been scoped — it is directional/full-tensor, so "the full range"
+   means something different there.
+2. **B-1** — solver nondeterminism localised to `W`, ~1 run in 21, up to 6 %. Still the only
+   correctness blocker. Harness `Phase 3/verifications/b1_reproduce.py`. It has to be caught.
+3. **M2 rebuild + retrain** — parked by request. Labels verified stale (37/41 drift, worst |Δν| 1.73),
+   so `checkpoint.pt` is unverified. Two questions before any training: **what M2 is meant to be**
+   (CLAUDE.md calls it a GNN *edit-policy* in four places while `m2/model.py` says *forward
+   surrogate* — an unresolved docs-vs-code contradiction, deliberately left for the user to settle),
+   and what the training target and success criterion are.
 
-## Science, longer range
-
-**#1 residual stress / incompatible ḡ (★★★★★)** is the project's highest-value extension, but it is
-**blocked on an open research question** — the correct finite-size split ḡ = ḡ_bg + δḡ. Implementing
-before that is settled would bake in a choice that must later be undone. Then #3 differentiable
-open-boundary, #4 topology/connectivity design, #13 differentiable positions. Endgame: M2 scale-up →
-**VAE + interpreter** (no code exists for either yet), then 3D (#11).
+### Also open
+- **`designer.design()`'s safety gate still VETOES** on `solver_sim_gap < gap_tol`. Only
+  `run_g1_2.design_one` was changed. Deliberate: it reaches into the design path and needs its own
+  blast-radius check.
+- **goal1's |Δν| = 0.311 is unexplained.** Suspect |W| — but note the prior art:
+  `verification_tools/plots/per_triangle_C/PER_TRIANGLE_C.md` already measures corr(|ΔC|, ‖W‖) = +0.39
+  for the *contraction-isolation* residual, which is not the same quantity as end-to-end disagreement.
+- **FD #2 needs redesign, not re-aiming** — both proposed targets are now measured insufficient.
+- A-8 open-boundary suite · A-17 tail · A-18 generalisation · TODO 2.6 `open_stretch` guard.
 
 ---
 
 ## Things not to re-learn the hard way
 
-- **An artifact without a B-3 provenance stamp predates the August fixes and is suspect.**
-  `validation_2026-08/scan_provenance.py` is the detector. 520 → 77 unstamped; the 77 are deliberate
-  keeps with no regenerated counterpart.
-- **A re-run set must be closed under producer→consumer.** A script that only *loads and plots* sails
-  through any cache-stowing: `fig5` rendered a 9-July network in 7.5 s and exited 0, and its field was
-  materially wrong ([−7.7, +19.2] vs [−3.4, +15.8] once fixed).
-- **Exit codes lie.** Four defects this campaign were found by *inspecting outputs*; none by an exit
-  code. `verify_positions` printed FAILED and returned 0. The runner now has `verdict()` and
-  `stale_inputs()` for this.
-- **Suspiciously fast = suspicious.** fig1 (41 s), fig5 (7.5 s), goal2_attempts (42 s) were each a
-  stale cache, each caught only by eye.
-- **On this box, piping stdout gives cp1252** — anything printing `ν` dies with `UnicodeEncodeError`
-  *after* the compute and *before* the save. Always `PYTHONIOENCODING=utf-8`. (Hit four times in one
-  session.)
-- **ν < 0 IS reached and sim-confirmed** — `auxetic_sweep`: 36/70 rows below −0.05, all stable, down
-  to **−0.6009** across regular / aniso_shr / aniso_str / disorder_hi / disorder_lo. g1_2's null result
-  is about *its* setup (k-only on fixed braced tilings), **not** a general limit. Do not let the g1_2
-  headline overwrite this.
+- **Check `VERIFICATION_CAMPAIGN.md` and `verification_tools/README.md` before proposing a new
+  measurement.** Twice this session I proposed analyses that already existed — the per-triangle
+  localisation *with a ‖W‖ field*, and the sliver-vs-gap correlations (already sitting in
+  `positions.tri_shape_quality`'s docstring). Both were indexed. CLAUDE.md §3 now carries this rule.
+- **A re-run must be closed under producer→consumer.** The 08-18 re-run re-ran the producers and never
+  the plotters, so goal1/g1_2 figures were July while their data was August, and both results docs
+  quoted July numbers (100/110 vs 93/110; 52 vs 45).
+- **Look at the rendered figure.** Five plotter defects this session were found by eye and none by an
+  exit code: a dropped topology (`TOPO_ORDER` still naming a removed tiling, hiding `flipped_tri_f14`
+  from every g1_2 figure), missing legend entries, a legend covering data, a `$\nu$` title that
+  rendered as a literal newline, and a marker encoding in which filled and hollow were
+  indistinguishable because the fill matched the bar beneath it.
+- **An edit whose assertion fails can still get committed.** `eb0b8b8` claimed a CLAUDE.md change that
+  had not landed; `612e8cf` corrected it. Verify the edit took before describing it.
+- **Wall-clock timings in logs may be fiction.** One g1_2 design recorded 18266 s because the machine
+  suspended mid-run despite `_keep_awake`; that run's "431.9 min" total is meaningless (real ≈ 2.4 h).
+- **ν < 0 is reached and sim-confirmed** in `auxetic_sweep` (36/70 rows below −0.05, to −0.6009),
+  `g1_2` (49 designs, 49/49 sign-agreeing, to −0.436) and goal1 f=0 (−0.789). Any future claim that
+  some setup "cannot reach negative ν" should be checked against these before it is written down.
