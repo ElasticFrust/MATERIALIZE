@@ -174,6 +174,71 @@ campaigns, plus the isolated confirmation in §2.
 
 ---
 
+## 4c. Bounding the excursion WITHOUT reproducing it (2026-08-23)
+
+Waiting for a ~1-in-11 event that costs 30 min a draw is a bad instrument. These probes instead
+**inject** candidate deviations into the healthy computation and ask whether any of them reproduces
+a captured state. All are deterministic, take seconds, and need no excursion.
+Script: `b1_excursion_analysis.py` (sections) + the injection probes recorded here.
+
+**The pipeline is WELL-CONDITIONED.** A 1-ulp relative perturbation of `k` gives a ~1-ulp relative
+change in `C`: amplification **0.60** (case 1), 2.64 (case 2), 0.82 (case 3). So B-1 is **not**
+numerical instability — a perturbed input does not produce a wrong answer. Combined with the
+bit-identical repeats across commits, this forces the conclusion that an anomalous run **executes
+a structurally different computation**, rather than amplifying noise.
+
+> **This retires the "1 ulp → 1.2 %, ~14 orders of amplification" phrasing used earlier in this
+> doc's history and in commit `f5f61d0`.** The 1-ulp difference between the anomalous `G`/`r` and a
+> clean recompute is a *symptom* of a slightly different upstream state, **not the cause** — feeding
+> those exact `G, r` through any driver returns the HEALTHY `Λ`. The causal difference is elsewhere
+> and its magnitude remains unmeasured.
+
+**Injecting along `ker(J3)` — the inference it was built to test is REFUTED.** The final `W`
+satisfies `J3·W = 0` by construction (measured 6.078e-15), so "the anomalous run landed on a
+different point of `ker(J3)`" was the natural reading. `J3` is 672×1008 with rank 671, so
+dim ker(J3) = **337**. Injecting `δ ∈ ker(J3)` (verified: `max|J3·δ| ~ 1e-17`):
+
+- **`C` is remarkably insensitive to `W` inside the constraint manifold** — a **1 %** perturbation
+  of `W` moves `C` by only **2e-04 … 5e-04**. Reaching 1.2e-02 would need `W` off by **30–40 %**.
+- random `ker(J3)` directions give `cos` = −0.26, +0.08, −0.46, −0.16 against the observed
+  deviation, while the **two real excursions agree with each other at cos = 0.9857**.
+
+Both facts make the `ker(J3)` story implausible: it needs an enormous `W` error *and* one very
+specific direction out of 337, hit twice independently. **Inference retracted.**
+
+**Families that do NOT reproduce a captured state** (each measured):
+
+| candidate | result |
+|---|---|
+| uniform rescale of `C` | best `a` = 0.990554 / 0.993842, cos ≈ 0.97 — but **21–24 % residual** |
+| partial C1 drop | best λ = 0.69, **14 % residual** |
+| under-applied `W` (`W → βW`) | deviation goes as (1−β)²; needs β ≈ 0.56, and still misses by 2.3e-02 |
+| displacement in `ker(J3)` | wrong direction (above) |
+| `lstsq` driver (`gelsy/gelsd/gelss/pinv`) | all reproduce the healthy `Λ` to ~1e-14 |
+| dense vs sparse solve path | agree to **1.1e-08** — far from 1e-02 |
+
+The excursion is ~80 % "everything softer by ~1 %" with an **irreducible ~20 % of structure that
+nothing constructible reproduces.**
+
+*(Incidental finding worth its own line: the dense and sparse implementations of the intrinsic solve
+agree only to **1.1e-08**, not the 1.6e-12 the solver reaches against the oracle. Not the cause of
+B-1, but it bounds how much the two paths may be treated as interchangeable.)*
+
+### The next excursion is now a SHARP BINARY TEST
+
+Because `C` is **linear in `A(s)`** but nearly flat in `W` within the constraint manifold:
+
+- fault in **`W`** ⇒ `W` must differ by **~30–40 %** — unmissable
+- fault in **`A(s)`** ⇒ `A3` need differ by only **~1 %**
+
+The dump records both `W` and `A3` (+ checksums), so one more excursion discriminates on sight.
+**Prediction, on economy of hypotheses: `A(s)`** — it needs a 1 % error where `W` needs 40 %, and a
+uniformly smaller `A` gives exactly the diffuse, always-softer, near-uniform signature. `A3` is
+built from `k` and geometry, both of which *should* be deterministic — so if this is right,
+something **upstream of the solve** is moving. Flagged as a prediction, not a finding.
+
+---
+
 ## 5. Files
 
 | file | role |
