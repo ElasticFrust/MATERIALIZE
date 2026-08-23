@@ -345,9 +345,28 @@ class _B1Capture:
     """
 
     def __enter__(self):
-        self.rec = {'lstsq': [], 'solve_cond_in': [], 'inv_in': []}
+        self.rec = {'lstsq': [], 'solve_cond_in': [], 'inv_in': [], 'W': [], 'A3': []}
         self._real = (torch.linalg.lstsq, torch.linalg.solve, torch.linalg.inv)
         real_lstsq, real_solve, real_inv = self._real
+
+        # Also wrap the intrinsic solve itself. BISECTION (added after the 2026-08-23 09:37
+        # excursion): that dump proved G and r are identical to 1 ulp and that Lam is stable across
+        # gelsy/gelsd/gelss/pinv -- so the lstsq is NOT the culprit. The divergence therefore lives
+        # in W0/PinvJt, in directions J3 cannot see (J3 is 672x1008, >=336 null dimensions, and a
+        # change of W0 in ker(J3) leaves r=J3*W0 untouched while still moving W). Capturing W's
+        # INPUT (A3) and OUTPUT splits the pipeline in two: if W matches the healthy run the fault
+        # is downstream in the contraction to C; if it differs, it is inside the metric solve.
+        import forward_solver_torch as _FST
+        self._fst = _FST
+        self._real_w = _FST._woodbury_solve_aw
+
+        def woodbury_aw(A3, w, J3=None):
+            out = self._real_w(A3, w, J3)
+            self.rec['A3'].append(A3.detach().clone())
+            self.rec['W'].append(out.detach().clone())
+            return out
+
+        _FST._woodbury_solve_aw = woodbury_aw
 
         def lstsq(A, B, *a, **kw):
             self.rec['lstsq'].append((A.detach().clone(), B.detach().clone()))
@@ -366,6 +385,7 @@ class _B1Capture:
 
     def __exit__(self, *exc):
         torch.linalg.lstsq, torch.linalg.solve, torch.linalg.inv = self._real
+        self._fst._woodbury_solve_aw = self._real_w
         return False                                    # never swallow an exception
 
     def summarise(self, path_npz):
@@ -382,7 +402,16 @@ class _B1Capture:
                             sigma_min_over_cutoff=float(sv[-1] / cut),
                             cond=float(sv[0] / sv[-1]) if sv[-1] > 0 else float('inf'),
                             symmetry=float(np.abs(Gn - Gn.T).max()), r_norm=float(np.abs(rn).max()))
-            np.savez_compressed(path_npz, G=Gn, r=rn)
+            extra = {}
+            if self.rec['W']:                     # the bisection payload, see __enter__
+                extra['W'] = self.rec['W'][0].numpy()
+                extra['A3'] = self.rec['A3'][0].numpy()
+                out['W'] = dict(shape=list(extra['W'].shape),
+                                absmax=float(np.abs(extra['W']).max()),
+                                fro=float(np.linalg.norm(extra['W'])),
+                                checksum=float(extra['W'].sum()))
+                out['A3_checksum'] = float(extra['A3'].sum())
+            np.savez_compressed(path_npz, G=Gn, r=rn, **extra)
         if self.rec['solve_cond_in']:
             out['I3_minus_Sw_cond'] = [float(np.linalg.cond(A.numpy()))
                                        for A in self.rec['solve_cond_in']]
