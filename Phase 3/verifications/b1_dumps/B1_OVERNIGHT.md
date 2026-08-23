@@ -346,6 +346,35 @@ could abort a design run on a merely ill-conditioned mesh, a worse failure than 
 - **Caught two genuine events in the wild** while verifying (`W` off by 3.788e-01 and 3.446e+00),
   each repaired, with every gate still passing.
 
+### The rate, measured (2026-08-24, `b1_rate.py`)
+
+The guard warns on every repair, so the rate is countable rather than inferred. Over the full suite
+(whose `optimize()` loops issue thousands of intrinsic solves) plus 300 bare probes:
+
+```
+guarded intrinsic solves : 2488
+repairs                  :    4
+rate                     : 1.608e-03   (1 in 622)
+95 % Wilson interval     : [6.25e-04, 4.13e-03]  =  1 in [242, 1599]
+```
+
+**Cross-checks against the independent estimate:** `b1_persistence.py` saw 1 excursion in 700
+probes; 700 lies well inside the interval above. Two different instruments, same rate.
+*(Wilson, not the normal approximation — at these rates `p ± 1.96√(p(1−p)/n)` is wrong and
+collapses to zero width on a null result.)*
+
+**OPEN — the repaired magnitudes are larger than the one characterised event.** `|PinvJt·ΔΛ| /
+max(|W0|,1)` came out min 2.292, median 2.990, max 18.16, whereas the two caught in the wild under
+this same normalisation were 0.38 and 3.4 and the dissected excursion was ~0.46 (Frobenius).
+Either genuine mis-solves are frequently far more catastrophic than the one we dissected, or stage 2
+over-reports on some meshes. Stage 1 argues for *genuine* — it fires only above 1e-3 against a
+healthy maximum of 8.58e-08 across designed meshes, four orders below.
+**Next step, cheap and self-validating: have the guard assert that `orth` IMPROVED after repairing.**
+A repair that does not improve constraint satisfaction is a false positive by definition.
+
+*(Earlier warning counts in this session are NOT usable for a rate — they were inflated by two buggy
+stage-2 normalisations, dividing by `|Λ|` and then by `|W0|`. This is the first clean measurement.)*
+
 ### Honest scope
 
 This is a **guard, not a cure**: whatever makes `lstsq` occasionally mis-solve this singular system
