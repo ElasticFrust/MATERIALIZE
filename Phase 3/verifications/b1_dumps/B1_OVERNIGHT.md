@@ -239,6 +239,66 @@ something **upstream of the solve** is moving. Flagged as a prediction, not a fi
 
 ---
 
+## 4d. ROOT CAUSE LOCALISED — the KKT constraint correction is applied WRONG (2026-08-23)
+
+`b1_persistence.py`, first run, `reps=50`: **700 probes, 699 at bit-identical 2.20e-13, one
+excursion at 1.172970e-02.** The probe made B-1 affordable — 700 draws in ~45 min against ~1 draw
+per 30 min from a campaign, a ~500× improvement in draws per unit compute.
+
+### Two facts from the sampling itself
+
+- **The bad state is ONE-SHOT, not persistent.** The excursion lasted exactly one solve; all 49
+  following probes returned to 2.20e-13. **This kills the "the process went bad and stayed bad"
+  model that framed B-1 from the start.**
+- It hit at **rep = 0** — the first solve after a context test. Given an excursion occurred,
+  landing on rep 0 of a 50-probe burst is p = 0.02, so *"a preceding test leaves transient state
+  that perturbs exactly the next solve"* is real signal. **Which test is NOT established**: it
+  followed `test_homogeneity_regularizer`, but with a single event any given burst has p = 1/14.
+
+### The cause
+
+The dump carried the `W`/`A3` bisection payload, and it is unambiguous:
+
+| quantity | healthy | anomalous |
+|---|---|---|
+| `A3` (bare tensor) | — | **bit-identical, `max|ΔA3| = 0.000e+00`** |
+| `G` rank / cond | 671 / 4.523e16 | **identical** |
+| `cond(I3−Sw)` | 1.0147246528719565 | **identical** |
+| `W` Frobenius | 8.305366453251494 | 9.241718301662717 (**+11.3 %**) |
+| **`max|J3·W|`** | **6.078e-15** | **5.427e-01** |
+
+**Every input to the metric solve is bit-perfect; the output violates the constraints by fourteen
+orders of magnitude.** `W` differs by 45.93 % (Frobenius) and **90.0 % of that difference lies in
+the ROW SPACE of `J3`** — precisely the directions the constraints control.
+
+Quantitatively, the correction is **~54 % applied**: `max|J3·W|` is 1.1851 with no correction
+(`W0`), 6.1e-15 when correct, and 5.427e-01 in the excursion — i.e. 45.8 % of the uncorrected
+residual survives. It is **not** any clean variant: it matches neither `W0`, nor edge-only (C1),
+nor curvature-only (C2), nor the healthy `W`.
+
+**This retro-explains every recorded property of B-1:** always **over-compliant** (an unenforced
+constraint can only soften, hence the one-signed deviation); **diffuse** (the correction is global,
+so no single component is singled out — consistent with excluding the A-0 shear channel);
+**discrete and bit-identical across commits** (a specific wrong correction, not a continuum); and
+**invisible upstream** (nothing feeding the solve is wrong, which is why every clean-process probe
+in §4c found healthy inputs).
+
+### What is still open
+
+`W = W0 − PinvJt·Λ`, so the fault is in **`Λ` or `PinvJt`** — the dump does not yet capture either.
+Note `G = J3·PinvJt` being bit-identical does **not** pin `PinvJt`, since `J3` has a 337-dimensional
+null space. **Next instrumentation step: capture `Λ` and `PinvJt`**; that closes it completely.
+
+The leading reading is that `torch.linalg.lstsq(G, r)` intermittently returns a wrong `Λ` for this
+**singular** system (`G` rank 671/672, cond 3e16) — which would partially rehabilitate the pivoting
+idea refuted in §3: the *rank decision* is stable (13-order gap), but `gelsy`'s *solution* for a
+rank-deficient system need not be. §4c showed all four drivers return the healthy `Λ` from the
+captured `G, r` **in a clean process**, which does not test immunity under the triggering
+conditions. **If confirmed, the fix is to stop solving a knowingly singular system with a
+pivoting-based driver.**
+
+---
+
 ## 5. Files
 
 | file | role |
