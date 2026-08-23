@@ -238,6 +238,31 @@ Every design is still checked against the independent simulation — that check 
 failures. Bulk/periodic by construction; open-boundary questions use a separate nodal solve, for
 verification only.
 
+**A THIRD failure — audit B-1 — is ROOT-CAUSED AND GUARDED** *(2026-08-23)*. It is **not** either of
+the two above and must not be conflated with them. The intrinsic solve ends in
+`torch.linalg.lstsq(G, r)` on a `G = J3·PinvJt` that is **singular by construction** (redundant
+constraint rows: rank 671/672, cond ~3e16 on the regular lattice). Measured **once in ~700 solves**,
+its pivoting CPU driver returns a `Λ` that only **~54 %** applies the KKT correction: every input is
+**bit-perfect** (`A3` identical to the last bit, `G`/`r`/`cond(I3−Sw)` identical), yet the returned
+`W` violates `J3·W = 0` by fourteen orders (6.1e-15 → 5.4e-01), with **90 % of the error in the row
+space of `J3`**, and `C_eff` comes out **~1 % over-compliant** — above design tolerances and
+indistinguishable from a real result. This explains B-1's whole signature: always over-compliant (an
+unenforced constraint can only soften), diffuse (the correction is global — so the A-0 shear channel
+was correctly excluded), and discrete/bit-identical across commits.
+- **Guarded in the core** by a two-stage check: stage 1 tests `Gᵀ(GΛ−r) ≈ 0` (orthogonality — valid
+  even when the constraint set is INCONSISTENT, where the raw residual is irreducibly nonzero and
+  testing it fires on healthy solves); stage 2, only on trigger, re-solves with the SVD driver and
+  repairs only if the **correction term `PinvJt·Λ` moves relative to `W0`** (measuring `Λ` itself is
+  wrong — a large relative move of a near-zero `Λ` changes nothing). No exception path: a false
+  trigger costs one extra solve. It emits a `RuntimeWarning` when it repairs — **treat that warning
+  as data; it is how the true rate gets measured.**
+- **Do NOT assume a tolerance generalises across meshes.** The healthy orthogonality floor tracks
+  `cond(G)`: 3e-15 on a clean regular lattice, ~4e-6 on designed meshes. Three tolerances were set
+  from too narrow a sample before the gates caught it.
+- Evidence and the full refutation trail: `Phase 3/verifications/b1_dumps/B1_OVERNIGHT.md`;
+  instruments `b1_persistence.py` (the probe that found it — ~500× more draws per unit compute than
+  a suite-repetition campaign) and `b1_excursion_analysis.py`.
+
 ### Verification discipline  *(settled 2026-08-10)*
 
 Full suite: `documentation/MATERIALIZE.md §9`, `Phase 3/verifications/README.md`,

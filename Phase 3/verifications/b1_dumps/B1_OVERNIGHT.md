@@ -299,6 +299,67 @@ pivoting-based driver.**
 
 ---
 
+## 4e. THE FIX — a two-stage KKT guard in the core (2026-08-23)
+
+`Phase 2/forward_solver_torch.py::_woodbury_solve_aw`. **Protected core** — gated by all five suites.
+
+```
+stage 1 (every solve, two mat-vecs):  orth = |Gᵀ(G Λ − r)| / (|G| max(|G Λ − r|, |r|))  >  1e-3 ?
+stage 2 (only if triggered):          re-solve with the SVD driver; repair only if the
+                                      CORRECTION TERM moves:  |PinvJt·ΔΛ| / max(|W0|, 1)  >  1e-6
+```
+
+**Why orthogonality and not the residual.** `Λ` is a valid least-squares solution iff its residual
+is orthogonal to `range(G)`. When the constraint set is **inconsistent**, `|GΛ − r|` is irreducibly
+nonzero and `J3·W ≠ 0` legitimately — so a raw-residual test fires on healthy solves. It did:
+`sanity.py` at 1.9e-01 and the hexagon gate at 4e-08, both correct.
+
+**Why the impact is normalised by `max(|W0|, 1)`.** `W` is a correction **to the identity** (`C` is
+built from `1+W`), so its natural scale is 1, not its own magnitude. Dividing by `|W0|` alone
+inflates without bound wherever `W ≈ 0` — exactly the uniform-k regular lattice, where `W ≡ 0`
+identically — and produced spurious "repairs" of 1.9e+06, 3.9e+00 and 1.2e+01.
+
+**Tolerances set from measurement, not reasoning** (three earlier ones were wrong because they
+generalised a scale from too narrow a sample):
+
+| | healthy | at failure |
+|---|---|---|
+| `orth`, clean meshes (η 0→0.45, anisotropic, uniform-k) | 3.1e-15 … 4.2e-14 | — |
+| `orth`, designed mesh (39 solves in `optimize()`) | max **8.58e-08**, median 1.6e-12 | ~0.54 |
+| trigger rate at 1e-3 | **0.00 %** | fires |
+| `impact` on the `W ≡ 0` lattice | **2.10e-29** (old norm: 8.36e-15) | ~0.33–0.46 |
+
+**No exception path.** A false trigger costs one extra solve and nothing else — earlier versions
+could abort a design run on a merely ill-conditioned mesh, a worse failure than the bug. It emits a
+`RuntimeWarning` on repair: **treat that warning as data — it is how the true rate gets measured.**
+
+### Verification
+
+- **All five gates pass**: `test_forward_solver` 8/8 (incl. gradients + large-N adjoint),
+  `sanity.py`, `test_hex_closed_form` 3/3 (max |Δν| = 4.34e-06, the independent analytic oracle),
+  `test_designer_surface` 5/5, `test_inverse_design` 16/16.
+- **Injected the observed failure** (a Λ scaled by 0.542): the guard reports `orth` 5.372e-01 and
+  repairs to 3.994e-15, giving a `C` within **2.08e-17** of the healthy answer. Unguarded, that same
+  injection *is* the 1.2e-02 B-1 signature.
+- **End-to-end**: `b1_persistence.py` 50, **0 excursions in 700 probes**, against **1 in 700**
+  pre-fix — including the identical burst that produced the original.
+- **Caught two genuine events in the wild** while verifying (`W` off by 3.788e-01 and 3.446e+00),
+  each repaired, with every gate still passing.
+
+### Honest scope
+
+This is a **guard, not a cure**: whatever makes `lstsq` occasionally mis-solve this singular system
+may remain, and the underlying `Λ`-vs-`PinvJt` question (§4d) is closed only in the sense that the
+wrong result can no longer propagate. Given `G` is singular **by construction**, guarding is the
+right call regardless — and the warning now measures the rate instead of inferring it.
+
+*(Incidental, and NOT B-1: on ~1 in 39 designed-mesh solves `gelsy` and `gelsd` disagree by ~1.1e-02
+in `W` while **both are valid least-squares solutions** (`orth` ≤ 8.6e-08) — `ker(G)`
+non-uniqueness. Via the `ker(J3)` insensitivity in §4c that is only ~3e-04 in `C`, two orders below
+B-1. Correctly not flagged, but it is a real residual source of solver variability.)*
+
+---
+
 ## 5. Files
 
 | file | role |

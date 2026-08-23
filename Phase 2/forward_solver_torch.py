@@ -36,6 +36,8 @@ metric Hessian A3(s)=Σ_e (k_e/4ℓ_e²) q_e q_eᵀ — these are NOT the same m
 (sym(M) ≠ A3), and using one where the other is required gives wrong physics.
 """
 
+import warnings
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -44,6 +46,21 @@ import torch.nn as nn
 # saddle solve (differentiable via _IntrinsicSparseWFn's adjoint when grad is needed,
 # forward-only NumPy otherwise). Both size paths carry gradients.
 INTRINSIC_DENSE_MAX = 600
+
+# audit B-1, stage 1: LOOSE trigger on the orthogonality of the intrinsic KKT residual,
+# |Gᵀ(G Lam - r)| / (|G| max(|G Lam - r|, |r|)) -- zero iff Lam is a least-squares solution, and
+# valid whether or not the constraint set is consistent (an inconsistent one has an irreducibly
+# nonzero residual, so testing the RAW residual would fire on healthy solves -- it did).
+# Its healthy floor tracks cond(G) and is mesh-dependent: 3e-15 on a clean regular lattice, up to
+# ~4e-6 on designed meshes across the gate suite. 1e-3 sits ~2.5 orders above that and ~2.5 below
+# the one measured failure (0.46). Only a TRIGGER -- stage 2 decides.
+_B1_KKT_RTOL = 1e-3
+
+# audit B-1, stage 2: how much the SVD re-solve must move the CORRECTION TERM PinvJt·Lam, relative
+# to |W0|, before it counts as a repair rather than ill-conditioning. Measured against W and not
+# against Lam because a large relative move of a near-zero Lam has no effect on the answer. The
+# observed failure moved W by ~46 %; healthy re-solves agree to ~1e-14.
+_B1_LAM_RTOL = 1e-6
 
 
 def _angle_gradient_vec(a, b):
@@ -683,6 +700,52 @@ def _woodbury_solve_aw(A3, w, J3=None):
     G = J3 @ PinvJt                                                # (M_c,M_c)
     r = J3 @ W0.reshape(3*N, 3)                                    # (M_c,3)
     Lam = torch.linalg.lstsq(G, r).solution                       # lstsq tolerates redundant rows
+    # --- audit B-1 GUARD (2026-08-23) ------------------------------------------------------
+    # G is SINGULAR BY CONSTRUCTION -- the constraint rows are redundant (rank 671/672,
+    # cond ~3e16 on the regular lattice), which is exactly what the `lstsq` above is here to
+    # tolerate. Measured once in ~700 solves, its pivoting-based CPU driver (gelsy) instead
+    # returns a Lam that only PARTIALLY solves G Lam = r, leaving the KKT correction ~54 %
+    # applied: W then violated J3 W = 0 by fourteen orders (6.1e-15 -> 5.4e-01) and C_eff came
+    # out ~1 % over-compliant -- above the design tolerances and indistinguishable from a real
+    # result. Full evidence: Phase 3/verifications/b1_dumps/B1_OVERNIGHT.md §4d.
+    #
+    # The test is ORTHOGONALITY, not the raw residual. Lam is a valid least-squares solution iff
+    # its residual is orthogonal to range(G), i.e. Gᵀ(G Lam - r) = 0. That holds even when the
+    # constraint set is INCONSISTENT (r outside range(G)), where |G Lam - r| is irreducibly
+    # nonzero and J3 W != 0 legitimately -- so testing the raw residual would fire on healthy
+    # solves (it did: `sanity.py` at 1.9e-01 and the hexagon gate at 4e-08, both correct).
+    # Measured: the ratio below is 3e-15..4e-14 on healthy meshes spanning eta=0..0.45, while a
+    # 54 %-applied Lam gives ~0.46 -- twelve orders of separation.
+    # Costs two mat-vecs when healthy (~1 MFLOP against the einsums above); Lam is untouched then.
+    # TWO STAGES, because the healthy floor of this ratio is MESH-DEPENDENT: it tracks cond(G),
+    # measured 3e-15 on a clean regular lattice but up to ~4e-6 on designed meshes across the gate
+    # suite, where re-solving barely improves it (1.04e-08 -> 8.81e-09) because that IS the best
+    # achievable. So no fixed tight tolerance can separate "ill-conditioned" from "mis-solved".
+    #   stage 1 -- a LOOSE trigger (1e-3), ~2.5 orders above the worst healthy value observed and
+    #             ~2.5 below the one measured failure (0.46). Cheap: two mat-vecs.
+    #   stage 2 -- only if triggered, re-solve with the SVD driver and ask the DEFINITIVE question:
+    #             does it actually change Lam? Ill-conditioning gives the same answer twice; a
+    #             mis-solve does not (the observed failure was 46 % off). A false trigger is then
+    #             harmless -- one extra solve and no warning -- so this can never abort a run.
+    res = (G @ Lam - r).detach()
+    Gd = G.detach()
+    scale = float(Gd.abs().max()) * max(float(res.abs().max()), float(r.detach().abs().max()))
+    if scale > 0.0 and float((Gd.T @ res).abs().max()) > _B1_KKT_RTOL * scale:
+        Lam_alt = torch.linalg.lstsq(G, r, driver='gelsd').solution   # SVD: nothing to mis-pivot
+        # Measure the impact on W, NOT on Lam. W = W0 - PinvJt Lam, so what matters is how much
+        # the CORRECTION TERM moves relative to W0 -- a large relative move of a negligible Lam
+        # changes nothing. (Testing Lam directly reported 1.9e+06 on a healthy solve where |Lam|
+        # was ~0, i.e. divide-by-almost-zero; the observed real failure moves W by ~46 %.)
+        # Normalise by max(|W0|, 1): W is a correction TO THE IDENTITY -- C is built from (1+W) --
+        # so its natural scale is 1, NOT its own magnitude. Dividing by |W0| alone inflates the
+        # ratio without bound wherever W ~ 0, which is exactly the uniform-k regular lattice
+        # (W == 0 identically there); that produced spurious 1.9e+06 and 3.9e+00 "repairs".
+        dW = (PinvJt @ (Lam_alt - Lam).detach()).abs().max()
+        impact = float(dW) / max(float(W0.detach().abs().max()), 1.0)
+        if impact > _B1_LAM_RTOL:
+            warnings.warn(f"audit B-1: KKT correction was mis-solved and has been repaired "
+                          f"(W changed by {impact:.3e} relative)", RuntimeWarning)
+            Lam = Lam_alt                                    # SVD solution is the trustworthy one
     W = (W0.reshape(3*N, 3) - PinvJt @ Lam).reshape(N, 3, 3)
     return W.reshape(N, 9)
 
