@@ -1,0 +1,6 @@
+/c/Users/doron/.bashrc: line 1: $'\377\376export': command not found
+  FAIL test_homogenization: solver vs physical homogenisation tensor disagree (phi=1.0,psi=1.0,eta=0.0): 1.18e-02
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+1 TEST(S) FAILED
+
+[exited with code 0]

@@ -66,18 +66,30 @@ def one_run(threads, log):
     p = subprocess.run([PY, SUITE], cwd=REPO, env=env, capture_output=True, text=True,
                        errors='replace')
     secs = time.time() - t0
-    out = (p.stdout or '') + (p.returncode and f'\n[rc={p.returncode}]' or '')
+    # stderr too: a native segfault or a traceback leaves NOTHING on stdout, and a run that dies
+    # without evidence is a wasted hour of the budget (the sim is dense LAPACK -- documented as able
+    # to hard-crash on near-singular geometry, which would otherwise land as a bare NO_VERDICT).
+    err = (p.stderr or '').strip()
+    out = ((p.stdout or '') + (f'\n[stderr]\n{err}' if err else '')
+           + (p.returncode and f'\n[rc={p.returncode}]' or ''))
     log.write(out + '\n' + '=' * 78 + '\n')
     log.flush()
     fails = [l.strip() for l in out.splitlines() if 'FAIL' in l]
     homog = [l.strip() for l in out.splitlines() if 'homogenisation' in l or 'homogenization' in l]
+    # [15]'s number, recorded on EVERY row. The first night returned 'FAIL' from an unrelated test
+    # on 11 runs, which hid their [15] value in the CSV and forced a grep of the log to confirm the
+    # 1-thread arm was clean. The verdict alone is not enough to classify a row.
+    mark = next((l.split('solver-vs-physical(tensor)=')[1].split()[0]
+                 for l in homog if 'solver-vs-physical(tensor)=' in l), '')
+    if not mark and any('test_homogenization' in l for l in fails):
+        mark = 'FAILED'
     if fails:
-        return 'FAIL', secs, fails[0][:200]
+        return 'FAIL', secs, mark, fails[0][:200]
     if 'ALL PASSED' in out:
         # a pass that does NOT show the usual baseline is still worth flagging
         drift = homog and BASELINE_MARK not in homog[0]
-        return ('PASS_DRIFT' if drift else 'PASS'), secs, (homog[0][:200] if homog else '')
-    return 'NO_VERDICT', secs, (out.strip().splitlines() or [''])[-1][:200]
+        return ('PASS_DRIFT' if drift else 'PASS'), secs, mark, (homog[0][:200] if homog else '')
+    return 'NO_VERDICT', secs, mark, (out.strip().splitlines() or [''])[-1][:200]
 
 
 def main():
@@ -98,22 +110,22 @@ def main():
 
     with open(csv_path, 'w', newline='') as fh, open(log_path, 'w', encoding='utf-8') as log:
         w = csv.writer(fh)
-        w.writerow(['i', 'utc', 'threads', 'verdict', 'secs', 'detail'])
+        w.writerow(['i', 'utc', 'threads', 'verdict', 'secs', 'homog15', 'detail'])
         fh.flush()
         i = 0
         counts = {}
         while time.time() < deadline:
             threads = arms[i % len(arms)]
             i += 1
-            verdict, secs, detail = one_run(threads, log)
+            verdict, secs, mark, detail = one_run(threads, log)
             counts[(threads, verdict)] = counts.get((threads, verdict), 0) + 1
             w.writerow([i, dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
-                        threads, verdict, f'{secs:.1f}', detail])
+                        threads, verdict, f'{secs:.1f}', mark, detail])
             fh.flush()                              # a suspend must not cost the night
             os.fsync(fh.fileno())
             flag = '   <<< HIT' if verdict in ('FAIL', 'PASS_DRIFT') else ''
-            print(f'  [{i:3d}] threads={threads or "default"} {verdict:10} {secs:6.1f}s{flag}',
-                  flush=True)
+            print(f'  [{i:3d}] threads={threads or "default"} {verdict:10} {secs:6.1f}s '
+                  f'[15]={mark or "?":9}{flag}', flush=True)
             if flag:
                 print(f'        {detail}', flush=True)
 

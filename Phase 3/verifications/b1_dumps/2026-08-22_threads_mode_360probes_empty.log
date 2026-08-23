@@ -1,0 +1,29 @@
+/c/Users/doron/.bashrc: line 1: $'\377\376export': command not found
+B-1 reproduction harness -- mode=threads
+  establishing suite context once (13 preceding tests), then 60 probes x 2 arms...
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  [4] local region (164 tri) nu=-0.15: achieved -0.150  OK
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.050, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.94), isotropic-tensor residual=0.012  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 65.3005 -> 0.0000 (achieved nu=-0.500)  OK
+  context established
+
+  threads=1: 60 reps x 3 cases -> 0 hit(s) above 100x baseline; worst 1.00e+00x; distinct bit patterns per case [2, 2, 3]
+  threads=4: 60 reps x 3 cases -> 0 hit(s) above 100x baseline; worst 1.00e+00x; distinct bit patterns per case [2, 2, 2]
+
+  RATE COMPARISON (hits per 3n probes):
+    threads=1: 0/180 hits, worst 1.00e+00x baseline, bit patterns [2, 2, 3]
+    threads=4: 0/180 hits, worst 1.00e+00x baseline, bit patterns [2, 2, 2]
+  -> NO excursion in either arm. Threading not implicated at this sample size; the cheap harness may simply not reproduce it (then use an overnight full-suite loop).
+
+[exited with code 0]

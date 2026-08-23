@@ -329,9 +329,74 @@ B1_DUMP_THRESHOLD = 1e-9
 B1_DUMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'verifications', 'b1_dumps')
 
 
-def _b1_dump_if_anomalous(phi, psi, eta, seed, vs, c_solver, c_phys):
+class _B1Capture:
+    """Record the INPUTS of the solver's internal linear algebra during one forward solve, so that
+    an anomalous [15] can be diagnosed instead of merely counted.
+
+    WHY THIS EXISTS (2026-08-23). The first overnight campaign caught two excursions and refuted
+    three candidate mechanisms, but could not identify the cause, because the dump recorded the
+    wrong OUTPUT and nothing upstream — and every follow-up probe had to run in a clean isolated
+    process, where B-1 never occurs. Capturing `G`, the constraint solve and the batched inverse at
+    the MOMENT of an excursion is the only way to see which upstream quantity actually moved.
+
+    Cost when healthy is a few clones and nothing else: **all analysis is deferred to dump time**
+    (an SVD per solve would be far too expensive to run unconditionally). The solver's internals are
+    reached by wrapping `torch.linalg`, so the PROTECTED CORE is untouched.
+    """
+
+    def __enter__(self):
+        self.rec = {'lstsq': [], 'solve_cond_in': [], 'inv_in': []}
+        self._real = (torch.linalg.lstsq, torch.linalg.solve, torch.linalg.inv)
+        real_lstsq, real_solve, real_inv = self._real
+
+        def lstsq(A, B, *a, **kw):
+            self.rec['lstsq'].append((A.detach().clone(), B.detach().clone()))
+            return real_lstsq(A, B, *a, **kw)
+
+        def solve(A, B, *a, **kw):                      # (I3 - Sw), tiny: keep the matrix itself
+            self.rec['solve_cond_in'].append(A.detach().clone())
+            return real_solve(A, B, *a, **kw)
+
+        def inv(A, *a, **kw):                           # batched A3 (N,3,3)
+            self.rec['inv_in'].append(A.detach().clone())
+            return real_inv(A, *a, **kw)
+
+        torch.linalg.lstsq, torch.linalg.solve, torch.linalg.inv = lstsq, solve, inv
+        return self
+
+    def __exit__(self, *exc):
+        torch.linalg.lstsq, torch.linalg.solve, torch.linalg.inv = self._real
+        return False                                    # never swallow an exception
+
+    def summarise(self, path_npz):
+        """Deferred analysis — called ONLY on an anomaly. Returns a JSON-able dict and writes the
+        full `G`/`r` to `path_npz` so a post-mortem can redo any algebra it likes."""
+        out = {}
+        if self.rec['lstsq']:
+            G, r = self.rec['lstsq'][0]
+            Gn, rn = G.numpy(), r.numpy()
+            sv = np.linalg.svd(Gn, compute_uv=False)
+            cut = float(np.finfo(np.float64).eps * max(Gn.shape) * sv[0])
+            out['G'] = dict(shape=list(Gn.shape), sigma=sv.tolist(), rcond_none_cutoff=cut,
+                            rank_at_cutoff=int((sv > cut).sum()),
+                            sigma_min_over_cutoff=float(sv[-1] / cut),
+                            cond=float(sv[0] / sv[-1]) if sv[-1] > 0 else float('inf'),
+                            symmetry=float(np.abs(Gn - Gn.T).max()), r_norm=float(np.abs(rn).max()))
+            np.savez_compressed(path_npz, G=Gn, r=rn)
+        if self.rec['solve_cond_in']:
+            out['I3_minus_Sw_cond'] = [float(np.linalg.cond(A.numpy()))
+                                       for A in self.rec['solve_cond_in']]
+        if self.rec['inv_in']:
+            out['A3_cond_max'] = max(float(np.max(np.linalg.cond(A.numpy())))
+                                     for A in self.rec['inv_in'])
+        return out
+
+
+def _b1_dump_if_anomalous(phi, psi, eta, seed, vs, c_solver, c_phys, cap=None):
     """Record a full picture of an anomalous [15] comparison. Never raises and never alters the
-    test's verdict — the asserts are untouched; this only observes."""
+    test's verdict — the asserts are untouched; this only observes.
+
+    `cap`: an exited `_B1Capture` holding the solve's upstream inputs, or None."""
     try:
         if vs <= B1_DUMP_THRESHOLD:
             return
@@ -340,11 +405,21 @@ def _b1_dump_if_anomalous(phi, psi, eta, seed, vs, c_solver, c_phys):
         scale = float(np.abs(c_phys).max())
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         commit, dirty, _ = C._provenance()
+        upstream = {}
+        if cap is not None:
+            try:                                  # a failed post-mortem must not lose the dump
+                upstream = cap.summarise(os.path.join(
+                    B1_DUMP_DIR, f'b1_anomaly_{stamp}_eta{eta}_s{seed}_Gr.npz'))
+            except Exception as e:                                          # noqa: BLE001
+                upstream = {'summarise_failed': f'{type(e).__name__}: {e}'}
         rec = dict(when=stamp, commit=commit, dirty=dirty, vs=vs,
                    case=dict(phi=phi, psi=psi, eta=eta, seed=seed),
                    # is the deviation ONE component or diffuse? -> the discriminating question
                    dC_over_scale=(np.abs(c_solver - c_phys) / scale).tolist(),
                    c_solver=c_solver.tolist(), c_phys=c_phys.tolist(),
+                   # upstream state AT THE MOMENT OF THE EXCURSION (added 2026-08-23) — the whole
+                   # point: a clean process cannot reproduce B-1, so this is the only look inside.
+                   upstream=upstream,
                    torch_threads=torch.get_num_threads(),
                    omp=os.environ.get('OMP_NUM_THREADS', 'unset'),
                    platform=platform.platform(), cpu_count=os.cpu_count())
@@ -396,13 +471,14 @@ def test_homogenization():
         nu_v, E_v = PH.virial_nuE(geo, PH.relax(geo, free, SA.assemble_K_faff))   # virial route
         nu_e, E_e = PH.energy_nuE(geo, free, SA.assemble_K_faff)                  # energy-Hessian route
         prob = DesignProblem.from_geo(geo)
-        cs = C.solver_region_C6(prob, torch.as_tensor(k))                         # differentiable solver
+        with _B1Capture() as cap:                       # observes only; see the class docstring
+            cs = C.solver_region_C6(prob, torch.as_tensor(k))                     # differentiable solver
         c_solver = np.array([[cs[0], cs[2], cs[1]], [cs[2], cs[5], cs[4]],        # -> Voigt [xx,yy,xy]
                              [cs[1], cs[4], cs[3]]])
         c_phys = PH.energy_C(geo, free, SA.assemble_K_faff)          # INDEPENDENT energy-Hessian tensor
         ve = max(abs(nu_v - nu_e), abs(E_v - E_e) / abs(E_v))
         vs = float(np.abs(c_solver - c_phys).max() / np.abs(c_phys).max())
-        _b1_dump_if_anomalous(phi, psi, eta, seed, vs, c_solver, c_phys)   # audit B-1, see below
+        _b1_dump_if_anomalous(phi, psi, eta, seed, vs, c_solver, c_phys, cap)  # audit B-1, see below
         assert ve < 3e-3, f"virial vs energy-Hessian disagree (phi={phi},psi={psi},eta={eta}): {ve:.2e}"
         assert vs < 0.01, f"solver vs physical homogenisation tensor disagree (phi={phi},psi={psi},eta={eta}): {vs:.2e}"
         worst_ve, worst_vs = max(worst_ve, ve), max(worst_vs, vs)

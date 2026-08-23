@@ -1,7 +1,7 @@
 # NEXT SESSION — start here
 
-**Rewritten 2026-08-22 (end of session).** Working tree clean, everything pushed on
-`claude/funny-davinci-H4pdS`. Read `CLAUDE.md` §1–3, this file, and
+**Rewritten 2026-08-22 (end of session); §1 updated 2026-08-23 after the overnight run.** Read
+`CLAUDE.md` §1–3, this file, and
 **`documentation/VERIFICATION_CAMPAIGN.md` — the index of what has already been measured. Read it
 before proposing any new measurement.** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
 
@@ -12,10 +12,17 @@ before proposing any new measurement.** `AUDIT_2026-08.md` §6 STATUS holds the 
 
 ## THE TODO, in order
 
-### 1. B-1 — the overnight run. THE BLOCKER.
+### 1. B-1 — the overnight run. THE BLOCKER. **RUN 2026-08-22/23 — still the blocker.**
 Solver nondeterminism. **Why it gates the GNN:** if the solver can differ from the independent sim
 by 1.18e-02 on ~1 run in 21, a training set labelled by that solver carries unlabelled noise of the
 same size, and no amount of model capacity fixes that. M2's labels are only as good as this.
+
+> **RESULTS OF THE FIRST RUN: `Phase 3/verifications/b1_dumps/B1_OVERNIGHT.md`** — 21 full-suite
+> runs, 10.32 h, **2 excursions caught** (8.0e-03 and 1.18e-02, both on default threads, 0 in 11 on
+> 1-thread). B-1 is **much better characterised but NOT explained**; three mechanisms were refuted.
+> A **separate and SETTLED** finding came out of it: **BLAS thread count changes design outcomes**
+> (ν −0.150 → −0.128, objective error 450×, same seed/commit) — so **M2's dataset generator must
+> pin the thread count and record it as provenance.** See §1a below for what is now known.
 
 **Caught again 2026-08-22** during a routine gate run: `test_homogenization`, regular lattice
 (φ=ψ=1, η=0, seed 0), **1.18e-02 against a 1.6e-12 baseline**, then 8/8 PASS on repeat in isolation.
@@ -33,7 +40,8 @@ Evidence in `Phase 3/verifications/b1_dumps/` (harness auto-dump
   isolated for the first time), but at **1.5e-33**, thirty orders below the failure, consistent with
   the 1–2 ulp envelope already on record.
 
-**READY TO LAUNCH — `Phase 3/verifications/b1_overnight.py`** (written 2026-08-22, not yet run):
+**THE RUNNER — `Phase 3/verifications/b1_overnight.py`** (first run 2026-08-22/23; re-running
+APPENDS a new timestamped CSV, so keep accumulating nights):
 
 ```
 python "Phase 3/verifications/b1_overnight.py" 10          # 10-hour budget, arms 1-thread / default
@@ -52,6 +60,31 @@ large enough to trip the assert. ~40 runs/night, ~2 expected events at the obser
 
 Useful control that fell out: `torch.set_num_threads(1)` makes the forward path bit-reproducible, so
 "noise or real state change?" becomes decidable.
+
+### 1a. What the 2026-08-22/23 run ESTABLISHED (full doc: `b1_dumps/B1_OVERNIGHT.md`)
+
+**Facts, not inferences:**
+- **The wrong answers are DISCRETE and bit-identical across different commits**
+  (`max|ΔC_solver| = 0.000e+00`, cos = 1.000000, `502cb92` vs `0b378d7`). Rounding noise cannot do
+  that — **the solver takes a different BRANCH, deterministically.** Strongest constraint available.
+- **DIFFUSE, not one component** — answers `VERIFICATION_CAMPAIGN.md` §5.4's discriminating
+  question, open since it was posed. `xyxy` is among the *smallest* deficits, so **the A-0
+  contraction class is excluded** and §5.4's own reading sends this to the solve.
+- **The oracle is bit-exact** across all dumps and both commits. B-1 is in the **solver** path —
+  previously an assumption.
+- **Always over-compliant**, and **only on the regular lattice** (3/3 of all excursions; 0/21 each
+  on η=0.35 and ψ=0.6; uniform null p = 0.037). Thread-arm asymmetry is **not** significant (p = 0.214).
+
+**Refuted — do not re-propose without new evidence:** dropped C2 (overshoots 3×); **rank truncation
+at the `lstsq` cutoff** (no knife edge — `σ_min` is 1.5e-04 × cutoff, 13-order tail gap, `rcond`
+swept 1e-16…1e-5 changes nothing); **ill-conditioning amplification** (the failing case is the
+*best*-conditioned of the three).
+
+**THE TRAP, and why those could only refute:** every one of those probes ran in a **clean isolated
+process, where B-1 never occurs** (0 in 30 on record). They characterise the healthy state and infer
+backwards. **The dumps record the wrong OUTPUT and nothing upstream** — no `G`, no singular values,
+no effective rank. That is now fixed (`_b1_dump_if_anomalous` captures upstream state as of
+2026-08-23), so **the next excursion should be diagnostic rather than another data point.**
 
 ### 1b. A PROPER CHORD TILING (small, before M2)
 The tilings now use a **phantom-centre fan** (`seeds._fan_and_tag`, 2026-08-22) because the Delaunay
