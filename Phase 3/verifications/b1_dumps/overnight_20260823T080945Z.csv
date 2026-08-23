@@ -1,0 +1,12 @@
+i,utc,threads,verdict,secs,homog15,detail
+1,2026-08-23T08:40:45+00:00,1,FAIL,1859.8,1.6e-12,FAIL test_local_region: local nu achieved -0.128 vs -0.15
+2,2026-08-23T09:07:06+00:00,0,PASS,1580.3,1.6e-12,"[15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(ν,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK"
+3,2026-08-23T09:37:40+00:00,1,FAIL,1834.5,FAILED,FAIL test_local_region: local nu achieved -0.128 vs -0.15
+4,2026-08-23T15:01:08+00:00,0,PASS,19407.7,1.6e-12,"[15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(ν,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK"
+5,2026-08-23T15:32:42+00:00,1,FAIL,1894.1,1.6e-12,FAIL test_local_region: local nu achieved -0.128 vs -0.15
+6,2026-08-23T16:00:02+00:00,0,PASS,1639.7,1.6e-12,"[15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(ν,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK"
+7,2026-08-23T16:32:41+00:00,1,FAIL,1959.8,1.6e-12,FAIL test_local_region: local nu achieved -0.128 vs -0.15
+8,2026-08-23T16:58:46+00:00,0,PASS,1564.8,1.6e-12,"[15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(ν,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK"
+9,2026-08-23T17:32:37+00:00,1,FAIL,2030.7,1.6e-12,FAIL test_local_region: local nu achieved -0.128 vs -0.15
+10,2026-08-23T18:00:19+00:00,0,PASS,1662.4,1.6e-12,"[15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(ν,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK"
+11,2026-08-23T18:33:00+00:00,1,FAIL,1960.5,1.6e-12,FAIL test_local_region: local nu achieved -0.128 vs -0.15

@@ -129,6 +129,51 @@ Three excursions now exist on record (one from 2026-08-22, two from this run). A
 
 ---
 
+## 4b. Campaign #2 — 2026-08-23 (11 runs, 1 excursion)
+
+Launched instrumented (upstream capture added after campaign #1). **11 runs, 5 default PASS,
+6 one-thread FAIL — all six from `[4]`, not `[15]`.** One `[15]` excursion, on **run 3**.
+
+**A machine suspend cost half the campaign:** run 4 recorded **19407.7 s (5.4 h)** against a 29 min
+mean. The deadline is wall-clock, so the budget was consumed without buying runs — ~11 runs instead
+of the projected ~20. *(The incremental write design held: the suspend cost time, not data.
+**Fix for the next launch: budget by COMPLETED RUNS, not wall clock.**)*
+
+### What run 3's excursion settled (`b1_anomaly_20260823T093703Z`, vs = 1.172970e-02)
+
+1. **THREADING IS NOT NECESSARY.** It fired at **`threads=1, omp=1`**. Campaign #1's "0 in 11 on
+   1-thread, both hits on default" was a small-sample artefact — its own p = 0.214 said so. Any
+   mechanism requiring multi-threaded nondeterminism is dead.
+2. **A 1-ULP INPUT DIFFERENCE BECOMES A 1.2 % OUTPUT ERROR.** `G` and `r` differ from a clean
+   recompute by **4.441e-16** and 2.220e-16 — and 4.441e-16 is *exactly* `np.spacing(2.0)`, i.e.
+   literally one representable step — while `C` moves by 1.17e-02. **~14 orders of amplification.**
+3. **`G` is singular to working precision.** `cond ≈ 3e16`; `σ_min` is pure noise, measuring
+   6.2e-16 / 9.5e-16 / 5.5e-15 on three runs of the same problem. Rank is stably 671/672.
+4. **THE `lstsq` IS EXONERATED.** Feeding the anomalous `G, r` through `gelsy`, `gelsd`, `gelss`
+   and `pinv` **all** reproduce the healthy `Λ` to ~1e-14. The solve is stable; the non-uniqueness
+   of a rank-deficient solution is *not* the mechanism either.
+5. Every other captured quantity is identical to full precision: `cond(I3−Sw)`
+   (1.0147246528719565), `A3_cond_max` (4.5688), `r_norm` (1.1851), `G` symmetry (2.21e-15).
+
+**By elimination the fault is in `W0` or `PinvJt`, in directions `J3` cannot see.** `J3` is
+672×1008, so it has ≥336 null dimensions: a change of `W0` inside `ker(J3)` leaves `r = J3·W0`
+untouched while still moving `W`. That is precisely the blind spot the first capture had.
+
+### Status of the bisection
+
+`_B1Capture` now also records the metric solve's input `A3` and output `W`, which splits the
+remaining path in two — `W` matching the healthy run puts the fault **downstream in the contraction
+to C**; `W` differing puts it **inside the metric solve**. It was added after run 3, so runs 4–11
+carried it and **none of them hit. THE BISECTION HAS NO SUBJECT YET** — it needs another campaign.
+
+### Combined rate
+
+**3 `[15]` excursions in 32 campaign runs ≈ 9.4 %** (documented prior: 1 in 21 ≈ 4.8 %).
+`[4]`'s thread dependence is now **17/17 fail on 1-thread, 15/15 pass on default** across both
+campaigns, plus the isolated confirmation in §2.
+
+---
+
 ## 5. Files
 
 | file | role |

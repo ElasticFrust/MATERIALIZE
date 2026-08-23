@@ -1,0 +1,238 @@
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  FAIL test_local_region: local nu achieved -0.128 vs -0.15
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.055, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.68), isotropic-tensor residual=0.012  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 12.0964 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+1 TEST(S) FAILED
+
+[rc=1]
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  [4] local region (164 tri) nu=-0.15: achieved -0.150  OK
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.054, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.73), isotropic-tensor residual=0.013  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 48.6875 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+ALL PASSED
+
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  FAIL test_local_region: local nu achieved -0.128 vs -0.15
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.055, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.69), isotropic-tensor residual=0.014  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 15.0147 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] *** B-1 ANOMALY CAPTURED *** vs=1.173e-02 (case eta=0.0 seed=0) -> C:\Users\doron\Documents\GitHub\MATERIALIZE\Phase 3\verifications\b1_dumps\b1_anomaly_20260823T093703Z_eta0.0_s0.json
+  FAIL test_homogenization: solver vs physical homogenisation tensor disagree (phi=1.0,psi=1.0,eta=0.0): 1.17e-02
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+2 TEST(S) FAILED
+
+[rc=1]
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  [4] local region (164 tri) nu=-0.15: achieved -0.150  OK
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.054, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.53), isotropic-tensor residual=0.013  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 65.3005 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+ALL PASSED
+
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  FAIL test_local_region: local nu achieved -0.128 vs -0.15
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.055, isotropise spread=0.001@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.61), isotropic-tensor residual=0.012  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 0.0598 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+1 TEST(S) FAILED
+
+[rc=1]
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  [4] local region (164 tri) nu=-0.15: achieved -0.150  OK
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.053, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.96), isotropic-tensor residual=0.012  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 48.6947 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+ALL PASSED
+
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  FAIL test_local_region: local nu achieved -0.128 vs -0.15
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.055, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.50), isotropic-tensor residual=0.011  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 10.4980 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+1 TEST(S) FAILED
+
+[rc=1]
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  [4] local region (164 tri) nu=-0.15: achieved -0.150  OK
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.053, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.96), isotropic-tensor residual=0.012  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 48.6947 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+ALL PASSED
+
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  FAIL test_local_region: local nu achieved -0.128 vs -0.15
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.053, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.68), isotropic-tensor residual=0.012  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 73.6717 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+1 TEST(S) FAILED
+
+[rc=1]
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  [4] local region (164 tri) nu=-0.15: achieved -0.150  OK
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.049, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.69), isotropic-tensor residual=0.014  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 16.2733 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+ALL PASSED
+
+==============================================================================
+inverse_design tests
+  [1] round-trip: full-tensor err=1.01e-04  OK
+  [2] auxetic target nu=-0.20: achieved -0.200  OK
+  [3] E target 0.652 (0.6*base): achieved 0.653  OK
+  FAIL test_local_region: local nu achieved -0.128 vs -0.15
+  [5] mixed: global nu=+0.250 (->+0.25), local patch nu=-0.200 (->-0.20)  OK
+  [6] large-N adjoint (800 tri) nu=0: achieved +0.000  OK
+  [7] open mesh (252 tri) nu=0.10: achieved +0.100  OK
+  [8] directional: nu-profile maxerr=0.047, isotropise spread=0.000@-0.100, E-flat mean=0.900  OK
+  [9] constrain: exact flat nu spread=0.000@-0.200 (ish=0.69), isotropic-tensor residual=0.017  OK
+  [10] strain/stress vs unit_mode_response: max relative residual=1.01e-03 (O(DELTA)=1e-03 expected)  OK
+  [11] stress autograd vs finite-diff: -3.288397e-05 vs -3.288397e-05  OK
+  [11] strain autograd vs finite-diff: 1.513801e-03 vs 1.513801e-03  OK
+  [12] stress design (global): err=0.0024  OK
+  [13] strain design (sub-region, 144 tri): err=0.0000  OK
+  [14] homogeneity regularizer: region nu-variance 75.2767 -> 0.0000 (achieved nu=-0.500)  OK
+  [15] homogenisation: regular nu=0.3333/E=1.1547; worst virial-vs-energy(Î½,E)=1.1e-13, solver-vs-physical(tensor)=1.6e-12  OK
+  [16] isotropization (disordered round-trip): anisotropy 0.3379 -> 0.0000, E 1.010 -> 1.010 (sim-confirmed)  OK
+1 TEST(S) FAILED
+
+[rc=1]
+==============================================================================
