@@ -238,7 +238,7 @@ Every design is still checked against the independent simulation — that check 
 failures. Bulk/periodic by construction; open-boundary questions use a separate nodal solve, for
 verification only.
 
-**A THIRD failure — audit B-1 — is ROOT-CAUSED AND GUARDED** *(2026-08-23)*. It is **not** either of
+**A THIRD failure — audit B-1 — is ROOT-CAUSED AND GUARDED** *(2026-08-23/24)*. It is **not** either of
 the two above and must not be conflated with them. The intrinsic solve ends in
 `torch.linalg.lstsq(G, r)` on a `G = J3·PinvJt` that is **singular by construction** (redundant
 constraint rows: rank 671/672, cond ~3e16 on the regular lattice). Measured **once in ~700 solves**,

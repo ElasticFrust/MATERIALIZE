@@ -1,8 +1,13 @@
-# B-1 overnight run — 2026-08-22/23
+# B-1 — investigation and fix, 2026-08-22 → 2026-08-24
 
-**What:** the first full-suite repetition campaign against audit **B-1** (solver nondeterminism),
-run as the blocker ahead of M2. 21 full `test_inverse_design` runs, 10.32 h, arms alternating
-1-thread / default-threads.
+> ## ✅ B-1 IS ROOT-CAUSED AND FIXED. **Read §4d (cause) and §4e (fix) first.**
+> **§§1–4c are the INVESTIGATION TRAIL, kept in chronological order because the refutations are
+> the useful part — but their headers and conclusions were written while the cause was still
+> unknown and are superseded by §4d/§4e.** Do not quote §§1–4c as current status.
+
+**What:** two full-suite repetition campaigns against audit **B-1** (solver nondeterminism), run as
+the blocker ahead of M2, then the probe that actually found it. Campaign #1: 21 full
+`test_inverse_design` runs, 10.32 h, arms alternating 1-thread / default-threads.
 
 **Provenance:** commit `0b378d7`; working tree carried one uncommitted change to
 `b1_overnight.py` (stderr capture, added before launch). Seeds are fixed by the suite.
@@ -21,8 +26,8 @@ Producer: `b1_overnight.py 10 --arms 1,0`. Analysis: `b1_excursion_analysis.py`,
 | excursion arm | **both on default threads; 0 in 11 on 1-thread** |
 | `[4]` `test_local_region` | **11/11 FAIL on 1-thread, 10/10 PASS on default** |
 
-Two independent findings came out of the night. **(A)** is settled and actionable; **(B)** is
-better characterised than before but still unexplained.
+Two independent findings came out of the night. **(A)** is settled and actionable. **(B)** was
+still unexplained *at the time this section was written* — it is **resolved in §4d/§4e**.
 
 ---
 
@@ -54,7 +59,7 @@ after the `reg=0.0` bistability. It is stable *at default threads only*.
 
 ---
 
-## 3. (B) B-1 itself — better characterised, still unexplained
+## 3. (B) B-1 itself — better characterised, still unexplained *(AS OF 2026-08-23 — see §4d)*
 
 Three excursions now exist on record (one from 2026-08-22, two from this run). All three are on
 **case 1 (φ=ψ=1, η=0, seed 0 — the regular lattice)**, all on **4 threads**, all with the solver
@@ -115,9 +120,9 @@ Three excursions now exist on record (one from 2026-08-22, two from this run). A
   backwards. They can refute a mechanism that requires a standing knife edge; they cannot identify
   what actually moved during an excursion.
 - **The dumps record the wrong output and nothing upstream** — no `G`, no singular values, no
-  effective rank, no intermediates. This is why three hypotheses could only be refuted. **The single
-  highest-value next step is to extend `_b1_dump_if_anomalous` to capture the upstream state**, so
-  the next excursion is diagnostic rather than merely another data point.
+  effective rank, no intermediates. This is why three hypotheses could only be refuted. *(DONE
+  2026-08-23: `_b1_dump_if_anomalous` now captures upstream state incl. `W`/`A3`, which is what
+  localised the cause in §4d.)*
 - **2 events is a small sample.** The arm asymmetry (2/10 default vs 0/11 1-thread) is suggestive,
   **not significant — Fisher exact two-sided p = 0.214**. The case asymmetry is the stronger of the
   two: all 3 excursions ever recorded are on case 1, against a uniform-over-cases null of
@@ -164,7 +169,8 @@ untouched while still moving `W`. That is precisely the blind spot the first cap
 `_B1Capture` now also records the metric solve's input `A3` and output `W`, which splits the
 remaining path in two — `W` matching the healthy run puts the fault **downstream in the contraction
 to C**; `W` differing puts it **inside the metric solve**. It was added after run 3, so runs 4–11
-carried it and **none of them hit. THE BISECTION HAS NO SUBJECT YET** — it needs another campaign.
+carried it and **none of them hit — the bisection had no subject yet.** *(It got one on
+2026-08-24 from `b1_persistence.py`, and the answer was `W`: see §4d.)*
 
 ### Combined rate
 
@@ -224,7 +230,7 @@ nothing constructible reproduces.**
 agree only to **1.1e-08**, not the 1.6e-12 the solver reaches against the oracle. Not the cause of
 B-1, but it bounds how much the two paths may be treated as interchangeable.)*
 
-### The next excursion is now a SHARP BINARY TEST
+### The next excursion is now a SHARP BINARY TEST *(it fired — the answer was `W`, see §4d)*
 
 Because `C` is **linear in `A(s)`** but nearly flat in `W` within the constraint manifold:
 
@@ -299,7 +305,7 @@ pivoting-based driver.**
 
 ---
 
-## 4e. THE FIX — a two-stage KKT guard in the core (2026-08-23)
+## 4e. THE FIX — a two-stage KKT guard in the core (2026-08-23/24)
 
 `Phase 2/forward_solver_torch.py::_woodbury_solve_aw`. **Protected core** — gated by all five suites.
 
