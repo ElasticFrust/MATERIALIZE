@@ -730,7 +730,8 @@ def _woodbury_solve_aw(A3, w, J3=None):
     res = (G @ Lam - r).detach()
     Gd = G.detach()
     scale = float(Gd.abs().max()) * max(float(res.abs().max()), float(r.detach().abs().max()))
-    if scale > 0.0 and float((Gd.T @ res).abs().max()) > _B1_KKT_RTOL * scale:
+    orth = float((Gd.T @ res).abs().max()) / scale if scale > 0.0 else 0.0
+    if orth > _B1_KKT_RTOL:
         Lam_alt = torch.linalg.lstsq(G, r, driver='gelsd').solution   # SVD: nothing to mis-pivot
         # Measure the impact on W, NOT on Lam. W = W0 - PinvJt Lam, so what matters is how much
         # the CORRECTION TERM moves relative to W0 -- a large relative move of a negligible Lam
@@ -742,9 +743,16 @@ def _woodbury_solve_aw(A3, w, J3=None):
         # (W == 0 identically there); that produced spurious 1.9e+06 and 3.9e+00 "repairs".
         dW = (PinvJt @ (Lam_alt - Lam).detach()).abs().max()
         impact = float(dW) / max(float(W0.detach().abs().max()), 1.0)
-        if impact > _B1_LAM_RTOL:
+        # ...and the re-solve must actually BE better, measured against the SAME denominator so the
+        # two are comparable. A "repair" that does not improve the orthogonality is a false positive
+        # BY DEFINITION; without this the guard could swap a good Lam for a worse one and would
+        # report a magnitude for it -- which is exactly how a self-checking guard goes wrong.
+        res_alt = (G @ Lam_alt - r).detach()
+        orth_alt = float((Gd.T @ res_alt).abs().max()) / scale
+        if impact > _B1_LAM_RTOL and orth_alt < orth:
             warnings.warn(f"audit B-1: KKT correction was mis-solved and has been repaired "
-                          f"(W changed by {impact:.3e} relative)", RuntimeWarning)
+                          f"(orthogonality {orth:.3e} -> {orth_alt:.3e}, W changed by "
+                          f"{impact:.3e} relative)", RuntimeWarning)
             Lam = Lam_alt                                    # SVD solution is the trustworthy one
     W = (W0.reshape(3*N, 3) - PinvJt @ Lam).reshape(N, 3, 3)
     return W.reshape(N, 9)

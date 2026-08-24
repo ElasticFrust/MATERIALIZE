@@ -363,14 +363,23 @@ probes; 700 lies well inside the interval above. Two different instruments, same
 *(Wilson, not the normal approximation — at these rates `p ± 1.96√(p(1−p)/n)` is wrong and
 collapses to zero width on a null result.)*
 
-**OPEN — the repaired magnitudes are larger than the one characterised event.** `|PinvJt·ΔΛ| /
-max(|W0|,1)` came out min 2.292, median 2.990, max 18.16, whereas the two caught in the wild under
-this same normalisation were 0.38 and 3.4 and the dissected excursion was ~0.46 (Frobenius).
-Either genuine mis-solves are frequently far more catastrophic than the one we dissected, or stage 2
-over-reports on some meshes. Stage 1 argues for *genuine* — it fires only above 1e-3 against a
-healthy maximum of 8.58e-08 across designed meshes, four orders below.
-**Next step, cheap and self-validating: have the guard assert that `orth` IMPROVED after repairing.**
-A repair that does not improve constraint satisfaction is a false positive by definition.
+**RESOLVED — the large magnitudes are GENUINE.** The guard now refuses to repair unless the
+orthogonality **provably improves** (a repair that does not improve it is a false positive by
+definition), and the magnitudes survived that filter unchanged: min 1.765, median 2.534, max 48.07,
+over 5 repairs in 2303 solves. So mis-solves are frequently far more catastrophic than the single
+event dissected in §4d (~0.46) — established, not assumed.
+
+```
+run A (before the orth assertion)   4 / 2488  = 1 in 622   95 % CI  1 in [242, 1599]
+run B (after  the orth assertion)   5 / 2303  = 1 in 461   95 % CI  1 in [197, 1078]
+POOLED                              9 / 4791  = 1 in 532   95 % CI  1 in [280, 1012]
+```
+
+**THE LOOP CLOSES.** The pre-fix probe measured C-level excursions at **1 in 700 solves**; the guard
+measures constraint mis-solves at **1 in 532 [280, 1012]**. Two independent instruments measuring
+*different* quantities — observable tensor error versus constraint violation — agree. That means
+essentially **every mis-solve produces a detectable error in `C`**, and it is the strongest
+confirmation that the mechanism is correctly identified.
 
 *(Earlier warning counts in this session are NOT usable for a rate — they were inflated by two buggy
 stage-2 normalisations, dividing by `|Λ|` and then by `|W0|`. This is the first clean measurement.)*
