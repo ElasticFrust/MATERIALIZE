@@ -242,6 +242,79 @@ trajectory is a target-biased walk — demonstrations, for the policy. Broad sam
 coverage — what the surrogate needs. A surrogate trained only on trajectory geometries would see
 only the slice an optimiser visits en route to targets we happened to ask for.)*
 
+### 3.1e THE GENERATOR SHOULD BE UNIT CELLS WITH BASES — not a fixed zoo
+
+**Reframing (user, 2026-08-24): the UNIT CELL is the fundamental object; everything else is
+repetition.** For a crystal, `C_eff` from the minimal cell **equals** `C_eff` from any supercell of
+it — the periodic correction has the lattice's own periodicity. So a systematic sweep over **small
+cells with N-node bases** is not a cheap corner of the space, it is a near-complete covering of the
+**crystalline** part of it:
+
+```
+    N = 1  Bravais          N = 2  honeycomb-like        N = 3  kagome-like        N ≥ 4  the rest
+```
+
+The current zoo samples this with `bravais` (N=1) plus **two hand-picked** basis crystals. Replacing
+that with an enumeration over (lattice vectors, basis size N, basis positions, connectivity) is
+systematic, cheap to label, and far wider.
+
+**Free gate that comes with it — SUPERCELL INVARIANCE.** Predict on the 1×1 cell and on its 3×3
+supercell: the answers must be **identical**, with no labels required. This directly tests the
+intensivity that v1's `sum` pooling would have violated, and it is a stronger statement than any
+size-generalisation score.
+
+### 3.1f DISORDER HAS A CORRELATION LENGTH — white-noise η is one corner
+
+**The `η ≤ 0.42` bound is a REGULAR-LATTICE measurement and does not transfer** (user, 2026-08-24).
+η is an *absolute* displacement, so on a mesh that already has short edges or thin triangles a
+*small* η can collapse a triangle into a sliver. The safe range is mesh-dependent.
+
+**Fix: stop gating on a scalar η; gate on SHAPE QUALITY.** `positions.tri_shape_quality` already
+exists (its docstring records the sliver-vs-gap correlations). Perturb, then accept/reject on quality
+and on the health gate, and **report the acceptance rate** — otherwise the surviving set is a biased
+subset, the same trap as the η-sweep seed count.
+
+**And white noise is only the zero-correlation-length corner.** The richer axis is a **correlated
+displacement field**:
+
+```
+    u(x) = Σ_q A_q sin(q·x + φ_q)          sweep the spectrum ⇒ sweep the correlation length
+```
+
+`q` large recovers white-noise η; `q` small gives smooth long-wavelength deformation — **locally a
+slightly-strained crystal, globally structured**. That regime is exactly what probes the
+receptive-field question of §3.1c: a finite-hop GNN sees a locally-crystalline environment while the
+global response differs. Sampling only white noise leaves that untested.
+
+### 3.1g WIDENING THE SPACE — by physics, not by more randomness
+
+The zoo is narrow, but "more random samples" is not the remedy. Widen along axes that move the
+quantities physics says control `C`:
+
+| axis | knob | why it matters | status |
+|---|---|---|---|
+| **coordination `z`** | **bond dilution** (soft-`k` subset) | Maxwell `z_c = 4` in 2D; sweeping z from 6 through isostatic is *the* rigidity axis | **ABSENT — biggest gap** |
+| symmetry / anisotropy | lattice vectors, **basis size N** (§3.1e) | sets the tensor's symmetry class | 2 hand-picked bases |
+| disorder correlation length | white noise → long-wavelength field (§3.1f) | separates local from collective response | white noise only |
+| stiffness distribution | k-patterns; correlated k fields | | partly |
+| mechanism presence | motif vocabulary (rotating squares, re-entrant, hexagon `d`) | the auxetic corners statistics cannot reach (§3.1d) | partly |
+
+**Bond dilution is the biggest gap and it is available**: the tilings already use soft `k = eps` to
+represent absent bonds, so dilution is a `k`-pattern, not a re-triangulation. It traverses **rigidity
+percolation**, where `E → 0` and `ν` swings hard — a physically central region the zoo never visits.
+
+**⚠ But it collides with a documented failure mode.** Dead / near-dead `k` is one of the two routes
+to `A(s)` rank loss (`CLAUDE.md` §3): measured on a regular lattice driven to ν=−0.2, 11 % of bonds
+dead gave **solver ν = −0.110 vs sim ν = +0.136 — opposite signs**. Note the contrast with the
+hexagon gate, where `k_spoke = 1e-8` is *benign* because it is a SPOKE (the face can hinge) — so
+softness itself is not the problem, its structural role is. Therefore dilution must be:
+- **bounded** — keep `k_soft` in the benign soft-spring regime rather than driving it to zero;
+- **health-gated**, and
+- **cross-checked against the independent sim far more densely than elsewhere.**
+
+It is simultaneously the richest axis and the one most likely to produce labels **the solver itself
+gets wrong** — which makes it a place to validate before training, not after.
+
 ### 3.2 Sampling axes crossed with each topology
 
 - **k-pattern**: `k0` (native/soft-fictional), `uniform`, `lognormal` (σ ∈ {0.3, 0.8}),
