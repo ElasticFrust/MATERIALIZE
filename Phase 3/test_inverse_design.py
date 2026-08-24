@@ -61,8 +61,13 @@ def test_property_E():
 def test_local_region():
     # `region` (not `reg`) -- `reg` is optimize()'s regularisation weight, which this now passes.
     # At the reg=0.0 default the outcome is bistable: repeated identical runs give err 0.0000 or
-    # 0.0664 (a near-mechanism, k_min/mean ~1e-8). reg=0.01-0.02 is both correct and stable;
-    # reg=0.05 over-constrains and misses the target (err 0.11).
+    # 0.0664 (a near-mechanism, k_min/mean ~1e-8). reg=0.01-0.02 is correct and stable AT THE
+    # DEFAULT THREAD COUNT ONLY -- measured 2026-08-23, this test is bistable in the BLAS thread
+    # count: threads=1 lands at nu=-0.1279 (err 0.0966, FAIL) and threads=4 at -0.1499 (err
+    # 0.000215) on the same seed and commit, 17/17 vs 15/15 across two overnight campaigns and
+    # confirmed in isolation by `verifications/b1_thread_local.py`. A ~1e-33 threading difference
+    # in the forward path is amplified by 120 L-BFGS iterations into a different basin -- which is
+    # why M2's dataset generator must PIN the thread count. reg=0.05 over-constrains (err 0.11).
     prob = DesignProblem.periodic(N=16, eta=0.2, seed=4)
     c = prob.centroids.mean(0)
     region = prob.region_in_circle(c, radius=0.20 * (prob.centroids[:, 0].max() - prob.centroids[:, 0].min()))
