@@ -315,10 +315,66 @@ softness itself is not the problem, its structural role is. Therefore dilution m
 It is simultaneously the richest axis and the one most likely to produce labels **the solver itself
 gets wrong** — which makes it a place to validate before training, not after.
 
+### 3.1h THE k FIELD — where the NONLINEARITY lives, so vary it as richly as the geometry
+
+`A(s)` is **linear** in `k`, but `W` depends on `k` through `A⁻¹` — so **the k-distribution is
+precisely what exercises the part of the map the GNN must actually learn.** At uniform `k`, `W` is a
+pure function of geometry; contrast in `k` is what makes it non-trivial. The current zoo varies
+roughly one of the four knobs below.
+
+**Free simplification from §2.2's scaling symmetry.** `C` is homogeneous of degree 1 in a global `k`
+scale (`W` invariant), so only the **SHAPE** `k/k̄` matters for `ν`, and the overall scale merely
+sets `E`. The sampler therefore explores shape only — **one fewer dimension, for free.**
+
+| knob | range | current |
+|---|---|---|
+| **marginal shape** | uniform · lognormal(σ) · **bimodal(f, ratio)** · **heavy-tailed (designed-like)** | lognormal only |
+| **correlation length ξ** | iid (ξ=0) · **correlated field** · gradient (ξ≈L) · uniform (ξ=∞) | **only the two extremes** |
+| **structure** (keyed to TOPOLOGY, not space) | **orientation** · **length** · **sublattice** · motif/region | absent |
+| **contrast** `k_max/k_min` | decades, bounded (see below) | implicit in σ |
+
+**Correlation length**, exactly as for geometry (§3.1f): `graded` is the single-mode limit and iid
+`lognormal` is the zero-length limit — the plan has both endpoints and **nothing in between**. A
+correlated log-normal field
+
+```
+    k(x) = exp( Σ_q A_q sin(q·x + φ_q) )
+```
+
+sweeps ξ, and it is the axis that tests whether `W` responds to **local** vs **long-range** stiffness
+contrast — the screening question of §3.1c, now in the `k` channel rather than the geometry channel.
+
+**Structure keyed to the topology is the biggest omission and the cheapest win:**
+- **orientation-keyed** — `k` as a function of bond direction ⇒ produces anisotropic `C` directly and
+  controllably (far more efficient than waiting for anisotropy to appear by chance);
+- **sublattice-keyed** — e.g. the three bond orientations of a honeycomb get different `k`; breaks
+  symmetry in a *designed* way, and pairs naturally with the basis enumeration of §3.1e;
+- **length-keyed** — `k ∝ ℓ^α`, a one-parameter family, mimics fibre networks;
+- **motif/region-keyed** — stiff inclusion in a soft matrix (the `two_region` / `glue_square_hole`
+  idiom), i.e. a characteristic length between iid and global gradient.
+
+*(Note the tilings' `k0` — natives at 1, fictional edges at `eps` — is ALREADY an instance of the
+structured-bimodal class. It is the only one currently sampled.)*
+
+**⚠ DEPLOYMENT SHIFT — the reason this is not optional.** The surrogate will run **inside the design
+loop**, so it must be accurate on the `k` distributions **the optimiser actually produces**, and
+those are measured **HEAVY-TAILED**: max/median **17** on a healthy design and **147** on a
+degenerate one (`CLAUDE.md` §3, the B-4 colour-scale finding). Training on lognormal and deploying on
+that is textbook distribution shift. The designed-network ingest (§3.3) covers it partly; heavy-tailed
+`k` should be sampled **deliberately**, not hoped for.
+
+**Unification: DILUTION IS NOT A SEPARATE AXIS.** §3.1g's bond dilution is the **large-contrast
+corner of the bimodal family** (`k_lo → eps`). So the contrast sweep approaches rigidity percolation
+*continuously*, and §3.1g's bounding + health-gating + denser sim cross-checks apply progressively
+along the sweep rather than as a special case. Contrast is therefore the axis to ramp **last and most
+carefully**, since it is the one that walks into the DEAD-k regime where the solver itself has been
+measured to return the wrong sign.
+
 ### 3.2 Sampling axes crossed with each topology
 
-- **k-pattern**: `k0` (native/soft-fictional), `uniform`, `lognormal` (σ ∈ {0.3, 0.8}),
-  `graded` (two amplitudes). ~6 per topology.
+- **k-pattern**: the four knobs of §3.1h — marginal shape × correlation length × topology-keyed
+  structure × contrast. The v1 set (`k0`, `uniform`, `lognormal`, `graded`) is the ξ-extremes
+  subset of this and is retained as the baseline arm.
 - **size**: minimal cells + `n_nodes ∈ {60, 120, 240}` for training; 500–1000 held out (§3.1c).
 - **seeds**: ≥5 per (topology, pattern, η>0); η=0 is deterministic (§3.1b).
 - **geometry**: the family's OWN parameter (η only for `bravais`) — see §3.1b.
