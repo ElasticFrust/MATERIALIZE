@@ -94,7 +94,7 @@ def _k_norm(k, scale='linear', hi_pct=None):
 
 # ---- 1. canonical network draw (tiled-continuous, cropped) ----------------------------------
 def draw_network(ax, geo, bond_k, cmap=STYLE.K_CMAP, norm=None, reps=STYLE.TILE_REPS,
-                 pad=STYLE.PAD, title=None, scale='linear'):
+                 pad=STYLE.PAD, title=None, scale='linear', solid=None):
     """THE canonical network draw. Tile the periodic cell reps×reps and crop to the central cell so
     bonds crossing the boundary render CONTINUOUSLY (no wrap gaps). Colour by k (viridis), CONSTANT
     medium width; bonds very close to k=0 drawn dashed (else solid). Square. Returns the (solid-bond)
@@ -104,16 +104,27 @@ def draw_network(ax, geo, bond_k, cmap=STYLE.K_CMAP, norm=None, reps=STYLE.TILE_
     Colour scale: `_k_norm` cuts the top at the K_HI_PCT percentile, NOT the max, so heavy-tailed
     designed k stays legible (audit B-4); bonds above the cut saturate, so attach the colorbar with
     `extend='max'` and put the true max in the title. `scale='log'` when the live stiffness spans
-    decades. Pass an explicit `norm` to override both (e.g. to share one scale across panels)."""
+    decades. Pass an explicit `norm` to override both (e.g. to share one scale across panels).
+
+    `solid`: optional boolean mask (per bond) overriding which bonds draw SOLID vs DASHED. The
+    default rule is `k >= K0_FRAC * median(k)`, which is MEDIAN-RELATIVE and therefore fails when
+    the near-zero bonds are the MAJORITY — the median is then itself near zero and nothing dashes.
+    That is real, not hypothetical: a phantom-centre-fan tiling has twice as many soft spokes as
+    native bonds (`seeds._fan_and_tag`), so its spokes rendered solid while the equal-count cases
+    dashed correctly. Pass the mask explicitly whenever the soft population is known and may be
+    large (e.g. `~rec['is_fictional']`)."""
     Lx, Ly = float(geo['BL1'][0]), float(geo['BL2'][1])
     pts = np.asarray(geo['pts'], float)
     u = pts[geo['bond_u']]
     v = u + np.asarray(geo['bond_R'], float)
     k = np.asarray(bond_k, float)
     norm = norm or _k_norm(k, scale=scale)
-    kmed = np.nanmedian(k)
-    kmed = kmed if (np.isfinite(kmed) and kmed > 0) else 1.0
-    solid = k >= STYLE.K0_FRAC * kmed                        # dashed only VERY near k=0
+    if solid is None:
+        kmed = np.nanmedian(k)
+        kmed = kmed if (np.isfinite(kmed) and kmed > 0) else 1.0
+        solid = k >= STYLE.K0_FRAC * kmed                    # dashed only VERY near k=0
+    else:
+        solid = np.asarray(solid, bool)
 
     r = reps // 2
     seg_s, k_s, seg_d, k_d = [], [], [], []
@@ -471,9 +482,11 @@ def save_element(draw, path, figsize=(4.6, 4.6), dpi=STYLE.DPI_ELEMENT):
 
 def montage(items, out_path, ncols=4, suptitle=None, cbar_label='k', dpi=STYLE.DPI_MONTAGE):
     """Grid of canonical network panels + each panel ALSO saved standalone (high-DPI) in an
-    `elements/` dir next to `out_path`. `items` = list of `(geo, bond_k, title)` (already loaded —
-    plotting.py does no IO). Returns the list of element image paths."""
-    items = list(items)
+    `elements/` dir next to `out_path`. `items` = list of `(geo, bond_k, title)`, or
+    `(geo, bond_k, title, solid)` to override the solid/dashed mask (see `draw_network`; needed
+    whenever the near-zero bonds are the MAJORITY, where the median-relative default dashes
+    nothing). Already loaded — plotting.py does no IO. Returns the list of element image paths."""
+    items = [(it if len(it) == 4 else (*it, None)) for it in items]
     if not items:
         raise ValueError('montage: no items given')
     n = len(items)
@@ -481,9 +494,9 @@ def montage(items, out_path, ncols=4, suptitle=None, cbar_label='k', dpi=STYLE.D
     nrows = int(np.ceil(n / ncols))
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(3.4 * ncols, 3.7 * nrows), squeeze=False)
-    for idx, (geo, k, title) in enumerate(items):
+    for idx, (geo, k, title, sol) in enumerate(items):
         ax = axes[idx // ncols][idx % ncols]
-        lc = draw_network(ax, geo, k, title=title)
+        lc = draw_network(ax, geo, k, title=title, solid=sol)
         fig.colorbar(lc, ax=ax, fraction=0.046, pad=0.02, label=cbar_label)
     for idx in range(n, nrows * ncols):
         axes[idx // ncols][idx % ncols].axis('off')
@@ -494,8 +507,9 @@ def montage(items, out_path, ncols=4, suptitle=None, cbar_label='k', dpi=STYLE.D
 
     elem_dir = os.path.join(os.path.dirname(os.path.abspath(out_path)), 'elements')
     elem_paths = []
-    for idx, (geo, k, title) in enumerate(items):
+    for idx, (geo, k, title, sol) in enumerate(items):
         ep = os.path.join(elem_dir, f'panel_{idx:02d}.png')
-        save_element(lambda ax, g=geo, kk=k, t=title: (draw_network(ax, g, kk, title=t)), ep)
+        save_element(lambda ax, g=geo, kk=k, t=title, sd=sol:
+                     (draw_network(ax, g, kk, title=t, solid=sd)), ep)
         elem_paths.append(ep)
     return elem_paths

@@ -1,0 +1,7 @@
+tiling,method,nodes,bonds,triangles,added_edges,native_edges,areas_over_box
+honeycomb_r3,fan,54,162,108,108,54,1.0
+kagome_r2,fan,32,96,64,48,48,1.0
+square_octagon_r2,fan,24,72,48,48,24,1.0
+honeycomb_r3,chord,36,108,72,54,54,1.0
+kagome_r2,chord,24,72,48,24,48,1.0
+square_octagon_r2,chord,16,48,32,24,24,1.0
