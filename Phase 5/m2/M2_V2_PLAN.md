@@ -141,14 +141,66 @@ From `seeds.seed_pool(include=('bravais','random','tiling','basis','auxetic'))`:
 own parameters (reps, θ of rotating squares, v of reentrant honeycomb, η) rather than letting
 `random` dominate — otherwise every held-out-family score is really "trained on random".
 
+### 3.1b GEOMETRY (node positions) is a primary axis — and it fixes the balance problem
+
+**Moving vertices on a FIXED topology creates essentially a new network**, and this project already
+has the verified generator: **frozen-connectivity magnitude-η disorder** (`build_periodic_tf_mesh`,
+`CLAUDE.md` §3 — perturb positions, **never re-triangulate**, no `uniform(−η,η)`). It is not mere
+augmentation: it drives **ν from +1/3 down to ≈ −0.11**, so it traverses real physics.
+
+This is the answer to §3.1's balance problem. `tiling`, `basis` and `auxetic` are a handful of
+*topologies* each, but each expands into hundreds of distinct networks:
+
+```
+per topology:  η ∈ {0, 0.1, 0.2, 0.3, 0.4} × seeds (5, for η>0; η=0 is deterministic)
+               × k-patterns (6) × sizes (3)      ≈ 450 samples per base topology
+                                                 → ~10k across the zoo
+```
+
+Constraints, all from the project's own measurements:
+- **η ≤ 0.42.** η=0.5 is singular; the sim health gate fires at **η ≥ 0.44** (only 3/10 seeds survive
+  η=0.5). Try/except `UnhealthyGeometryError` and **record the surviving-seed count**, or the
+  family average is a silently biased subset.
+- **Never re-triangulate** — connectivity must stay frozen or the topology label is a lie.
+- η=0 needs only one seed (deterministic); seeds matter only for η>0.
+
+**⚠ This blurs the holdout.** At large η a honeycomb-topology network approaches a generic
+disordered one, so families become similar and leave-one-family-out gets EASIER than it should be —
+inflating the headline score. **Stratify:** hold families out at **low η**, where they are genuinely
+distinct, and treat high-η as its own regime rather than letting it bridge the split. Report the
+score as a function of η.
+
+### 3.1c SIZE — vary it, and use it as an architecture test
+
+Current build: **9 / 90 / 288** nodes (min/median/max).
+
+`C_eff` is **INTENSIVE** — tile a crystal twice and `C` is unchanged. The §2.1 head gives
+`C_eff = (1/N)Σ_s C(s)`, a **mean**, so this holds by construction. **v1 pooled `mean + sum`
+globally, and the `sum` branch is EXTENSIVE** — its output grows with node count, which is simply
+wrong for `C`. Size variation would have exposed it as a systematic bias; it is another reason the
+head is replaced rather than tuned.
+
+Plan: **train on 60–250 nodes** (cheap to label), **hold out a LARGE bin (500–1000) as a separate
+generalisation test**. Large labels are expensive, so spending them on validation rather than
+training is a real saving.
+
+**Physical caveat — the receptive field.** `W` comes from a *global* constrained solve (compatibility
++ curvature couple the whole cell, like a Poisson problem), while a message-passing GNN sees only
+`n_layers` hops. The surrogate can therefore only capture `W` insofar as the elastic response is
+**screened** over a finite correlation length. **Prediction: accuracy degrades with cell size, and
+fastest near a mechanism**, where the correlation length diverges — precisely where the solver is
+fragile too. If observed, that is the architecture meeting a real limit, not a training failure;
+mitigations are more layers, a global-context vector, or hierarchical message passing.
+
 ### 3.2 Sampling axes crossed with each topology
 
 - **k-pattern**: `k0` (native/soft-fictional), `uniform`, `lognormal` (σ ∈ {0.3, 0.8}),
   `graded` (two amplitudes). ~6 per topology.
-- **size**: `n_nodes ∈ {60, 120, 240}` where the family allows, to test size generalisation.
-- **seeds**: ≥5 per (topology, pattern) for the stochastic families.
+- **size**: `n_nodes ∈ {60, 120, 240}` for training; a separate 500–1000 bin held out (§3.1c).
+- **seeds**: ≥5 per (topology, pattern, η>0); η=0 is deterministic (§3.1b).
+- **η (geometry)**: {0, 0.1, 0.2, 0.3, 0.4}, capped at 0.42 — see §3.1b.
 
-**Target ≈ 5 000 samples**, with **no family below ~10 %** of the total.
+**Target ≈ 10 000 samples** (η makes this cheap), with **no family below ~10 %** of the total.
 
 ### 3.3 Labels
 
