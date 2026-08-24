@@ -141,64 +141,114 @@ From `seeds.seed_pool(include=('bravais','random','tiling','basis','auxetic'))`:
 own parameters (reps, θ of rotating squares, v of reentrant honeycomb, η) rather than letting
 `random` dominate — otherwise every held-out-family score is really "trained on random".
 
-### 3.1b GEOMETRY (node positions) is a primary axis — and it fixes the balance problem
+### 3.1b GEOMETRY — vary it per FAMILY, not with a blanket η
 
-**Moving vertices on a FIXED topology creates essentially a new network**, and this project already
-has the verified generator: **frozen-connectivity magnitude-η disorder** (`build_periodic_tf_mesh`,
-`CLAUDE.md` §3 — perturb positions, **never re-triangulate**, no `uniform(−η,η)`). It is not mere
-augmentation: it drives **ν from +1/3 down to ≈ −0.11**, so it traverses real physics.
+Moving vertices on a FIXED topology makes essentially a new network, and it is a real physical axis:
+frozen-connectivity magnitude-η (`build_periodic_tf_mesh`, never re-triangulate) drives **ν from
++1/3 to ≈ −0.11** on the regular lattice.
 
-This is the answer to §3.1's balance problem. `tiling`, `basis` and `auxetic` are a handful of
-*topologies* each, but each expands into hundreds of distinct networks:
+**But η is NOT a universal axis, and an earlier draft of this plan wrongly used it as one.** Applied
+blindly it is useless or actively harmful:
 
-```
-per topology:  η ∈ {0, 0.1, 0.2, 0.3, 0.4} × seeds (5, for η>0; η=0 is deterministic)
-               × k-patterns (6) × sizes (3)      ≈ 450 samples per base topology
-                                                 → ~10k across the zoo
-```
+- `random` — already disordered; η adds nothing.
+- **`auxetic` — η DESTROYS THE MOTIF.** Perturbing a re-entrant honeycomb makes it generic, so it
+  *depopulates* the rare auxetic region it was supposed to fill. This is the worst case.
+- `tiling` — degrades the mesh without clearly adding physics; the geometry *is* the tiling.
 
-Constraints, all from the project's own measurements:
-- **η ≤ 0.42.** η=0.5 is singular; the sim health gate fires at **η ≥ 0.44** (only 3/10 seeds survive
-  η=0.5). Try/except `UnhealthyGeometryError` and **record the surviving-seed count**, or the
-  family average is a silently biased subset.
-- **Never re-triangulate** — connectivity must stay frozen or the topology label is a lie.
-- η=0 needs only one seed (deterministic); seeds matter only for η>0.
+Use each family's **own natural parameter** instead:
 
-**⚠ This blurs the holdout.** At large η a honeycomb-topology network approaches a generic
-disordered one, so families become similar and leave-one-family-out gets EASIER than it should be —
-inflating the headline score. **Stratify:** hold families out at **low η**, where they are genuinely
-distinct, and treat high-η as its own regime rather than letting it bridge the split. Report the
-score as a function of η.
+| family | axis | why |
+|---|---|---|
+| `bravais` | **η** (≤0.42), φ, ψ | the family η was validated on |
+| `auxetic` | **motif parameters** — rotating-square θ, re-entrant `v`, hexagon diameter `d` | traverses the family **while staying auxetic** |
+| `tiling` | reps, k-pattern (+ optional chord/fan arm) | geometry is the tiling's definition |
+| `basis` | basis parameters | same |
+| `random` | point process, `n_nodes`, seed | disorder is already its axis |
 
-### 3.1c SIZE — vary it, and use it as an architecture test
+**The hexagon diameter family is special: it has a CLOSED FORM**, `ν(d) = (4r²−1)/(3+4r−4r²)`,
+matched to 4.4e-06 by `test_hex_closed_form`. It is simultaneously a continuous auxetic sampling
+axis **and** a third-path ground truth — labels checkable without solver or sim. Use it as both.
 
-Current build: **9 / 90 / 288** nodes (min/median/max).
+η constraints where it IS used: **η ≤ 0.42** (0.5 singular; health gate fires at η≥0.44, only 3/10
+seeds survive 0.5) — try/except `UnhealthyGeometryError` and **record the surviving-seed count**, or
+the average is a silently biased subset. η=0 needs one seed.
+
+**⚠ Any geometry axis blurs the holdout.** A heavily perturbed honeycomb approaches a generic
+disordered network, making leave-one-family-out EASIER than it should be and inflating the headline.
+**Stratify:** hold families out at LOW disorder, treat high disorder as its own regime, and report
+the score as a function of the disorder parameter.
+
+### 3.1c SIZE — from MINIMAL CELLS (analytic anchor) to large (generalisation test)
 
 `C_eff` is **INTENSIVE** — tile a crystal twice and `C` is unchanged. The §2.1 head gives
-`C_eff = (1/N)Σ_s C(s)`, a **mean**, so this holds by construction. **v1 pooled `mean + sum`
-globally, and the `sum` branch is EXTENSIVE** — its output grows with node count, which is simply
-wrong for `C`. Size variation would have exposed it as a systematic bias; it is another reason the
-head is replaced rather than tuned.
+`C_eff = (1/N)Σ_s C(s)`, a **mean**, so this holds by construction. **v1 pooled `mean + sum`, and the
+`sum` branch is EXTENSIVE** — its output grows with node count, which is simply wrong for `C`. Size
+variation would have exposed it as systematic bias; another reason the head is replaced, not tuned.
 
-Plan: **train on 60–250 nodes** (cheap to label), **hold out a LARGE bin (500–1000) as a separate
-generalisation test**. Large labels are expensive, so spending them on validation rather than
-training is a real saving.
+**MINIMAL CELLS ARE AN ANALYTIC ANCHOR, not merely cheap data.** The smallest periodic mesh is
+`V=1, E=3, F=2` (Euler on the torus). In the small-cell limit the non-affine correction vanishes and
+
+```
+    C(s) -> A(s) = Σ_e (k_e / 4ℓ_e²) q_e q_eᵀ        (closed form)
+```
+
+which in the §2.1 parametrisation is the sharp prediction that **`MMᵀ` is DIAGONAL with entries
+`k_e/4ℓ_e²`**. So tiny cells carry GROUND TRUTH, and they isolate the learning problem: the diagonal
+is pinned analytically and everything to be learned sits in the **off-diagonals — exactly the
+non-affine content**. This is an **M1 gate**, not just a sample.
+
+It also inverts the receptive-field concern: a small cell fits entirely inside the GNN's receptive
+field, so the model *can* be exact there, and the degradation with size becomes a measured curve.
+
+*Caveat:* in a minimal cell every bond is a **self-loop** in the quotient graph (node to its own
+periodic image, distinguished only by `bond_R`). Message passing must handle `u == v` sensibly —
+test at M1.
+
+Size plan: **minimal (2–20 tri) -> training bulk (60–250 nodes) -> held-out LARGE bin (500–1000)**.
+Large labels are expensive, so they are spent on validation, not training.
 
 **Physical caveat — the receptive field.** `W` comes from a *global* constrained solve (compatibility
-+ curvature couple the whole cell, like a Poisson problem), while a message-passing GNN sees only
-`n_layers` hops. The surrogate can therefore only capture `W` insofar as the elastic response is
-**screened** over a finite correlation length. **Prediction: accuracy degrades with cell size, and
-fastest near a mechanism**, where the correlation length diverges — precisely where the solver is
-fragile too. If observed, that is the architecture meeting a real limit, not a training failure;
-mitigations are more layers, a global-context vector, or hierarchical message passing.
++ curvature couple the whole cell, like a Poisson problem), while message passing sees only
+`n_layers` hops. The surrogate captures `W` only insofar as the response is **screened** over a
+finite correlation length. **Prediction: accuracy degrades with cell size, fastest near a
+mechanism**, where that length diverges — exactly where the solver is fragile too. If observed, that
+is a real architectural limit, not a training failure.
+
+### 3.1d Is topology "immaterial — only its statistics"?
+
+**Generically yes, and there is a hard version:** Maxwell counting. In 2D central-force networks the
+isostatic point is `z_c = 4`; triangular is z=6 (rigid), kagome z=4 (marginal), honeycomb z=3
+(floppy — **which is exactly why the tilings need soft fictional edges at all**). Statistics do real
+predictive work.
+
+**And it matches the model class:** a GNN with mean pooling *is* a learned statistic over local
+environments — permutation-invariant, so it cannot memorise a specific wiring; it learns a
+distribution over local motifs.
+
+**But it FAILS precisely where the interest is.** Rotating-squares and re-entrant honeycomb are
+auxetic because of a specific **collective geometric motif**, not because of their statistics: a
+random network with the same `z` and length distribution is not auxetic. That is a collective mode,
+not a local average — the same long-range issue as the receptive field.
+
+**Split to carry forward:** statistics govern the generic/disordered bulk; specific structure governs
+the rare, mechanism-driven corners a design tool exists to reach. **Consequence for the eventual
+generative model:** it should emit **target statistics** (coordination, length/angle distributions,
+motif frequencies) and then *realise* a network with them — far better posed than generating a graph
+directly — with mechanisms handled as an explicit **motif vocabulary** rather than hoped for from
+sampling.
+
+*(Note: trajectory positions and broad geometry sampling are COMPLEMENTARY, not redundant. A
+trajectory is a target-biased walk — demonstrations, for the policy. Broad sampling is unbiased
+coverage — what the surrogate needs. A surrogate trained only on trajectory geometries would see
+only the slice an optimiser visits en route to targets we happened to ask for.)*
 
 ### 3.2 Sampling axes crossed with each topology
 
 - **k-pattern**: `k0` (native/soft-fictional), `uniform`, `lognormal` (σ ∈ {0.3, 0.8}),
   `graded` (two amplitudes). ~6 per topology.
-- **size**: `n_nodes ∈ {60, 120, 240}` for training; a separate 500–1000 bin held out (§3.1c).
+- **size**: minimal cells + `n_nodes ∈ {60, 120, 240}` for training; 500–1000 held out (§3.1c).
 - **seeds**: ≥5 per (topology, pattern, η>0); η=0 is deterministic (§3.1b).
-- **η (geometry)**: {0, 0.1, 0.2, 0.3, 0.4}, capped at 0.42 — see §3.1b.
+- **geometry**: the family's OWN parameter (η only for `bravais`) — see §3.1b.
 
 **Target ≈ 10 000 samples** (η makes this cheap), with **no family below ~10 %** of the total.
 
