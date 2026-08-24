@@ -205,8 +205,10 @@ def draw_network(ax, geo, k_bond, cmap='viridis', lw_scale=3.0, box=True):
 
     Kept as a thin shim rather than deleted so those call sites keep working. **`lw_scale` is now a
     NO-OP** — encoding k by width is exactly what the policy forbids; the parameter survives only so
-    existing calls do not break. Figures produced before this change are preserved alongside their
-    regenerated versions as `*_legacy_prePlotPolicy.png`."""
+    existing calls do not break. Figures produced before this change were tombstoned alongside their
+    regenerated versions as `*_legacy_prePlotPolicy.png`; those nine tombstones were **deleted
+    2026-08-24** once the regenerated figures had been in use for a while (recoverable from git
+    history if ever needed)."""
     import plotting as _P                                 # lazy: avoids an import cycle at module load
     return _P.draw_network(ax, geo, k_bond, cmap=cmap)
 

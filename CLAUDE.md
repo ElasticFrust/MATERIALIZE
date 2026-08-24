@@ -4,11 +4,13 @@
 > Covers only what is specific to MATERIALIZE: scope (§1), architecture (§2), and the settled
 > maths/physics conventions & working habits (§3). It does **not** restate the charter.
 >
-> **Session start — don't start cold.** Before acting each session, read: this file (§1–3), the
-> relevant `Phase */PLAN.md`, `Phase 2/SOLVER_GUIDE.md`, — for theory — `documentation/MATERIALIZE.md`,
-> and **`documentation/VERIFICATION_CAMPAIGN.md`, the INDEX of what has already been measured**
-> (one line per analysis script saying which question it answers; `verification_tools/README.md`
-> indexes the rest).
+> **Session start — don't start cold.** Before acting each session, read **first
+> `documentation/NEXT_SESSION.md` — the live TODO and the entry point**: what is done, what is
+> blocked, what is deferred and why, plus "things not to re-learn the hard way". Then: this file
+> (§1–3), the relevant `Phase */PLAN.md`, `Phase 2/SOLVER_GUIDE.md`, — for theory —
+> `documentation/MATERIALIZE.md`, and **`documentation/VERIFICATION_CAMPAIGN.md`, the INDEX of what
+> has already been measured** (one line per analysis script saying which question it answers;
+> `verification_tools/README.md` indexes the rest).
 > Keep code, docs, and this file mutually consistent; drift is a bug (there is a standing
 > code-vs-docs consistency-sweep task).
 >

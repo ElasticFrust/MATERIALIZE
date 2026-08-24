@@ -68,8 +68,9 @@ relative max |ΔE|        = 8.966e-10
   `reg=5e-3` is below the **0.01–0.05** `CLAUDE.md` §3 recommends, and that is the knob for a less
   degenerate design at the same target. Not changed here: matching fig1's published configuration
   was the point.
-- **The July artifacts are left untouched** (`fig1_pointy_network.npz`, `fig1_recreate_pointy.png`,
-  and the `*_legacy_prePlotPolicy.png` tombstones). Replacing fig1's cache is a separate decision.
+- **The July artifacts are left untouched** (`fig1_pointy_network.npz`, `fig1_recreate_pointy.png`).
+  Replacing fig1's cache is a separate decision. *(The `*_legacy_prePlotPolicy.png` tombstones this
+  line also used to name were deleted 2026-08-24 — see `AUDIT_2026-08.md` B-4; git history keeps them.)*
 - **`fig1c` / `fig1d` are equally stale** and not addressed here.
 - The E(θ) of this design is tiny (peak ≈ 0.0065) — expected, since only ν was targeted; fig1's own
   title records the design as "~50× softer".
