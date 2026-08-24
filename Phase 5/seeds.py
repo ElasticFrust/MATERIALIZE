@@ -464,6 +464,120 @@ def _fan_and_tag(name, pts, native, Lx, Ly, bond_len, eps):
     return rec
 
 
+def _ear_clip(poly, tol=1e-12):
+    """Triangulate a SIMPLE polygon using ONLY ITS OWN VERTICES (ear clipping).
+
+    Returns index triples into `poly` (an (n,2) array of the polygon's corners in order). Every
+    diagonal it emits stays strictly inside the polygon: an ear is cut only when its apex is CONVEX
+    *and* no other corner lies inside it, which is what makes the result **non-crossing by
+    construction** — the property the Delaunay chord split failed to provide (see `_chord_and_tag`).
+
+    Handles non-convex faces too, so it does not assume the tiling's polygons are convex.
+    """
+    n = len(poly)
+    idx = list(range(n))
+    area2 = sum(poly[i][0] * poly[(i + 1) % n][1] - poly[(i + 1) % n][0] * poly[i][1]
+                for i in range(n))
+    if area2 < 0:                                  # ear clipping below assumes CCW
+        idx.reverse()
+
+    def cross(o, p, q):
+        return (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0])
+
+    def inside(p, a, b, c):
+        d1, d2, d3 = cross(a, b, p), cross(b, c, p), cross(c, a, p)
+        return (d1 > tol and d2 > tol and d3 > tol)          # strictly interior only
+
+    out = []
+    while len(idx) > 3:
+        for k in range(len(idx)):
+            i0, i1, i2 = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            a, b, c = poly[i0], poly[i1], poly[i2]
+            if cross(a, b, c) <= tol:                        # reflex or collinear: not an ear
+                continue
+            if any(inside(poly[m], a, b, c) for m in idx if m not in (i0, i1, i2)):
+                continue
+            out.append((i0, i1, i2))
+            idx.pop(k)
+            break
+        else:                                                # fail fast (project default)
+            raise RuntimeError(f'ear clipping stalled on a {n}-gon: not a simple polygon?')
+    out.append(tuple(idx))
+    return out
+
+
+def _chord_and_tag(name, pts, native, Lx, Ly, bond_len, eps):
+    """Triangulate a tiling with NON-CROSSING CHORDS — the tiling's own vertices only, no phantoms.
+
+    **Why this exists alongside `_fan_and_tag`.** The fan is correct by construction and is what
+    ships, but it inserts a PHANTOM CENTRE per face, which changes the vertex set and adds DOF
+    (`tiling_honeycomb_r3`: 36 -> 54 nodes, 110 -> 162 bonds). Anything reasoning about the tiling's
+    own coordination — or feeding node counts to M2 — sees a different graph. This keeps the vertex
+    set of the actual tiling: an n-gon becomes n-2 triangles via n-3 chords.
+
+    **It is NOT a drop-in replacement for the fan, and the difference is physical, not cosmetic.**
+    A soft SPOKE lets a polygon hinge; a soft CHORD must still carry the face's shear (`_fan_and_tag`,
+    and `NEXT_SESSION.md`: honouring `k0` on chords "would only make everything near-mechanism").
+    So a chord tiling with `eps` chords is a genuinely different network from a fan with `eps`
+    spokes. Which one a study should use is a modelling choice, not a default to flip silently.
+
+    The failure this fixes is the Delaunay chord split (`_triangulate_and_tag`), which chose chords
+    globally and produced edges that CROSS on periodic cocircular ties — 4 crossings on
+    `tiling_honeycomb_r3`, 5 on `_r4`, 2 on `tiling_kagome_r2`, i.e. overlapping triangles. Here the
+    chords are chosen PER FACE by ear clipping in the face's own unwrapped frame, so a chord can
+    neither leave its face nor cross another chord of the same face.
+    """
+    box = np.array([Lx, Ly])
+    adj = _native_adjacency(pts, box, bond_len)
+    faces = _native_faces(adj)
+    nV, nE = len(pts), sum(len(v) for v in adj.values()) // 2
+    assert nV - nE + len(faces) == 0, \
+        f'{name}: face traversal gives V-E+F = {nV - nE + len(faces)}, expected 0 on a torus'
+
+    tris = []
+
+    def shift(base, world):
+        return np.round((world - pts[base]) / box).astype(int)
+
+    for face in faces:
+        corners, acc = [], np.zeros(2)
+        for (vi, d) in face:
+            corners.append((vi, acc.copy()))
+            acc = acc + d
+        if not np.allclose(acc, 0.0, atol=1e-6):        # closes only around the torus: not a face
+            continue
+        world = [pts[face[0][0]] + off for (_, off) in corners]
+        local = [(corners[t][0], shift(corners[t][0], world[t])) for t in range(len(corners))]
+        if len(corners) == 3:
+            tris.append([[local[t][0], *local[t][1]] for t in range(3)])
+            continue
+        for (a, b, c) in _ear_clip(np.array(world)):    # chords chosen INSIDE this face only
+            tris.append([[local[a][0], *local[a][1]],
+                         [local[b][0], *local[b][1]],
+                         [local[c][0], *local[c][1]]])
+
+    geo = geo_from_simplices(np.array(pts), np.array(tris, np.int64), Lx, Ly)
+    A = geo['pts'][geo['bond_u']]
+    sigs = [_edge_sig(A[bi], A[bi] + geo['bond_R'][bi], box) for bi in range(len(geo['bond_u']))]
+    is_fic = np.array([sg not in native for sg in sigs], bool)
+    missing = native - set(sigs)
+    assert not missing, f'{name}: chording dropped {len(missing)} of {len(native)} native edges'
+    assert (geo['areas'] > 0).all(), f'{name}: non-positive triangle area'
+    # Coverage cross-check: on a torus an exact triangulation tiles the box exactly once, so the
+    # areas must sum to Lx*Ly. NECESSARY BUT NOT SUFFICIENT, and measured as such against the
+    # known-bad Delaunay split: it catches `honeycomb_r3` (0.9537) and `_r4` (0.9948) but NOT
+    # `kagome_r2`, which lands at 1.000000 despite its 2 crossings -- an overlap and a gap can
+    # cancel in the total. Note the bad cases come out UNDER 1 (net gaps), not over.
+    # The real guarantee here is STRUCTURAL: ear clipping confines every chord to the interior of
+    # its own face, so no chord can cross another. This assert only catches gross construction bugs.
+    tot = float(geo['areas'].sum())
+    assert abs(tot - Lx * Ly) < 1e-6 * Lx * Ly, \
+        f'{name}: triangle areas sum to {tot:.6f}, expected {Lx * Ly:.6f} -> mesh does not tile'
+    rec = make_record(name, geo, k0=np.where(is_fic, eps, 1.0), is_fictional=is_fic)
+    rec['mesh_ok'] = True            # non-crossing by construction; asserted above
+    return rec
+
+
 def _triangulate_and_tag(name, pts, native, Lx, Ly, eps, required=None):
     """Delaunay-triangulate the tiling vertices, tag each geo bond native/fictional by matching its
     signature against `native`, and assert every REQUIRED edge survived (else the mesh is
@@ -523,18 +637,30 @@ _TILINGS = {'square': _raw_square, 'honeycomb': _raw_honeycomb,
             'kagome': _raw_kagome, 'square_octagon': _raw_square_octagon}
 
 
-def seed_tiling(name, reps, eps=1e-3):
+def seed_tiling(name, reps, eps=1e-3, method='fan'):
     """A non-triangular tiling represented as a triangulation with SOFT 'fictional' diagonal edges.
     name in {'square','honeycomb','kagome','square_octagon'}.  Native bonds -> k0=1.0; added
-    triangulating diagonals -> k0=eps and is_fictional=True."""
+    triangulating diagonals -> k0=eps and is_fictional=True.
+
+    `method` selects how the non-triangular faces are triangulated:
+      'fan'   (DEFAULT, what ships) — phantom centre vertex per face, fanned to its corners.
+              Correct by construction and the representation `test_hex_closed_form` validates.
+      'chord' — non-crossing chords, the tiling's OWN vertices only (no phantoms, no extra DOF).
+              Use when node/bond counts must match the actual tiling (e.g. feeding M2).
+    **They are physically different networks, not two spellings of one:** a soft SPOKE lets a face
+    hinge, a soft CHORD must still carry its shear. Choosing between them is a modelling decision —
+    see `_chord_and_tag`."""
     if name not in _TILINGS:
         raise ValueError(f"unknown tiling {name!r}; have {sorted(_TILINGS)}")
+    if method not in ('fan', 'chord'):
+        raise ValueError(f"unknown method {method!r}; have 'fan', 'chord'")
     raw, Lx, Ly, bond_len = _TILINGS[name](reps)
     pts = _dedupe_pts(raw, Lx, Ly)
     native = _native_by_distance(pts, np.array([Lx, Ly]), bond_len)
-    # PHANTOM-CENTRE FAN, not Delaunay chords (2026-08-22): chords CROSS on honeycomb/kagome —
-    # measured 4/5/2 crossings — which is overlapping triangles, not a mesh. See `_fan_and_tag`.
-    return _fan_and_tag(f'tiling_{name}_r{reps}', pts, native, Lx, Ly, bond_len, eps)
+    # NOT Delaunay chords (2026-08-22): a global Delaunay CROSSES on honeycomb/kagome — measured
+    # 4/5/2 crossings, i.e. overlapping triangles. Both options below are non-crossing.
+    tag = _fan_and_tag if method == 'fan' else _chord_and_tag
+    return tag(f'tiling_{name}_r{reps}', pts, native, Lx, Ly, bond_len, eps)
 
 
 # ---- 5. Phase 4 point layouts (OPTIONAL, best-effort) ----------------------------------------
