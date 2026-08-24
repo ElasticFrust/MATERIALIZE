@@ -1,21 +1,51 @@
 # NEXT SESSION — start here
 
-**Rewritten 2026-08-22 (end of session); §1 updated 2026-08-23 after the overnight run.** Read
-`CLAUDE.md` §1–3, this file, and
-**`documentation/VERIFICATION_CAMPAIGN.md` — the index of what has already been measured. Read it
-before proposing any new measurement.** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
+**Rewritten 2026-08-22; §1 rewritten 2026-08-24 — B-1 IS FIXED.** Read `CLAUDE.md` §1–3, this file,
+and **`documentation/VERIFICATION_CAMPAIGN.md` — the index of what has already been measured. Read
+it before proposing any new measurement.** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
 
-> **The goal is the GNN.** Everything below is ordered by what has to be true before training M2 is
-> worth doing. Item 1 is the only real blocker; items 2–3 are decisions only the user can make.
+> **The goal is the GNN, and the blocker is GONE.** B-1 was root-caused and fixed on 2026-08-24
+> (§1 below). **M2's two decisions are now the top of the list, and they are yours** — nothing
+> technical stands in front of them.
 
 ---
 
 ## THE TODO, in order
 
-### 1. B-1 — the overnight run. THE BLOCKER. **RUN 2026-08-22/23 — still the blocker.**
-Solver nondeterminism. **Why it gates the GNN:** if the solver can differ from the independent sim
-by 1.18e-02 on ~1 run in 21, a training set labelled by that solver carries unlabelled noise of the
-same size, and no amount of model capacity fixes that. M2's labels are only as good as this.
+### 1. B-1 — ✅ **ROOT-CAUSED AND FIXED (2026-08-24).** No longer a blocker.
+Full write-up: **`Phase 3/verifications/b1_dumps/B1_OVERNIGHT.md`** (§4d cause, §4e the fix and its
+verification). Settled statement of record: `CLAUDE.md` §3.
+
+**The cause.** The intrinsic solve ends in `torch.linalg.lstsq(G, r)` on a `G = J3·PinvJt` that is
+**singular by construction** (redundant constraint rows; rank 671/672, cond ~3e16). Roughly **1 in
+532 solves** its pivoting CPU driver returns a `Λ` that only *partially* applies the KKT correction:
+every input stays **bit-perfect** while the returned `W` violates `J3·W = 0` by fourteen orders, and
+`C_eff` comes out **~1 % over-compliant** — above design tolerances, indistinguishable from a real
+result. That one mechanism explains B-1's whole signature (always over-compliant, diffuse,
+discrete/bit-identical across commits, invisible upstream).
+
+**The fix** (protected core, `_woodbury_solve_aw`): every solve tests the residual's orthogonality
+`Gᵀ(GΛ−r) ≈ 0`; only on a trigger does it re-solve with the SVD driver, and it repairs only if the
+correction term actually moves **and** the orthogonality provably improves. No exception path; warns
+on repair.
+
+**Verified:** all five gates green · injecting the observed failure repairs to within **2.08e-17** of
+the healthy `C` · `b1_persistence.py` **0 excursions in 700** vs **1 in 700** pre-fix, same burst ·
+rate **1 in 532, 95 % CI [280, 1012]**, cross-checking the probe's independent 1-in-700.
+
+**What is still open about B-1** (none of it blocking): it is a **guard, not a cure** — the
+library-level intermittency may remain, but a wrong result can no longer propagate silently; the
+`Λ`-vs-`PinvJt` question of §4d is moot rather than answered; and the *trigger* (an excursion hits
+the first solve after a context test, p = 0.02, but **which** test is unestablished, p = 1/14).
+
+**New instruments, all in `Phase 3/verifications/`:** `b1_persistence.py` (the one that found it —
+probes `[15]`'s case 1 repeatedly inside one real suite process, ~500× more draws per unit compute
+than a suite-repetition campaign) · `b1_rate.py` (repair rate, Wilson interval) ·
+`b1_excursion_analysis.py` (dump structure + the refutation trail) · `b1_thread_local.py` (§2 below).
+
+> **The lesson that cost the most:** the overnight campaigns were the wrong instrument — 32 suite
+> runs, ~20 h, 3 excursions, no cause. The probe found it in 45 min by making a draw cost 1.5 s
+> instead of 30 min. **Prefer making the event cheap over buying more of it.**
 
 > **RESULTS OF THE FIRST RUN: `Phase 3/verifications/b1_dumps/B1_OVERNIGHT.md`** — 21 full-suite
 > runs, 10.32 h, **2 excursions caught** (8.0e-03 and 1.18e-02, both on default threads, 0 in 11 on

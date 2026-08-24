@@ -36,8 +36,8 @@ found and fixed:
 - [x] drivers record failures and keep every run (A-11, A-12); health checks unified (A-13)
 - [x] artifacts stamped with commit / dirty / seed (B-3)
 - [x] `reg` explicit at every `optimize()` site (B-2)
-- [ ] **B-1 understood** — see §5. *Not a blocker for the campaign, but it constrains how results may
-      be quoted, and the campaign is how we collect data on it.*
+- [x] **B-1 understood AND FIXED (2026-08-24)** — see §5. *The constraint it imposed on how results
+      may be quoted is LIFTED for runs made after the fix.*
 
 ## 3. Scope — what gets re-run
 
@@ -96,7 +96,48 @@ is possible. Old `target_err_sim` values are **not comparable** — A-2 redefine
 
 **Figures** come from `plotting.py` primitives only, loading saved networks — never re-optimising.
 
-## 5. B-1 — the constraint this campaign runs under
+## 5. B-1 — ✅ ROOT-CAUSED AND FIXED (2026-08-24)
+
+> **READ THIS FIRST — the rest of this section is the historical record of the investigation and its
+> constraints, kept because the reasoning is instructive. It is SUPERSEDED as a live constraint.**
+>
+> **Cause:** the intrinsic solve ends in `torch.linalg.lstsq(G, r)` on a `G = J3·PinvJt` that is
+> **singular by construction** (redundant constraint rows; rank 671/672, cond ~3e16). About **1 in
+> 532 solves**, its pivoting CPU driver returns a `Λ` that only partially applies the KKT correction:
+> every input stays **bit-perfect** while the returned `W` violates `J3·W = 0` by fourteen orders
+> (90 % of the error in `J3`'s row space) and `C_eff` comes out **~1 % over-compliant**. That single
+> mechanism explains the entire signature recorded below — always over-compliant, diffuse,
+> discrete/bit-identical across commits, invisible upstream.
+>
+> **Fixed** in the protected core (`_woodbury_solve_aw`) by a two-stage guard that tests residual
+> orthogonality every solve, and on a trigger re-solves with the SVD driver — repairing only if the
+> correction term moves *and* the orthogonality provably improves. Warns on repair. All five gates
+> green; `b1_persistence.py` **0 excursions in 700** vs **1 in 700** pre-fix.
+>
+> **Rate:** 1 in 532, 95 % CI 1 in [280, 1012] (`b1_rate.py`), cross-checking the probe's independent
+> 1-in-700 — two instruments on *different* observables, so essentially every mis-solve produced a
+> detectable `C` error. Severity: repaired `|ΔW|` median 2.5, max 48.
+>
+> **Full account:** `Phase 3/verifications/b1_dumps/B1_OVERNIGHT.md` §4d (cause) and §4e (fix).
+> Settled statement: `CLAUDE.md` §3.
+>
+> **Instruments (all `Phase 3/verifications/`) — which question each answers:**
+>
+> | script | question |
+> |---|---|
+> | `b1_persistence.py` | Is the bad state PERSISTENT or one-shot, and after which test? **Found the cause.** Probes `[15]`'s case 1 repeatedly inside one real suite process — ~1.5 s a draw vs ~30 min, ≈500× more draws per unit compute |
+> | `b1_rate.py` | How often does the guard repair? Counts repairs over guarded solves, Wilson interval |
+> | `b1_excursion_analysis.py` | What STRUCTURE do the captured excursions have? Diffuse-vs-one-component, rank test, conditioning — the refutation trail |
+> | `b1_thread_local.py` | Does BLAS thread count change a design outcome? **Yes** — breaks the arm/parity confound |
+> | `b1_overnight.py` | Full-suite repetition campaign (the EXPENSIVE route; superseded by `b1_persistence.py` for cause-hunting, still valid for rate-in-the-wild) |
+> | `b1_reproduce.py` | Earlier cheap-harness attempts (`suitectx`, `threads`) — recorded as INSUFFICIENT context: 0 hits in 360 probes |
+>
+> **Consequence for §5.1–5.4 below:** point 1 ("no headline number may rest on a single run") and
+> point 2's stronger form are **lifted for post-fix runs**; the guard now catches the failure they
+> were guarding against. Point 3 (the campaign as diagnostic) is superseded by `b1_persistence.py`,
+> which buys ~500× more draws per unit compute. Point 4's discriminating question **was answered**:
+> the deviation is DIFFUSE, which excluded the A-0 contraction class and correctly sent the hunt to
+> the solve. **Numbers from BEFORE 2026-08-24 still carry the old caveat.**
 
 **Measured 2026-08-16:** `test_inverse_design` [15]'s solver-vs-oracle tensor comparison intermittently
 reads **~1.4e-04** instead of its usual **1.6e-12** — rate **1 in 21 suite runs**. It requires suite

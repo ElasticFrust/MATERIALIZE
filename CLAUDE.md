@@ -252,10 +252,17 @@ was correctly excluded), and discrete/bit-identical across commits.
 - **Guarded in the core** by a two-stage check: stage 1 tests `Gᵀ(GΛ−r) ≈ 0` (orthogonality — valid
   even when the constraint set is INCONSISTENT, where the raw residual is irreducibly nonzero and
   testing it fires on healthy solves); stage 2, only on trigger, re-solves with the SVD driver and
-  repairs only if the **correction term `PinvJt·Λ` moves relative to `W0`** (measuring `Λ` itself is
-  wrong — a large relative move of a near-zero `Λ` changes nothing). No exception path: a false
-  trigger costs one extra solve. It emits a `RuntimeWarning` when it repairs — **treat that warning
-  as data; it is how the true rate gets measured.**
+  repairs only if **both** the correction term `PinvJt·Λ` moves relative to `W0` (measuring `Λ`
+  itself is wrong — a large relative move of a near-zero `Λ` changes nothing) **and the
+  orthogonality provably IMPROVES** — a repair that does not improve it is a false positive by
+  definition, and without that check a self-checking guard can swap a good `Λ` for a worse one.
+  No exception path: a false trigger costs one extra solve. It emits a `RuntimeWarning` when it
+  repairs — **treat that warning as data; it is how the rate gets measured.**
+- **Rate, measured (`b1_rate.py`): 1 in 532 solves, 95 % CI 1 in [280, 1012]** (9 repairs / 4791
+  guarded solves). It **cross-checks** against `b1_persistence.py`'s independent 1-excursion-in-700
+  — two instruments measuring *different* quantities (constraint violation vs observable error in
+  `C`), so essentially every mis-solve produces a detectable `C` error. Severity is large and
+  one-sided: repaired `|ΔW|` median 2.5, max 48 — the dissected event (~0.46) was a mild one.
 - **Do NOT assume a tolerance generalises across meshes.** The healthy orthogonality floor tracks
   `cond(G)`: 3e-15 on a clean regular lattice, ~4e-6 on designed meshes. Three tolerances were set
   from too narrow a sample before the gates caught it.
