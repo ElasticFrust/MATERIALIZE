@@ -119,7 +119,8 @@ truncation, ill-conditioning amplification — without new evidence.
 | script | the question it answers | answer lives in |
 |---|---|---|
 | `Phase 5/verifications/supercell_invariance.py` | Is `C_eff` really INTENSIVE across supercells? — the premise under "train small, deploy large" and under the label-free supercell gate | `results/supercell_invariance/SUPERCELL_INVARIANCE.md` — **yes, to 5e-16 … 7e-13** on four chains including the sharp anisotropic one; independently confirms that v1's `sum`-pooling branch is unphysical |
-| *(see I.2 — dilution)* | What may M2 safely sample along the coordination axis? | `k_soft ≥ 1e-8`, full `f ∈ [0, 0.40]` usable |
+| `Phase 5/verifications/m2_locality.py` | How LOCAL is the elastic response? — can a finite-hop GNN capture `W` at all (§3.1c's biggest architectural risk), and how much signal does a bulk-only label discard? | `results/m2_locality/M2_LOCALITY.md` — **intrinsic screening is 2–3 hops** (at noise by hop 2 under i.i.d. `k`; 4 even near-mechanism at `max|W|`=231) ⇒ **`n_layers` 4–5 is adequate, the risk is retired**. Per-triangle labels are worth ≈ **20× effective** signal (~23 independent local samples per 228-triangle network, vs 1 for a bulk label). Two things that are NOT screening lengths: a long tail under correlated `k` is INHERITED from the input, and an ordered motif OSCILLATES |
+| *(see I.2 — dilution)* | What may M2 safely sample along the coordination axis? | `k_soft ≥ 1e-8`, full `f ∈ [0, 0.40]` usable; **extended 2026-08-25 to SMALL CELLS** (N=3…12, 6…24 triangles): 16/16 agree with the independent sim to four decimals, including sub-isostatic z = 3.3–3.7 |
 
 ## I.8 — DEAD: the legacy island (do NOT cite as evidence)
 
