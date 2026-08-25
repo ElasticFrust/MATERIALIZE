@@ -1,3 +1,20 @@
+"""LEGACY -- M2 v1 training scaffold.  Superseded 2026-08-25 by `train_v2.py`.
+
+KEPT as the record of how `checkpoint.pt` was produced.  Two things v2 changes, both about what is
+being measured rather than how well:
+
+  * IT TRAINED ON BULK C6 with an 80/20 RANDOM split scored against the solver labels it had just
+    trained on -- which measures memorisation, not generalisation (`M2.md` records this as the
+    July validation's mistake).  v2 splits on `traj_id` (steps within one optimisation are
+    near-duplicates) and holds out whole FAMILIES, reporting the within-family split only as the
+    memorisation baseline so the gap between the two is visible.
+  * IT SUPERVISED THE AVERAGE.  Averaging ~200 per-triangle predictions into 6 numbers lets local
+    errors CANCEL. v2 supervises per-triangle `C(s)` -- ~20x the effective signal
+    (`Phase 5/results/m2_locality/M2_LOCALITY.md`).
+
+Original header follows.
+"""
+
 r"""Phase 5 / M2 — training scaffold for the GNN forward surrogate (plain torch).
 
 Loads the consolidated dataset (Phase 5/m2/data/dataset.npz), batches graphs with a

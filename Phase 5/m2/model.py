@@ -1,3 +1,24 @@
+"""LEGACY -- M2 v1 model.  Superseded 2026-08-25 by `model_v2.py`.
+
+KEPT as the record of what `checkpoint.pt` is, not as a live path.  Three defects, all structural
+rather than tuning, which is why v2 replaces rather than extends it:
+
+  * GLOBAL `mean + sum` POOLING.  The `sum` branch is EXTENSIVE -- its output grows with node count
+    -- while `C_eff` is INTENSIVE (measured invariant across supercells to 5e-16..7e-13,
+    `Phase 5/results/supercell_invariance/`).  A sum branch cannot satisfy a property the physics
+    obeys exactly.
+  * NOT ROTATION-INVARIANT.  Edge features include raw `dir_x, dir_y`, so capacity is spent
+    relearning a symmetry that is known exactly.  v2 keeps direction out of the scalar path
+    entirely; it enters only through `Q(s)` in the head, where the tensor law handles it.
+  * BULK C6 EMITTED DIRECTLY, so nothing in the model corresponds to a per-triangle tensor and the
+    per-triangle structure cannot be expressed at all.
+
+Its trained checkpoint is additionally UNVERIFIED: the labels it learned are stale (37/41 drift,
+worst |dnu| = 1.73 -- audit A-19, `M2.md`).
+
+Original header follows.
+"""
+
 r"""Phase 5 / M2 — the GNN FORWARD SURROGATE (plain torch, no torch_geometric).
 
 M2 v1 amortises the differentiable solver: input a periodic network graph
