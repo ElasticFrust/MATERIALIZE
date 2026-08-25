@@ -91,6 +91,66 @@ test for any future work on B-1.
 - This bounds `M2_V2_PLAN.md` §3.1h's **contrast** knob, which was the one axis flagged to "ramp last
   and most carefully".
 
+## 5b. WHY 1e-8? It is the solver's REGULARISER, and the number is predicted
+
+*(`dilution_regulariser_check.py`, 2026-08-25 — the user asked whether the boundary makes sense as a
+matrix-singularity effect. It does, quantitatively.)*
+
+`_woodbury_solve_aw` inverts the bare tensor with a RELATIVE regulariser:
+
+```python
+eps   = 1e-12 * A3.abs().max()      # GLOBAL max over all triangles
+A_inv = inv(A3 + eps * I3)
+```
+
+With `|q_e| ~ ℓ²` and the prefactor `k_e/4ℓ_e²`, the eigenvalues of `A(s)` scale as `k_e ℓ²/4`. A
+triangle carrying a diluted bond has an eigenvalue `≈ k_soft ℓ²/4`; `eps` is set by the STIFF
+triangles at `≈ 1e-12 ℓ²/4`. So the regulariser overwhelms physics when
+
+```
+k_soft · ℓ²/4  ≲  1e-12 · ℓ²/4      ⇒      k_soft ≲ 1e-12          (the ℓ² CANCELS)
+```
+
+**The cancellation predicts a geometry-independent threshold — which is why §1 measured the SAME
+boundary on the regular and η=0.25 bases.**
+
+Measured, rebuilding `A(s)` independently via `metric_ops.bare_tensor`:
+
+| base | `k_soft` | `eps` | `min λ` | **frac(λ < eps)** |
+|---|---|---|---|---|
+| regular | 1e-08 | 9.375e-14 | 4.687e-10 | **0.000** |
+| regular | 1e-10 | 9.375e-14 | 4.687e-12 | **0.000** |
+| regular | **1e-12** | 9.375e-14 | 4.687e-14 | **0.212** |
+| regular | 1e-20 | 9.375e-14 | **−1.544e-18** | 0.229 |
+
+`λ_min ≈ 0.5 · k_soft · max|A|` holds over **eight decades**, so `λ_min = eps` gives
+**`k_soft_crit = 2e-12`** — and the jump is measured between 1e-10 (0.000) and 1e-12 (0.212).
+For η=0.25 the geometric factor is 0.093, predicting `k_soft_crit ≈ 1.1e-11`; it too breaks between
+1e-10 and 1e-12. **Prediction and measurement agree on both bases.**
+
+**So the S0b boundary is NOT a physics threshold — it is the hard-coded `1e-12`.**
+
+**A third regime appears below that.** At `k_soft ≤ 1e-20`, `λ_min` goes NEGATIVE (−1.5e-18) and
+*saturates* — identical at 1e-20 and 1e-40 — because below ~1e-16 the soft contribution is lost in
+the round-off of the assembly itself (`max|A| ≈ 0.1`, float64 precision 1e-16). `A(s)` is then not
+even numerically positive-definite.
+
+| `k_soft` | what governs `A⁻¹` |
+|---|---|
+| **> 2e-12** | physics — regulariser negligible |
+| 2e-12 … ~1e-16 | **the regulariser `eps`**, not physics |
+| < ~1e-16 | assembly round-off; `A(s)` numerically indefinite |
+
+**Consequences.** The `k_soft ≥ 1e-8` bound has **~4 orders of margin** over the true crossover
+(and coincides with `test_hex_closed_form`'s benign `k_spoke = 1e-8`); it could be relaxed to 1e-10
+with two orders if more contrast is ever wanted. And it is **falsifiable**: changing the regulariser
+constant must move the boundary proportionally — the clean causal test, requiring a protected-core
+change.
+
+*Caveat:* the 5-component → 3×3 unpacking used here reconstructs the shear-entry factor. The
+`λ_min ∝ k_soft` scaling and the crossover location are robust to an O(1) error there; the exact
+`2e-12` could shift by an O(1) factor. The measured `frac(λ<eps)` transition is the solid part.
+
 ## 6. Limitations
 
 - Two bases only (regular, η=0.25) at one size (`half = 5.0`). The threshold could move with size or
