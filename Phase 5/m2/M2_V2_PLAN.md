@@ -1,6 +1,6 @@
 # M2 v2 — plan (forward surrogate first, edit-policy later)
 
-**Status: PROPOSED, awaiting approval. No code written against this yet.**
+**Status: DECISIONS D1–D9 APPROVED by the user 2026-08-25. No code written against this yet.**
 Supersedes the "Next steps" of `M2.md` v1. Written 2026-08-24.
 
 ---
@@ -34,6 +34,44 @@ dataset provenance. *(Open: a chord-tiling arm is now available, `seeds.seed_til
 **D4 — Threads pinned.** Measured 2026-08-23: BLAS thread count changes a design outcome
 (ν −0.150 → −0.128, objective error 450×). The generator MUST pin `OMP/MKL_NUM_THREADS` and record
 it per sample, or the labels carry unlabelled noise. See `b1_thread_local.py`.
+
+**D5 — `phase4` seeds: EXCLUDED.** Its three generators (`iso_crystal`, `poisson_delaunay`,
+`blue_noise`) duplicate regions the zoo already covers (`bravais`, and two of `random`'s four point
+processes), and they arrive damaged: Phase 4's generators are **not periodic**, so `seed_from_phase4`
+wraps them into a box **heuristically** — shift, bounding square, `mod`, re-Delaunay — which
+**fabricates connectivity across the seam** that was never in the generator's design. Failures are
+silently skipped, so the survivor count is invisible. Worse for us specifically: a `phase4_blue_noise`
+sample is really a `random` sample wearing a different family label, which would **leak across the
+leave-one-family-out split** (§4) and inflate the held-out score. *Recorded so it is not re-proposed
+on the grounds that more data is available.*
+
+**D6 — Policy scope (later): `k` AND positions, but as INDEPENDENT modes.** The edit-policy must be
+able to act on stiffness alone, on geometry alone, or on both, selectable per request — not as one
+fused action space. This matters because the two channels are not symmetric: `k` has cheap solver
+gradients while positions do not (`CLAUDE.md` §3 — hence SPSA), so fusing them would force the
+weaker channel's method onto the stronger one. It also matches how a user asks: *"same layout, retune
+stiffness"* is a different request from *"same stiffness, move the nodes"*.
+
+**D7 — Milestones renamed `S0…S5`.** They were `M0…M5`, which **collided with the project's own
+`M1` (the search-based designer) and `M2` (this GNN)** — "M1" meant two different things in one
+document.
+
+**D8 — Bond dilution: MEASURE FIRST, then include (§3.1g, §3.1h).** It is the richest axis
+(coordination `z` through the isostatic point) and simultaneously the one most likely to produce
+labels **the solver itself gets wrong** (dead-`k` rank loss: 11 % dead bonds gave solver ν = −0.110
+vs sim ν = +0.136, **opposite signs**), and softness alone does not predict which — the hexagon gate
+is benign at `k_spoke = 1e-8` because there the soft edge is a **spoke** that lets the face hinge.
+So: **S0b, a dilution sweep mapping solver-vs-sim divergence against dilution fraction** (~1 h). It
+yields a **validity boundary** useful independently of M2 (it is the open question behind
+`FUTURE_DIRECTIONS #2`), and it prevents poisoning a 10 k dataset with an unknown fraction of wrong
+labels. Then include dilution **up to the measured boundary**; beyond it, label with the **sim** or
+not at all.
+
+**D9 — Start at minimal cells (S1), then scale (S2).** The end state is a large training set covering
+all sizes and cases (§3). S1 is **not** a small dataset instead of a big one — it is a ~30-minute
+architecture check with **analytic ground truth** (§3.1c) that catches, in minutes rather than after
+a 10 k build: extensive-vs-intensive pooling, self-loop handling in minimal cells, whether `MMᵀ`
+comes out diagonal `= k_e/4ℓ_e²`, and supercell invariance (§3.1e).
 
 ---
 
@@ -424,26 +462,27 @@ id, k-pattern, seed, label source, trajectory id + step, tiling method, thread c
 
 ---
 
-## 5. Milestones and gates
+## 5. Stages and gates  *(renamed S0…S5 — `M1`/`M2` already mean the designer and this GNN)*
 
 | # | deliverable | gate before proceeding |
 |---|---|---|
-| **M0** | fix `CLAUDE.md`'s "edit-policy" wording; pin threads + tiling method in the builder | — |
-| **M1** | new head (§2.1) + invariant features, trained on the EXISTING 317-sample build | pipeline runs; SPD rate 100 %; sanity: predicts the regular lattice ν=1/3, E=2/√3 |
-| **M2** | scaled, balanced dataset (§3), ~5 000 samples, trajectories + provenance | coverage cells ≫ 19; no family < 10 %; leakage checks pass |
-| **M3** | full 5-fold leave-one-family-out training | the §1 **must** tier, or the kill criterion |
-| **M4** | wire into M1's search as a pre-filter | solver calls per design reduced at unchanged design quality |
-| **M5** | edit-policy on the stored trajectories | separate plan |
+| **S0** | fix `CLAUDE.md`'s "edit-policy" wording (DONE); pin threads + tiling method in the builder | — |
+| **S0b** | **dilution validity sweep** — solver vs sim vs dilution fraction (D8) | a measured boundary; dilution sampled only up to it |
+| **S1** | new head (§2.1) + invariant features, trained on MINIMAL CELLS (§3.1c) — analytic ground truth | `MMᵀ` diagonal `= k_e/4ℓ_e²` on minimal cells; SPD rate 100 %; **supercell invariance**; self-loops handled; ν=1/3, E=2/√3 |
+| **S2** | scaled, balanced dataset (§3), ~10 000 samples, trajectories + provenance | coverage cells ≫ 19; no family < 10 %; leakage checks pass |
+| **S3** | full 5-fold leave-one-family-out training | the §1 **must** tier, or the kill criterion |
+| **S4** | wire into M1's search as a pre-filter | solver calls per design reduced at unchanged design quality |
+| **S5** | edit-policy on the stored trajectories | separate plan |
 
-**M1 is deliberately on the small stale-free build**: it is an architecture check, not a science
-result, and it costs minutes. Do not scale data before M1 passes.
+**S1 is deliberately tiny**: an architecture check on MINIMAL CELLS with analytic ground truth
+(§3.1c), not a science result. It costs ~30 min. **Do not scale data before S1 passes.**
 
 ---
 
 ## 6. Risks and open questions
 
 - **The surrogate may simply not be needed.** If M4 shows the solver is not the bottleneck in the
-  search, the honest outcome is to keep M2 as the policy critic only. Decide at M4, on measurement.
+  search, the honest outcome is to keep the surrogate as the policy critic only. Decide at S4, on measurement.
 - **`ν` is a ratio and is ill-conditioned near `E → 0`.** MAE(ν) over a set containing near-mechanism
   networks may be dominated by a few samples. Report the distribution, not just the mean.
 - **Size generalisation is untested by the family split** — a model trained on 60–240-node graphs may

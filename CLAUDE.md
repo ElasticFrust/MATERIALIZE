@@ -15,7 +15,7 @@
 > code-vs-docs consistency-sweep task).
 >
 > **Entry points:** to run a design, `Phase 5/designer.py` → `design(nu_target, E_target, tag)`;
-> reusable API in `Phase 5/PLAN.md §1` and `MATERIALIZE.md §11`. M2 (GNN edit-policy): `Phase 5/m2/M2.md`.
+> reusable API in `Phase 5/PLAN.md §1` and `MATERIALIZE.md §11`. M2 (GNN **surrogate → edit-policy**): `Phase 5/m2/M2.md`, plan `Phase 5/m2/M2_V2_PLAN.md`.
 >
 > Precedence (from the charter): live instruction > this file > global charter > memory.
 
@@ -30,12 +30,13 @@ per-bond stiffness k.
 
 The forward map (network → response) is **many-to-one**: a target is realised by many different
 networks. So the endpoint is **not a single optimised network** but a **learned model of the
-solution space** — a generative / edit **neural network** (GNN edit-policy, VAE, with an
+solution space** — a generative / edit **neural network** (GNN **surrogate → edit-policy**, VAE, with an
 interpreter front-end mapping user intent → targets). Differentiable gradient-descent design
 through the homogeniser (L-BFGS + adjoint) is the current *engine* — it produces solutions and
-the labelled data the learned models train on — **not the end goal**. Of these, the **GNN
-edit-policy is already prototyped** (`Phase 5/m2/`: model + trained checkpoint); the **VAE and
-interpreter remain envisioned**.
+the labelled data the learned models train on — **not the end goal**. Of these, the **GNN forward
+surrogate** is prototyped (`Phase 5/m2/`: model + checkpoint, both UNVERIFIED — stale labels); the
+**GNN edit-policy** is the endpoint and comes *after* it, with the surrogate as its natural critic
+(`Phase 5/m2/M2_V2_PLAN.md` §0); the **VAE and interpreter remain envisioned**.
 
 Formalism: **incompatible / reference-metric elasticity** (the geometric "D2C" homogenisation).
 The elastic strain is the metric change
@@ -78,7 +79,7 @@ above it.** Phase numbering is historical, *not* a clean ladder: the live arc is
 | **Core (protected)** | `Phase 2/forward_solver_torch.py` | differentiable geometric homogeniser: (k, ℓ₀, geometry) → C(s), C_eff, ν, E, W; adjoint above 600 tri | **never modify without explicit approval**; gated by `test_forward_solver.py` + the physical `verify_*` suite |
 | Core-adjacent | `Phase 2/metric_ops.py`, `mesh_build.py`, `solver_build.py` | the NumPy side of the core: metric/tensor ops in the solver's conventions (`vec3`, `tri_metric_change`, `bare_tensor`); periodic + open mesh construction (`build_geometry`, `set_VD`, `kkt_from_tri_bond`, `clean_tri`, `build_open_mesh`); `make_solver`/`_mount` | same layer & same gate as the core, **not** the protected file; `DesignProblem`'s constructors are built on them, so treat as verified truth |
 | Inverse design | `Phase 3/` | objectives, `optimize` (L-BFGS), differentiable/adjoint path | verified truth; change with care |
-| Designer (current) | `Phase 5/` | M1 search-based designer (topology + positions + k), **built on Phase 3's `inverse_design`**; M2 **GNN edit-policy prototyped** in `Phase 5/m2/` (model + trained checkpoint); VAE / interpreter still roadmap | active work |
+| Designer (current) | `Phase 5/` | M1 search-based designer (topology + positions + k), **built on Phase 3's `inverse_design`**; M2 **GNN forward surrogate prototyped** in `Phase 5/m2/` (model + checkpoint, UNVERIFIED); **edit-policy is the endpoint, after it**; VAE / interpreter still roadmap | active work |
 | **Independent oracle** | `verification_tools/physical_homog.py` + `sim_assembly.py`; `Phase */verifications/` | full-PBC relaxation sim (`physical_homog`, fed by `sim_assembly.assemble_K_faff`) — a *different code path* from the solver. The rest of `verification_tools/` is **experiment scripts, not a library** | temporary validation oracle (see §1); retireable once the solver is trusted |
 | Topology remnant | `Phase 4/` | **legacy, not a development stage**; its topology / point-cloud generators are reused (e.g. by `Phase 5/seeds.py: seed_from_phase4`). Directory name kept by deliberate decision | frozen remnant |
 | Docs | `documentation/` | canonical `MATERIALIZE.md` (+pdf), `FUTURE_DIRECTIONS`, residual-stress & reference-metric notes | lockstep with code |
