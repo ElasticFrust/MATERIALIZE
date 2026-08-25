@@ -311,6 +311,16 @@ supercell: the answers must be **identical**, with no labels required. This dire
 intensivity that v1's `sum` pooling would have violated, and it is a stronger statement than any
 size-generalisation score.
 
+**✅ THE PREMISE IS MEASURED, not assumed** (2026-08-25, before any GNN code was written — it needs
+no model, and if the *solver* did not reproduce `C` across supercells then "train small, deploy
+large" would be unsound and this gate meaningless). `Phase 5/verifications/supercell_invariance.py`
+→ **`Phase 5/results/supercell_invariance/SUPERCELL_INVARIANCE.md`**: `C_eff`, ν and E are identical
+to all eight printed digits across a 10.5× growth in triangle count, `max|ΔC6|/|C6|` = **5.1e-16**
+(triangular), **9.3e-16** (anisotropic ψ=0.6 — the sharp chain, where ν=1/3 cannot come out right by
+accident), **1.3e-13** (honeycomb tiling) and **6.8e-13** (kagome) — the tilings additionally testing
+invariance under the large `k` contrast of their soft fictional bonds. So the gate is real, and v1's
+extensive `sum` branch would violate a property the physics obeys to 1e-13.
+
 ### 3.1f DISORDER HAS A CORRELATION LENGTH — white-noise η is one corner
 
 **The `η ≤ 0.42` bound is a REGULAR-LATTICE measurement and does not transfer** (user, 2026-08-24).
@@ -476,9 +486,9 @@ id, k-pattern, seed, label source, trajectory id + step, tiling method, thread c
 
 | # | deliverable | gate before proceeding |
 |---|---|---|
-| **S0** | fix `CLAUDE.md`'s "edit-policy" wording (DONE); pin threads + tiling method in the builder | — |
+| **S0** | fix the "edit-policy" wording (✅ **DONE 2026-08-25** — `CLAUDE.md`, and the sweep completed across `ARCHITECTURE.md`, `MATERIALIZE.md`, `Phase 5/PLAN.md`, `M2.md`, `m2/README.md`); **pin threads + tiling method in the builder — STILL OPEN** | the pinning is the one S0 item left |
 | **S0b** | ✅ **DONE 2026-08-25** — dilution validity sweep (266 cases) | boundary MEASURED: `k_soft ≥ 1e-8` safe at all `f ≤ 0.40`; below 1e-12 unusable |
-| **S1** | new head (§2.1) + invariant features, trained on MINIMAL CELLS (§3.1c) — analytic ground truth | `MMᵀ` diagonal `= k_e/4ℓ_e²` on minimal cells; SPD rate 100 %; **supercell invariance**; self-loops handled; ν=1/3, E=2/√3 |
+| **S1** | new head (§2.1) + invariant features, trained on MINIMAL CELLS (§3.1c) — analytic ground truth. **Premise ✅ verified 2026-08-25** (§3.1e); the model is unwritten | `MMᵀ` diagonal `= k_e/4ℓ_e²` on minimal cells; SPD rate 100 %; **supercell invariance**; self-loops handled; ν=1/3, E=2/√3 |
 | **S2** | scaled, balanced dataset (§3), ~10 000 samples, trajectories + provenance | coverage cells ≫ 19; no family < 10 %; leakage checks pass |
 | **S3** | full 5-fold leave-one-family-out training | the §1 **must** tier, or the kill criterion |
 | **S4** | wire into M1's search as a pre-filter | solver calls per design reduced at unchanged design quality |

@@ -1,4 +1,142 @@
-# The post-audit verification campaign — plan
+# Verification — the INDEX of what has been measured, and the campaign plan
+
+> **Part I is the INDEX** — one line per analysis script saying **which question it answers** and
+> **where the answer lives**. `CLAUDE.md` §3 makes reading it mandatory *before proposing a new
+> measurement*, and requires you to **say what you found, including "nothing"**. Companion indexes:
+> `verification_tools/README.md` (what in that directory is live, legacy or dead) and the results
+> docs themselves (`Phase 5/results/*/`, `verification_tools/plots/*/`).
+>
+> **Part II is the post-audit campaign plan** (drafted 2026-08-16), kept below unchanged.
+>
+> *Index added 2026-08-25. Until then this file was the campaign plan only, while `CLAUDE.md` §0/§3
+> and `NEXT_SESSION.md` already described it as "the index of what has already been measured" — so
+> the anti-re-derivation rule pointed at a document that could not serve it. That is the drift this
+> section closes; three analyses had already been re-proposed after having been done.*
+
+---
+
+# PART I — THE INDEX
+
+**How to use it.** Find the row whose *question* is closest to yours. If one exists, read its answer
+before proposing work. The **question** column is what the script's own module docstring says it
+asks; the **answer** column is where its output and results doc live. Headline numbers appear only
+where they are quoted from a results doc or from `CLAUDE.md` §3 — an empty headline means *the
+answer exists, go read it*, not *nothing was found*.
+
+**Not in this index:** the gates (`Phase 2/test_forward_solver.py`, `Phase 3/test_inverse_design.py`,
+`Phase 5/verifications/{test_designer_surface,test_hex_closed_form,sanity}.py`) — those are pass/fail
+regressions, listed in `CLAUDE.md` §3 "Regressions (the full gate set)"; and the **dead legacy
+island**, listed in §I.8 below precisely so it is not mistaken for evidence.
+
+## I.1 — Is the solver right? (solver vs the INDEPENDENT oracle)
+
+| script | the question it answers | answer lives in |
+|---|---|---|
+| `verification_tools/accuracy_vs_disorder.py` | How well does the solver do on DISORDERED networks? — tensor-level accuracy vs η | `plots/accuracy_vs_disorder/ACCURACY_VS_DISORDER.md` — **the broadest single statement of solver accuracy we have** (9 families × η ≤ 0.42) |
+| `verification_tools/per_triangle_C_comparison.py` | Per-triangle `C(s)`: the solver's contraction vs the independent energy-Hessian oracle — visualised | `plots/per_triangle_C/PER_TRIANGLE_C.md` — **records corr(&#124;ΔC&#124;, ‖W‖) = +0.39**, and that an earlier draft overstating it as "tracks ‖W‖" was corrected |
+| `verification_tools/recheck_sweep_nu_E_eta.py` | Re-check ν(η) and E(η) — disordered networks and VD rigidity contrasts — against stored results | `plots/recheck_nu_E_eta/RECHECK_NU_E_ETA.md` |
+| `verification_tools/verify_solver_sweep.py` | Complete η sweep of the production forward solver vs simulation | `plots/dg_solver_sweep_*.npz` — ⚠ **stale artifact**: internal-unit E (low by 18.4752) and area-weighted ν (`ARCHITECTURE.md` §5) |
+| `verification_tools/verify_solver_final.py` | 10 (network structure × rigidity-distribution) combinations — solver vs sim | `plots/dg_solver_final_10networks.npz` (the `.png` is **not in the tree** — re-run to regenerate) |
+| `verification_tools/verify_irregular_VD_eta.py` | Sim-vs-solver on IRREGULAR (disordered) networks, in PHYSICAL units | `plots/dg_irregular_VD_eta_*.png` |
+| `verification_tools/verify_solver_open.py` | OPEN-DOMAIN (non-periodic) `method='intrinsic'` vs simulation | script output — open-boundary coverage is **incomplete, audit A-8** |
+| `verification_tools/verify_soft_region.py` | What happens when the six bonds around one vertex are made soft? | declared output `plots/dg_soft_region_per_triangle.png` — **artifact not in the tree; re-run to regenerate** |
+| `verification_tools/verify_soft_circles_50x50{,_directions}.py` | Two circular soft regions, three network structures — per-triangle response, and in the OTHER directions | declared output `plots/dg_soft_circles_50x50*.png` — **artifacts not in the tree; re-run to regenerate** |
+| `Phase 5/verifications/hex_solver_validation.py`, `hex_response_plot.py`, `hex_nu_linear.py` | Where does the solver work? — the hexagon diameter family against the **CLOSED FORM**, both triangulations, both directional responses | `Phase 5/results/hex_validation/HEX_VALIDATION.md` — **the third path**, independent of solver *and* sim, matched to 4.4e-06 |
+| `Phase 5/verifications/single_hexagon.py` | The solver on the smallest meaningful case (one hexagon, non-periodic, six triangles) | script output |
+
+## I.2 — Where does the solver STOP being right? (validity boundaries)
+
+| script | the question it answers | answer lives in |
+|---|---|---|
+| `Phase 5/verifications/dilution_validity.py` | Where does BOND DILUTION break the solver? (M2 decision D8) | `results/dilution_validity/DILUTION_VALIDITY.md` — **the boundary is in SOFTNESS, not dilution fraction**: `k_soft ≥ 1e-8` safe at every `f ≤ 0.40` incl. sub-isostatic `z = 3.6`; `k_soft ≤ 1e-12` breaks at the first nonzero `f`; **6 of 266 cases returned ν of the opposite sign** |
+| `Phase 5/verifications/dilution_regulariser_check.py` | Is that boundary just the solver's REGULARISER? | same doc §5b — **yes, quantitatively**: `eps = 1e-12·max&#124;A3&#124;` predicts `k_soft_crit = 2e-12`; `λ_min ≈ 0.5·k_soft·max&#124;A&#124;` over 8 decades; two bases with *different* geometric prefactors each match their own prediction |
+| `Phase 5/verifications/dilution_networks_figure.py` | What do the broken networks LOOK like? | same doc §3 — **structurally indistinguishable from the safe ones; no geometric health gate can catch it** |
+| `Phase 5/verifications/hex_conditioning_check.py` | Does a rank-deficient `A(s)` actually mean a wrong answer? | `results/hex_validation/` + `CLAUDE.md` §3 — **no**: driving `A(s)` to numerical rank-1 with soft spokes *improves* accuracy by six orders; corr(log₁₀ rcond, log₁₀&#124;Δν&#124;) = **+0.73** |
+| `Phase 5/verifications/conditioning_probe.py` | Does `A(s)` conditioning explain where solver and sim disagree? | `results/conditioning_probe/CONDITIONING_PROBE.md` — SOFT k is benign; **DEAD k and SLIVERS are not** (`quality_p05` corr −0.86 in g1_2, and the *tail* predicts better than the worst triangle) |
+| `verification_tools/exact_kinematics_check.py` | Does linearising the kinematics cost anything? | script output + `CLAUDE.md` §3 — **nothing for `C_eff` at an unstressed reference** (models 1 vs 3 differ by O(h)); it bites only under **prestress** (audit A-15) |
+| `verification_tools/finite_amplitude_check.py` | What does the solver's constitutive approximation cost at finite amplitude? | `plots/finite_amplitude/FINITE_AMPLITUDE.md` |
+
+## I.3 — Is the verification APPARATUS itself sound?
+
+| script | the question it answers | answer lives in |
+|---|---|---|
+| `Phase 5/verifications/blast_radius_shear_fix.py` | Blast radius of the 2026-08 shear-channel core fix over every SAVED design | `results/shear_fix/SHEAR_FIX.md` — the per-campaign invalidation table |
+| `Phase 3/verifications/relayer_a7b.py` | Did the A-7b re-layering change any number? (before/after equivalence) | `relayer_a7b_out/RELAYER_A7B.md` |
+| `Phase 5/verifications/ab_quality_floor.py` | Does a SHAPE-QUALITY floor on the position search buy trustworthiness? | `results/ab_quality_floor/AB_QUALITY_FLOOR.md` — it is a **shape** floor, not a stiffness floor; `quality_floor = 1e-3`, and **raising it to buy agreement multiplies median error ×17** |
+| `Phase 5/verifications/campaign_shakedown.py` | Does a campaign driver run end-to-end on a tiny subset, without modifying it? | script output (pipeline check, not a physics result) |
+| `verification_tools/compat_projection.py` | Is the mean-field's residual error just INCOMPATIBILITY? | `plots/` — needs `dg_analysis_data/` **regenerated first** (`pbc_dg_analysis.py`) |
+| `verification_tools/test_mean_isolation.py` | Is the mean/normalisation constraint THE failure of the metric-space solve? | script output; the settled answer is that C3 must be **area-weighted** (`CLAUDE.md` §3) |
+| `verification_tools/test_curvature_operator.py`, `test_angle_response.py` | Does the discrete curvature (C2 / St-Venant) operator do what the derivation says? | declared output `plots/dg_curvature_operator.png` — **not in the tree**; and both scripts need `dg_analysis_data/` regenerated first (`pbc_dg_analysis.py`) |
+| `verification_tools/pbc_dg_analysis.py` | Per-triangle non-affine Δg under a single macroscopic strain | **the producer of `dg_analysis_data/`, RETIRED 2026-08-18** — regenerable; inventory in `validation_2026-08/retired_dg_analysis_data.txt` |
+
+## I.4 — B-1: the intermittent KKT mis-solve (ROOT-CAUSED AND FIXED 2026-08-24)
+
+Full account `Phase 3/verifications/b1_dumps/B1_OVERNIGHT.md` §4d (cause) / §4e (fix); settled
+statement `CLAUDE.md` §3. **Do not re-propose the refuted mechanisms** — dropped C2, `lstsq` rank
+truncation, ill-conditioning amplification — without new evidence.
+
+| script | the question it answers | answer lives in |
+|---|---|---|
+| `b1_persistence.py` | Is the bad state PERSISTENT or one-shot, and after which test? | **found the cause** — ~1.5 s a draw vs ~30 min, ≈500× more draws per unit compute; **0 excursions in 700 post-fix vs 1 in 700 pre-fix** |
+| `b1_rate.py` | How often does the guard repair? | **1 in 532 solves, 95 % CI 1 in [280, 1012]**; repaired &#124;ΔW&#124; median 2.5, max 48 |
+| `b1_excursion_analysis.py` | What STRUCTURE do the captured excursions have? | **DIFFUSE, not one component** — which excluded the A-0 contraction class and correctly sent the hunt to the solve |
+| `b1_thread_local.py` | Does BLAS THREAD COUNT change a design outcome? | **YES** — ν −0.150 → −0.128, objective error 450×, same seed and commit ⇒ **M2's generator must pin threads** (decision D4) |
+| `b1_overnight.py` | Full-suite repetition campaign (rate in the wild) | `b1_dumps/overnight_<UTC>.{csv,log}` — the EXPENSIVE route; superseded for cause-hunting by `b1_persistence.py` |
+| `b1_reproduce.py` | Can a cheap harness reproduce it? | **no** — 0 hits in 360 probes; recorded as INSUFFICIENT context |
+
+## I.5 — What can the DESIGNER actually reach?
+
+> **Read reach over ALL runs, never the trustworthy subset** — that filter concealed a real result
+> four separate times. `trustworthy` is a per-angle two-code *agreement* test, not a physicality
+> verdict.
+
+| script | the question it answers | answer lives in |
+|---|---|---|
+| `Phase 5/verifications/run_goal1.py` (+ `plot_goal1.py`) | ν-target sweep across topology classes and disorder bands (110 runs) | `results/goal1/GOAL1.md` — **every contrast band reaches ν < 0**; contrast raises the CEILING, positions supply the FLOOR |
+| `Phase 5/verifications/run_goal1_frontier.py` | The POSITIVE-ν frontier probe | `results/goal1_frontier/GOAL1_FRONTIER.md` |
+| `Phase 5/verifications/run_g1_2.py` (+ `plot_g1_2.py`) | Isotropic ν by GEOMETRIC DISTORTION ALONE (k ≡ 1) | `results/g1_2/G1_2.md` — **all ten topologies reach auxetic ν**; deepest −0.436 sim / −0.488 solver |
+| `Phase 5/verifications/run_g1_2_freed.py` | The same with the fictional bracing edges FREED | `results/g1_2_freed/G1_2_FREED.md` |
+| `Phase 5/verifications/g1_2_solver_recheck.py` | Can the SOLVER side of every design be recovered, so untrustworthy runs can be plotted? | `results/g1_2/` — **49/49 sign-agreeing** between the two codes |
+| `Phase 5/verifications/g1_2_triangular_start_probe.py` | Can the position optimiser reach what random η-disorder reaches? | `results/g1_2/` |
+| `Phase 5/verifications/run_goal2.py`, `run_goal2_attempts.py` | DIRECTIONAL / full-tensor targets, and the failed attempts | `results/goal2/GOAL2.md`, `results/goal2_attempts_rerun/GOAL2.md` — its **target set has never been scoped**; deliberately deferred |
+| `Phase 5/verifications/run_anisotropic{,4,4_pos}.py` | A highly anisotropic ν(θ); a REALIZABLE cos4θ version; does moving nodes close the gap? | `Phase 5/aniso*_response.png`, `*_run.log` — positions help the loss but **not the anisotropy-amplitude ceiling** (an empirical topology/size bound, not a harmonic limit) |
+| `Phase 5/verifications/verify_positions.py` | Does vertex-position optimisation actually help? | script output + `Phase 5/networks/` |
+| `Phase 5/verifications/plot_reach_summary.py` | **What Poisson ratio has this project ACTUALLY achieved?** — one figure over every experiment | `results/reach_summary/REACH_SUMMARY.md` |
+| `Phase 3/verifications/` cases — `auxetic_sweep`, `auxetic_patch`, `graded_nu`, `anisotropy`, `two_region`, `strain_stress`, `regimes`, `large16k`, `dir_aux_ribbon`, `reference_metric` | Does design → realise → simulate reproduce each class of target? | `Phase 3/verifications/README.md` §Cases, and each case directory |
+
+## I.6 — Representation & mesh questions
+
+| script | the question it answers | answer lives in |
+|---|---|---|
+| `Phase 5/verifications/chord_vs_fan_figure.py` | Phantom-centre FAN vs non-crossing CHORDS on the same tiling | `results/chord_vs_fan/CHORD_VS_FAN.md` — the Delaunay chord split produced **crossing edges**; a fan cannot cross, by construction |
+| *(measurement, no script)* | How many crossings did each tiling have? | `results/tiling_inspect/TILING_INSPECT.md` — honeycomb_r3 **4**, _r4 **5**, kagome_r2 **2**. **Every `tiling` result predates the fix** and must be re-run before it is trusted |
+| `Phase 5/verifications/dhex_family.py`, `reentrant_family.py`, `reentrant_move.py` | The re-entrant honeycomb by the DIAMETER algorithm, as a rib skeleton, and built the CORRECT way (fixed topology, move vertices) | `results/reentrant/REENTRANT.md` |
+| `Phase 3/verifications/topologies_overview.py` | What do all the topologies used across the cases look like? | `Phase 3/verifications/topologies_overview.png` |
+| `Phase 3/verifications/verify_lattice.py` | Does `make_lattice` geometry work end-to-end, before any plotting? | gate; script output |
+
+## I.7 — M2 premises (the GNN)
+
+| script | the question it answers | answer lives in |
+|---|---|---|
+| `Phase 5/verifications/supercell_invariance.py` | Is `C_eff` really INTENSIVE across supercells? — the premise under "train small, deploy large" and under the label-free supercell gate | `results/supercell_invariance/SUPERCELL_INVARIANCE.md` — **yes, to 5e-16 … 7e-13** on four chains including the sharp anisotropic one; independently confirms that v1's `sum`-pooling branch is unphysical |
+| *(see I.2 — dilution)* | What may M2 safely sample along the coordination axis? | `k_soft ≥ 1e-8`, full `f ∈ [0, 0.40]` usable |
+
+## I.8 — DEAD: the legacy island (do NOT cite as evidence)
+
+`verification_tools/test_cluster_{Ceff,VD,rigidity,Ceff_rigidity}.py` and
+`test_intrinsic_{metric,VD}.py` — **these do not execute.** They call `Ceff_nuE`, the legacy
+**area-weighted** metric average, tombstoned 2026-08-10 as physically wrong; it raises
+`NotImplementedError`, so any path reaching it dies on first call. Full status:
+`verification_tools/README.md` §3. Their *conclusions* have since been re-established far more
+strongly and independently, but **numbers computed through `Ceff_nuE` are stale** — in particular the
+"single-site mean-field ≈1.4× over-compliance" figure, which **must not be re-cited until it is
+re-derived** under the unweighted homogenisation (audit A-7; queued as Part II §6 stage 5).
+
+---
+
+# PART II — THE POST-AUDIT CAMPAIGN PLAN
+
+## The post-audit verification campaign — plan (drafted 2026-08-16)
 
 > **Status:** draft for approval, 2026-08-16. Nothing here has been run.
 > Predecessor: `documentation/AUDIT_2026-08.md` (register), fix order item **#8**.

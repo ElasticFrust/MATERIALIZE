@@ -1,12 +1,26 @@
 # NEXT SESSION — start here
 
-**Rewritten 2026-08-22; §1 rewritten 2026-08-24 — B-1 IS FIXED.** Read `CLAUDE.md` §1–3, this file,
-and **`documentation/VERIFICATION_CAMPAIGN.md` — the index of what has already been measured. Read
-it before proposing any new measurement.** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
+**Rewritten 2026-08-22; §1 rewritten 2026-08-24 (B-1 FIXED); banner + §2–§3 rewritten 2026-08-25
+(M2's decisions taken, work staged S0…S5).** Read `CLAUDE.md` §1–3, this file, and
+**`documentation/VERIFICATION_CAMPAIGN.md` — Part I is the INDEX of what has already been measured,
+one line per analysis script. Read it before proposing any new measurement, and say what you found,
+including "nothing".** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
 
-> **The goal is the GNN, and the blocker is GONE.** B-1 was root-caused and fixed on 2026-08-24
-> (§1 below). **M2's two decisions are now the top of the list, and they are yours** — nothing
-> technical stands in front of them.
+> **The goal is a LEARNED MODEL OF THE SOLUTION SPACE — not the GNN surrogate, and not any single
+> optimised network** (`CLAUDE.md` §1). The forward map is many-to-one, so the endpoint is a
+> generative / edit **neural network** (**GNN surrogate → edit-policy**, VAE, with an interpreter
+> front-end mapping user intent → targets). Within that arc the **edit-policy is the endpoint (S5)**;
+> the **forward surrogate comes first** because it is the cheap feasibility probe — if a GNN cannot
+> predict `C6` from a graph it certainly cannot invert the map — and because it is the policy's
+> natural **critic**. The differentiable designer (M1) is the *engine* that produces the labels,
+> explicitly **not** the goal.
+>
+> *(An earlier version of this banner read "the goal is the GNN". That was drift; caught by the user
+> 2026-08-25 and corrected here.)*
+>
+> **Nothing is blocking.** B-1 was root-caused and fixed 2026-08-24 (§1); M2's decisions **D1–D9 are
+> taken** (2026-08-25); the live plan is **`Phase 5/m2/M2_V2_PLAN.md`**, staged **S0…S5**.
+> **The next action is S1** (§2).
 
 ---
 
@@ -130,24 +144,64 @@ node counts to M2. Small, self-contained, and the fan is a correct fallback unti
 *(`_reentrant_honeycomb` still uses the Delaunay chord split and is still tagged `mesh_ok=False` —
 A-17's tail. Giving it the fan is the obvious follow-up.)*
 
-### 2. M2 — two decisions, then it is unblocked
-- **What M2 IS.** `CLAUDE.md` calls it a GNN **edit-policy** in four places (§1 twice, the
-  entry-point line, §2's table); `Phase 5/m2/model.py` says **forward surrogate**. A straight
-  docs-vs-code contradiction, deliberately left for the user. It decides the dataset, the loss and
-  the success criterion, so it comes first.
-- **What it trains against.** Graph → C6 (6 numbers) as now, or graph → ν(θ),E(θ) on the 37-angle
-  grid; loss on raw C6 / normalised components / derived ν,E; success measured against the
-  **independent sim on held-out topology FAMILIES**, which `M2.md` records the July validation got
-  wrong (random split against the solver labels the model trained on).
+### 2. M2 — the decisions are TAKEN; the work is staged S0…S5
 
-### 3. M2 — rebuild, retrain, validate
-Labels are **verified stale** (37/41 drift, worst |Δν| = 1.73), so `checkpoint.pt` is unverified.
-`Phase 5/dataset/` and `m2/data/` are deliberately ABSENT so nothing retrains on the old labels; the
-July set is archived at `validation_2026-08/attic/m2_dataset_2026-07_pre-A0/`. Record the smoke-train
-metrics this time (`M2.md` still has `<FILL>`).
+**Live plan: `Phase 5/m2/M2_V2_PLAN.md`** (decisions **D1–D9 approved 2026-08-25**; §0 records each
+one *together with the argument against it*, so they stop being re-litigated). The two questions this
+section used to pose are answered:
 
-**Today's work substantially improves what a dataset must cover** — see
-`Phase 5/results/reach_summary/REACH_SUMMARY.md` for the reachable envelope on one axis.
+- **What M2 IS (D1)** — *both, in order*: v2 is the **forward surrogate**; the **edit-policy is the
+  endpoint** and comes after it, with the surrogate as its natural critic. They are different
+  objects, so nothing is wasted.
+- **What it trains against (D2)** — the **tensor**, not the derived curves. ν(θ),E(θ) are
+  ratios/reciprocals of quartics in `C`, so predicting 74 numbers directly would permit profiles
+  **no positive-definite `C` can produce**. Predict `C`; derive ν,E with the solver's own
+  `c6_to_nuE` / `c6_to_nuE_theta`.
+
+| stage | what | status |
+|---|---|---|
+| **S0** | `CLAUDE.md` wording; **pin `OMP/MKL_NUM_THREADS` + the tiling method in the builder** | wording ✅ (swept across *all* docs 2026-08-25); **thread + method pinning NOT DONE — the one S0 item still open** |
+| **S0b** | dilution validity sweep, 266 cases | ✅ **`k_soft ≥ 1e-8` is safe at every `f ≤ 0.40`**, including sub-isostatic `z = 3.6`; below 1e-12 unusable. `results/dilution_validity/DILUTION_VALIDITY.md` |
+| **S1 ← THE NEXT ACTION** | the new head `C(s) = Q·MMᵀ·Qᵀ` + rotation-invariant features + triangle-level readout, trained on **MINIMAL CELLS** | premise ✅ (`C_eff` verified **intensive** to 5e-16…7e-13, `results/supercell_invariance/`); **the model itself is unwritten**. Gates: `MMᵀ` diagonal `= k_e/4ℓ_e²`; SPD rate 100 %; supercell invariance; self-loops (`u == v`) handled; ν=1/3, E=2/√3. ~30 min |
+| S2 | scaled, balanced dataset (~10 k), trajectories + provenance | after S1 — see §3 |
+| S3 | 5-fold leave-one-family-out training | **must**: MAE(ν) ≤ 0.02 and MAE(E)/E ≤ 5 % **against the independent sim**; **kill criterion** MAE(ν) > 0.05 ⇒ stop and report, which is a legitimate result |
+| S4 | wire in as an M1 pre-filter | solver calls per design reduced at unchanged design quality |
+| S5 | **the edit-policy** — the actual endpoint of this arc | separate plan; trains on the trajectories S2 stores |
+
+**The order is load-bearing: do NOT scale data before S1 passes.** S1 is deliberately tiny — an
+architecture check with **analytic ground truth** (in the small-cell limit the non-affine correction
+vanishes and `C(s) → A(s)`, so `MMᵀ` must come out diagonal with entries `k_e/4ℓ_e²`). It catches in
+minutes what a 10 k build would otherwise expose only afterwards: extensive-vs-intensive pooling,
+self-loop handling in minimal cells, and whether the head is parametrised correctly at all.
+
+### 3. M2 — the dataset rebuild is **S2**, and comes only AFTER S1
+
+The old labels are **verified stale** (37/41 drift, worst |Δν| = 1.73), so `m2/checkpoint.pt` is
+unverified. `Phase 5/dataset/` and `m2/data/` are deliberately **ABSENT** so nothing can retrain on
+them; the July set is archived at `validation_2026-08/attic/m2_dataset_2026-07_pre-A0/`. Record the
+smoke-train metrics this time — `M2.md` still has `<FILL>` where the v1 numbers should be.
+
+**But the rebuild is not the next action.** Building 10 k samples against an architecture that has
+not passed its analytic gate is exactly what the staging exists to prevent.
+
+What the rebuild must respect, all of it measured *since* this section was first written:
+
+- **threads pinned and recorded per sample** (D4) — BLAS thread count changes a design outcome
+  (ν −0.150 → −0.128, objective error 450×, same seed and commit);
+- **dilution bounded at `k_soft ≥ 1e-8`** (S0b) — below 1e-12 the solver returns ν of the wrong
+  *sign*, and no geometric health gate can detect it;
+- **tiling representation recorded** (D3, default `fan`) — it changes node counts by ~50 %
+  (honeycomb_r3: 54 nodes as a fan, 36 as chords), so switching it means rebuilding, not fine-tuning;
+- **`phase4` seeds excluded** (D5) — they are non-periodic, wrapped heuristically, and would **leak
+  across the leave-one-family-out split**;
+- **the two leakage traps** — split by **trajectory id** (steps within one optimisation are
+  near-duplicates), and **attribute every ingested design to its source family** so it is held out
+  with that family;
+- **balance, not size** — no family below ~10 %; `random` can be generated without limit while
+  `tiling`, `basis` and `auxetic` are a handful of topologies each.
+
+`Phase 5/results/reach_summary/REACH_SUMMARY.md` records the reachable envelope on one axis — what a
+dataset must cover to be honest about the auxetic corners.
 
 ### 4. Deferred, deliberately
 - **The tilings themselves are FIXED** (crossing chords → phantom-centre fan, see below). What is
@@ -293,7 +347,11 @@ not answerable from the results without recomputing.
   proposed analyses that already existed (per-triangle localisation *with a ‖W‖ field*; the
   sliver-vs-gap correlations in `positions.tri_shape_quality`'s docstring; the `ab_quality_floor`
   trade-off). **Check `VERIFICATION_CAMPAIGN.md` and `verification_tools/README.md` first, and say
-  what you found.** That rule is in `CLAUDE.md` §3 — but it indexes *scripts*, not findings.
+  what you found — including "nothing".** That rule is in `CLAUDE.md` §3.
+  **FIXED 2026-08-25:** the rule used to point at a document that could not serve it —
+  `VERIFICATION_CAMPAIGN.md` was a *campaign plan*, not an index, and 7 of 9 sampled analyses were
+  absent from it. It now opens with **Part I, a real index**: one row per analysis script giving the
+  question it answers, where the answer lives, and the headline number where one is on record.
 - **Read reach over ALL runs, never the trustworthy subset.** This concealed a real result four
   separate times, including in `run_goal1`'s own printed summary, which would have reported
   "medium: [+0.15, +0.38]" and hidden the −0.377.

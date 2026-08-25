@@ -1,0 +1,29 @@
+S1 premise: is C_eff INTENSIVE? (same crystal, growing supercell -> identical C)
+
+triangular crystal, uniform k (isotropic)
+  cell        n_tri           nu            E   max|C6 - C6(first)|/|C6|
+  half=2         32   0.33333333   1.15470054   0.000e+00
+  half=3         72   0.33333333   1.15470054   1.709e-16
+  half=4        160   0.33333333   1.15470054   1.709e-16
+  half=6        336   0.33333333   1.15470054   5.128e-16
+
+anisotropic crystal psi=0.6, uniform k  (SHARPER: C is not isotropic)
+  cell        n_tri           nu            E   max|C6 - C6(first)|/|C6|
+  half=2         64   0.56761413   1.17976381   0.000e+00
+  half=3        144   0.56761413   1.17976381   3.721e-16
+  half=4        256   0.56761413   1.17976381   9.302e-16
+  half=6        576   0.56761413   1.17976381   7.441e-16
+
+honeycomb tiling (soft fictional bonds -> tests under large k contrast)
+  cell        n_tri           nu            E   max|C6 - C6(first)|/|C6|
+  reps=2         48   0.99552128   0.00259096   0.000e+00
+  reps=3        108   0.99552128   0.00259096   7.678e-14
+  reps=4        192   0.99552128   0.00259096   1.344e-13
+
+kagome tiling (soft fictional bonds -> tests under large k contrast)
+  cell        n_tri           nu            E   max|C6 - C6(first)|/|C6|
+  reps=2         64   0.33333333   0.57792762   0.000e+00
+  reps=3        144   0.33333333   0.57792762   2.167e-13
+  reps=4        256   0.33333333   0.57792762   6.781e-13
+
+A MEAN-pooled model can satisfy this; a model with a SUM branch cannot (v1 pools mean+sum).

@@ -54,6 +54,11 @@ nu_th, E_th = c6_pred_to_nuE_theta(C6)     # directional (37,) each
 ```
 
 ## Status
+**The live plan is [`M2_V2_PLAN.md`](M2_V2_PLAN.md) (v2, decisions D1–D9 approved 2026-08-25).**
+It supersedes `M2.md`'s "Next steps": the head, the edge features and the validation protocol all
+change, and stage **S1 (minimal cells) comes before any dataset scale-up**. The description below is
+v1, kept as the record of what `checkpoint.pt` is.
+
 This is a **SCAFFOLD**: the data pipeline, model, and training loop run end-to-end and
 the surrogate demonstrably learns, but it is **not a converged model**. To reach a usable
 surrogate, scale the dataset (`--scale`) and train longer (see `M2.md` "Next steps").

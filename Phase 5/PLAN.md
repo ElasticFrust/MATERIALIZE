@@ -72,8 +72,9 @@
 > **Purpose of this document.** A self-contained, step-by-step spec an independent implementer can follow to build
 > **Milestone 1 (M1)**: a *search-based inverse designer* that, given a target directional response **ν(θ), E(θ)** and a
 > network size, produces **explicit triangulated networks (points + edges) + per-bond rigidities** that realise it, verified
-> against an independent physical simulation. It also emits the labelled dataset that the **M2** neural net (a GNN edit-policy)
-> will train on. **Do not modify `Phase 2/forward_solver_torch.py` (protected core).** All new code lives in `Phase 5/`.
+> against an independent physical simulation. It also emits the labelled dataset the **M2** GNN trains on — v2 of which is a
+> **forward surrogate first, edit-policy second** (decision D1, 2026-08-25; live plan `Phase 5/m2/M2_V2_PLAN.md`).
+> **Do not modify `Phase 2/forward_solver_torch.py` (protected core).** All new code lives in `Phase 5/`.
 > **First action: copy this file to `Phase 5/PLAN.md`.**
 
 ---

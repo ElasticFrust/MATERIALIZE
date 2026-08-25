@@ -405,7 +405,8 @@ MATERIALIZE/
 ├── Phase 4/                     LEGACY remnant — its topology/point-cloud generators are reused by Phase 5
 ├── Phase 5/                     the DESIGNER (current work): topology + node positions + k search (M1)
 │   ├── designer.py seeds.py positions.py triangulation.py gallery.py plot_responses.py
-│   ├── m2/                       M2 learned edit-policy (GNN) — prototyped (model + trained checkpoint)
+│   ├── m2/                       M2 GNN: forward SURROGATE first (v1 prototyped), edit-policy the
+│   │                             endpoint (D1); live plan M2_V2_PLAN.md; v1 checkpoint UNVERIFIED
 │   └── verifications/ networks/ results/
 ├── verification_tools/          the temporary, retireable INDEPENDENT ORACLE + analysis scripts
 │   ├── physical_homog.py        virial / energy-Hessian ground truth; SELF-SCREENS near-singular

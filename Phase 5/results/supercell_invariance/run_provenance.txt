@@ -1,0 +1,16 @@
+supercell_invariance.py -- run provenance
+=========================================
+producer : Phase 5/verifications/supercell_invariance.py
+commit    : 9b62315  (working tree carried doc-only edits at run time)
+run (UTC) : 2026-08-25T14:40Z
+python    : C:\Users\doron\anaconda3\python.exe
+stack     : torch 2.12.1+cpu, numpy 2.3.5, scipy 1.16.3
+threads   : torch.get_num_threads() = 4, OMP_NUM_THREADS unset -- DEFAULT, NOT PINNED
+            (see M2_V2_PLAN.md D4; irrelevant here -- the agreement is at 1e-16..1e-13,
+             thirty-plus orders below any thread-induced difference, and the run reproduced
+             the 2026-08-25 numbers digit for digit)
+seed      : none needed -- eta = 0 throughout, every cell deterministic
+env       : KMP_DUPLICATE_LIB_OK=TRUE (anaconda duplicate-libiomp5md workaround; affects
+            neither the arithmetic nor the result -- numbers match the un-workaround-ed
+            original run in commit 9b62315 exactly)
+output    : supercell.txt (verbatim stdout)

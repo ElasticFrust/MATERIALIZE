@@ -6,7 +6,8 @@ it shaped like this" companion to the file-by-file tour in `MATERIALIZE.md` §5�
 usage) and to the operative rules in the project `CLAUDE.md` §2 (the short form used while working).
 
 On any conflict: `CLAUDE.md` is the operative rule, this document is the explanation, and code wins
-over both. Last reconciled with the tree: **2026-08-15**, after the A-7b re-layering.
+over both. Last reconciled with the tree: **2026-08-25** (M2 naming, D1); the layer structure was
+last reconciled **2026-08-15**, after the A-7b re-layering.
 
 ---
 
@@ -28,7 +29,7 @@ above it. Phase numbering is historical, not a ladder: the live arc is Phase 2 �
    ┌──────────────────────────────────────────────────────────────┐
    │ Phase 5/          DESIGNER — topology + position + k search   │  active work
    │   designer.py seeds.py positions.py triangulation.py          │
-   │   m2/  (GNN edit-policy, prototyped)                          │
+   │   m2/  (GNN surrogate → edit-policy; surrogate prototyped)    │
    └───────────────────────────┬──────────────────────────────────┘
                                │ uses
    ┌───────────────────────────▼──────────────────────────────────┐
@@ -70,8 +71,10 @@ The three lower modules are **core-adjacent**: same layer, same gate, *not* the 
 design→simulate→check demos and the shared harness `_common.py`.
 
 ### Phase 5 — the designer
-M1 search over topology, node positions and k, built on Phase 3. M2 is the prototyped GNN
-edit-policy. This is where active work happens.
+M1 search over topology, node positions and k, built on Phase 3. M2 is the **GNN surrogate →
+edit-policy** pair (decision D1, 2026-08-25): the forward surrogate comes first and is what v1
+prototyped; the edit-policy is the endpoint, with the surrogate as its critic. Live plan:
+`Phase 5/m2/M2_V2_PLAN.md`. This is where active work happens.
 
 ### verification_tools — the oracle
 `physical_homog.py` (nodal relaxation → virial stress / energy-Hessian homogenisation) plus
