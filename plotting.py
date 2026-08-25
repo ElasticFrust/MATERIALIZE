@@ -55,8 +55,15 @@ class STYLE:
 
 
 def square(ax):
-    """Square axes frame, no ticks (project convention for spatial/network panels)."""
-    ax.set_aspect('equal'); ax.set_xticks([]); ax.set_yticks([])
+    """Square axes frame, no ticks (project convention for spatial/network panels).
+
+    `set_aspect('equal')` alone only makes the PANEL square when the cell itself is square: it fixes
+    the DATA aspect, so a cell with Lx != Ly gets a correspondingly oblong axes box. The convention
+    is that spatial panels are always square, so `set_box_aspect(1)` pins the box and the equal data
+    aspect keeps angles and bond lengths undistorted (the cell is letterboxed inside the square
+    rather than stretched to fill it). This matters as soon as cells of differing aspect ratio share
+    a montage -- the M2 unit-cell sweep, where the aspect ratio is itself a sampled axis."""
+    ax.set_aspect('equal'); ax.set_box_aspect(1); ax.set_xticks([]); ax.set_yticks([])
 
 
 def _k_norm(k, scale='linear', hi_pct=None):
@@ -87,7 +94,13 @@ def _k_norm(k, scale='linear', hi_pct=None):
         if live.size == 0:
             return mcolors.Normalize(0.0, max(hi, 1e-9))
         lo = float(np.percentile(live, 5))
-        hi = max(hi, lo * (1 + 1e-9))
+        # DEGENERATE LIVE RANGE -> fall back to linear. A dilution / bimodal field has every live
+        # bond at exactly k_stiff, so lo == hi and `LogNorm(lo, lo*(1+1e-9))` yields a colorbar
+        # whose ticks all read the same number (measured: eight ticks of "1.42857 x 10^0") while the
+        # panel renders one flat colour. A log scale says nothing about a delta; the linear branch
+        # spans [0, hi] and so still separates the soft population from the stiff one.
+        if not np.isfinite(lo) or lo <= 0 or hi / lo < 1.05:
+            return mcolors.Normalize(0.0, hi if hi > 0 else max(float(k.max()), 1e-9))
         return mcolors.LogNorm(lo, hi)
     return mcolors.Normalize(0.0, hi if hi > 0 else max(float(k.max()), 1e-9))
 
@@ -485,8 +498,16 @@ def montage(items, out_path, ncols=4, suptitle=None, cbar_label='k', dpi=STYLE.D
     `elements/` dir next to `out_path`. `items` = list of `(geo, bond_k, title)`, or
     `(geo, bond_k, title, solid)` to override the solid/dashed mask (see `draw_network`; needed
     whenever the near-zero bonds are the MAJORITY, where the median-relative default dashes
-    nothing). Already loaded — plotting.py does no IO. Returns the list of element image paths."""
-    items = [(it if len(it) == 4 else (*it, None)) for it in items]
+    nothing), or `(geo, bond_k, title, solid, scale)` to set the colour scale PER PANEL
+    (`'linear'` | `'log'`).
+
+    Per-panel `scale` exists because a montage routinely mixes contrast regimes — a uniform-k panel
+    beside a diluted one at k_max/k_min ~ 1e6. One linear norm across that range renders the
+    high-contrast panel as a flat dark mass in which the correctly-dashed near-zero bonds read as a
+    TORN MESH; that is the B-4 misreading, where the data and `draw_network` were both fine and only
+    the norm was wrong. `draw_network` already supports `scale='log'`; this lets a montage choose it
+    per panel. Already loaded — plotting.py does no IO. Returns the list of element image paths."""
+    items = [tuple(it) + (None, 'linear')[len(it) - 3:] for it in items]
     if not items:
         raise ValueError('montage: no items given')
     n = len(items)
@@ -494,9 +515,9 @@ def montage(items, out_path, ncols=4, suptitle=None, cbar_label='k', dpi=STYLE.D
     nrows = int(np.ceil(n / ncols))
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(3.4 * ncols, 3.7 * nrows), squeeze=False)
-    for idx, (geo, k, title, sol) in enumerate(items):
+    for idx, (geo, k, title, sol, scale) in enumerate(items):
         ax = axes[idx // ncols][idx % ncols]
-        lc = draw_network(ax, geo, k, title=title, solid=sol)
+        lc = draw_network(ax, geo, k, title=title, solid=sol, scale=scale)
         fig.colorbar(lc, ax=ax, fraction=0.046, pad=0.02, label=cbar_label)
     for idx in range(n, nrows * ncols):
         axes[idx // ncols][idx % ncols].axis('off')
@@ -507,9 +528,9 @@ def montage(items, out_path, ncols=4, suptitle=None, cbar_label='k', dpi=STYLE.D
 
     elem_dir = os.path.join(os.path.dirname(os.path.abspath(out_path)), 'elements')
     elem_paths = []
-    for idx, (geo, k, title, sol) in enumerate(items):
+    for idx, (geo, k, title, sol, scale) in enumerate(items):
         ep = os.path.join(elem_dir, f'panel_{idx:02d}.png')
-        save_element(lambda ax, g=geo, kk=k, t=title, sd=sol:
-                     (draw_network(ax, g, kk, title=t, solid=sd)), ep)
+        save_element(lambda ax, g=geo, kk=k, t=title, sd=sol, sc=scale:
+                     (draw_network(ax, g, kk, title=t, solid=sd, scale=sc)), ep)
         elem_paths.append(ep)
     return elem_paths

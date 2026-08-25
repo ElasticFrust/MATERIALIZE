@@ -138,6 +138,13 @@ Properties:
 - **SPD by construction** in the passive form (`XXᵀ`), so physicality is structural, not hoped for.
 - **Interpretable** — at `W = 0`, `MMᵀ` is diagonal with entries `k_e/4ℓ_e²` (the bare tensor), so
   **the off-diagonal weights are exactly the non-affine content.** The model learns the correction.
+  > **⚠ UNITS, measured 2026-08-25 — the constant differs by 4 between the two conventions.**
+  > `k_e/4ℓ_e²` is the **physical** form. The solver's `forward()` returns `C(s)` in **internal**
+  > units by default (`physical_units=False`, the `factor = k/ℓ²/16` block), where the closed form is
+  > **`C(s) = Σ_e (k_e/16ℓ_e²) q_e q_eᵀ`**. Verified on the open single triangle to **2e-16** across
+  > three shapes (equilateral / right / scalene) × three `k` vectors:
+  > `Phase 5/seeds.py: anchor_single_triangle`. **State which units the S1 gate runs in**, or it
+  > fails on a factor of 4 that is a convention, not a defect.
 - **`passive=False` admits ODD / ACTIVE elasticity** — a free `Γ` spans all of `3×3` including the
   antisymmetric part. SPD is a *passive-only* assumption and is a flag, not a hard-wired constraint.
 
@@ -248,9 +255,19 @@ non-affine content**. This is an **M1 gate**, not just a sample.
 It also inverts the receptive-field concern: a small cell fits entirely inside the GNN's receptive
 field, so the model *can* be exact there, and the degradation with size becomes a measured curve.
 
-*Caveat:* in a minimal cell every bond is a **self-loop** in the quotient graph (node to its own
-periodic image, distinguished only by `bond_R`). Message passing must handle `u == v` sensibly —
-test at M1.
+*Caveat — RESOLVED 2026-08-25 by flooring the sweep.* In a minimal cell every bond is a **self-loop**
+in the quotient graph (node to its own periodic image, distinguished only by `bond_R`). **Measured:
+self-loops occur only at N=1 (3 of 3 bonds) and N=2 (2 of 6); there are ZERO for N≥3**, and N=1/N=2
+are also the only sizes that make the solver's angle/curvature code emit `invalid value` warnings.
+The generator therefore floors at **`seeds.N_BASIS_MIN = 3`** (user's call), which removes the
+self-loop question, the warnings, and the degenerate all-self-loop graph in one move — a 1-vertex
+cell is a real Bravais crystal physically, but as a *graph* it is all self-loops and no neighbours.
+The analytic anchor is instead the **OPEN single triangle**, where `C(s) = A(s)` exactly.
+
+*Note on what N means:* N counts vertices **in the rectangular box**, so it is a property of the
+representation, not of the material — the regular triangular lattice is a one-site Bravais crystal
+in oblique coordinates but N=2 here (and gives ν=1/3, E=2/√3 to 1e-16 on **four** triangles, which
+`make_lattice` cannot reach — its smallest output is 16 nodes / 32 triangles).
 
 Size plan: **minimal (2–20 tri) -> training bulk (60–250 nodes) -> held-out LARGE bin (500–1000)**.
 Large labels are expensive, so they are spent on validation, not training.
@@ -488,7 +505,7 @@ id, k-pattern, seed, label source, trajectory id + step, tiling method, thread c
 |---|---|---|
 | **S0** | fix the "edit-policy" wording (✅ **DONE 2026-08-25** — `CLAUDE.md`, and the sweep completed across `ARCHITECTURE.md`, `MATERIALIZE.md`, `Phase 5/PLAN.md`, `M2.md`, `m2/README.md`); **pin threads + tiling method in the builder — STILL OPEN** | the pinning is the one S0 item left |
 | **S0b** | ✅ **DONE 2026-08-25** — dilution validity sweep (266 cases) | boundary MEASURED: `k_soft ≥ 1e-8` safe at all `f ≤ 0.40`; below 1e-12 unusable |
-| **S1** | new head (§2.1) + invariant features, trained on MINIMAL CELLS (§3.1c) — analytic ground truth. **Premise ✅ verified 2026-08-25** (§3.1e); the model is unwritten | `MMᵀ` diagonal `= k_e/4ℓ_e²` on minimal cells; SPD rate 100 %; **supercell invariance**; self-loops handled; ν=1/3, E=2/√3 |
+| **S1** | new head (§2.1) + invariant features, trained on the small-cell band (§3.1c). **Premise ✅ verified 2026-08-25** (§3.1e); generator ✅ (`seeds.seed_cells`, N=3…12 ⇒ 6…24 triangles); the model is unwritten | `MMᵀ` diagonal `= k_e/16ℓ_e²` **in internal units** (see §2.1's units note) on the OPEN single triangle; SPD rate 100 %; **supercell invariance**; ν=1/3, E=2/√3 at the 4-triangle cell |
 | **S2** | scaled, balanced dataset (§3), ~10 000 samples, trajectories + provenance | coverage cells ≫ 19; no family < 10 %; leakage checks pass |
 | **S3** | full 5-fold leave-one-family-out training | the §1 **must** tier, or the kill criterion |
 | **S4** | wire into M1's search as a pre-filter | solver calls per design reduced at unchanged design quality |
@@ -501,7 +518,7 @@ id, k-pattern, seed, label source, trajectory id + step, tiling method, thread c
 
 ## 6. Risks and open questions
 
-- **The surrogate may simply not be needed.** If M4 shows the solver is not the bottleneck in the
+- **The surrogate may simply not be needed.** If S4 shows the solver is not the bottleneck in the
   search, the honest outcome is to keep the surrogate as the policy critic only. Decide at S4, on measurement.
 - **`ν` is a ratio and is ill-conditioned near `E → 0`.** MAE(ν) over a set containing near-mechanism
   networks may be dominated by a few samples. Report the distribution, not just the mean.
@@ -509,6 +526,13 @@ id, k-pattern, seed, label source, trajectory id + step, tiling method, thread c
   fail at 1000. Explicitly hold out the largest size bin as a secondary check.
 - **Fan vs chord** (D3) is fixed to `fan` here, but the choice changes the graphs the GNN sees.
   If the pool ever switches, the dataset must be rebuilt, not fine-tuned.
-- **Open:** whether to include `phase4` seeds (currently excluded from the default pool).
-- **Open:** whether the edit-policy should act on `k` only, or on `k` + node positions. Positions
-  have no cheap gradient (`CLAUDE.md` §3, SPSA), which is an argument for the policy to own them.
+- ~~**Open:** whether to include `phase4` seeds.~~ **SETTLED — D5: EXCLUDED.** Its generators are
+  non-periodic and get wrapped heuristically, fabricating seam connectivity; and a `phase4_blue_noise`
+  sample is a `random` sample wearing another family's label, which would **leak across the
+  leave-one-family-out split**.
+- ~~**Open:** whether the edit-policy should act on `k` only, or on `k` + node positions.~~
+  **SETTLED — D6: BOTH, as INDEPENDENT modes** (k alone, geometry alone, or both, selectable per
+  request). `k` has cheap solver gradients and positions do not (SPSA), so fusing them would force
+  the weaker channel's method onto the stronger one.
+
+*(These three markers were stale until 2026-08-25: §0 of this same file had already settled them.)*

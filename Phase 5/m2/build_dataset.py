@@ -1,278 +1,358 @@
-r"""Phase 5 / M2 — SCALED, COVERAGE-DRIVEN dataset builder for the GNN forward surrogate.
+"""Build the M2 v2 training set:  graph -> elastic tensor C6.
 
-Problem with plain forward-random sampling (Phase 5/dataset.py): it piles up in the
-trivial nu~0.3, E~1.15 blob (see Phase 5/dataset/coverage.png -> only ~16 occupied
-cells).  This builder improves coverage by COMBINING two sources:
+Implements `Phase 5/m2/M2_V2_PLAN.md` §3 (dataset) under decisions D2/D3/D4/D5/D8/D9.
+REPLACES the v1 builder wholesale -- v1's labels are verified stale (37/41 drift, worst |dnu|=1.73,
+audit A-19) and its sampling covered roughly one of the four `k` knobs.
 
-  (A) FORWARD SCAN  — many seed-zoo topologies (all point processes + tilings +
-      Bravais + complex-basis + auxetic motifs) x several k-PATTERNS
-      (uniform / lognormal / graded / soft-edge k0), each labelled by the SOLVER
-      forward pass with its homogenised C6 -> nu(theta),E(theta).
+WHAT IS LABELLED
+----------------
+The **TENSOR** (D2), not the derived curves.  nu(theta), E(theta) are ratios/reciprocals of quartics
+in `C`, so a model predicting 74 numbers directly can emit profiles **no positive-definite `C` can
+produce**.  nu and E are stored too, but as DERIVED diagnostics -- never as the training target.
 
-  (B) INGEST DESIGNED NETWORKS — load ALL Phase 5/networks/**/*.npz (including any
-      goal1/ goal2/ produced by sibling runs).  These carry an independent-sim
-      per-triangle tensor C6_per -> region C6 and populate the RARE, interesting
-      regions (auxetic / anisotropic / off-blob) the forward scan under-samples.
+THREADS ARE PINNED (D4)
+-----------------------
+BLAS thread count changes a design outcome (nu -0.150 -> -0.128, objective error 450x, same seed and
+commit -- `b1_thread_local.py`).  Unpinned, the labels would carry unlabelled noise of that size.
+The env vars MUST be set before torch/numpy import, which is why they are at the very top of this
+file, above every other import.
 
-Each sample stores the graph (pts, bond_u, bond_v, bond_R, k, tri_bond, areas,
-BL1, BL2), the label C6 (6,), the derived nu(theta),E(theta) and descriptors
-(mean nu, mean E, anisotropy).  Everything is written to ONE consolidated file
-Phase 5/m2/data/dataset.npz (concatenated graphs + labels), and a coverage.png is
-produced so the improved coverage is visible.  The occupied-cell count is reported
-against the old 16.
+THE TWO LEAKAGE TRAPS (§3.5), both handled here
+-----------------------------------------------
+1. TRAJECTORY leakage -- steps within one optimisation are near-duplicates, so a per-SAMPLE split
+   puts near-copies on both sides.  Every sample carries `traj_id`; split on THAT.
+2. INGEST leakage -- a designed network inherits the family of the seed it came from.  Unattributed,
+   a held-out family walks back in through the ingest.  Every sample carries `family`.
 
-The build is PARAMETERIZED (n_random topologies, k_patterns, tiling reps) with a
-modest default that finishes in minutes, but is structured to scale up overnight
-(see --scale / the README).
-
-Run:  "C:\Users\doron\anaconda3\python.exe" "Phase 5\m2\build_dataset.py"
-      "C:\Users\doron\anaconda3\python.exe" "Phase 5\m2\build_dataset.py" --scale
+Run:
+    python "Phase 5/m2/build_dataset.py" --smoke        # a few hundred samples, minutes
+    python "Phase 5/m2/build_dataset.py"                # the full build
 """
-import os, sys, json, glob, argparse, time
-import numpy as np
-import torch
-REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+import os
+
+# D4: pin BEFORE numpy/torch are imported anywhere. Recorded per sample as provenance.
+N_THREADS = int(os.environ.get('MATERIALIZE_THREADS', '1'))
+for _v in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
+    os.environ[_v] = str(N_THREADS)
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
+
+import argparse                                                          # noqa: E402
+import subprocess                                                        # noqa: E402
+import sys                                                               # noqa: E402
+import time                                                              # noqa: E402
+import warnings                                                          # noqa: E402
+
+import numpy as np                                                       # noqa: E402
+import torch                                                             # noqa: E402
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, os.path.join(REPO, 'Phase 3', 'verifications'))
-import _common as C
-from inverse_design import DesignProblem, ANG, c6_to_nuE_theta
+import _common as C                                                      # noqa: E402
+sys.path.insert(0, os.path.join(REPO, 'Phase 5'))
+sys.path.insert(0, HERE)
+import fields as F                                                       # noqa: E402
+import seeds as S                                                        # noqa: E402
+from inverse_design import (DesignProblem, ANG, c6_to_nuE,               # noqa: E402
+                            c6_to_nuE_theta)
+import mesh_build as MB                                                  # noqa: E402
+
 torch.set_default_dtype(torch.float64)
+torch.set_num_threads(N_THREADS)
 
-PHASE5 = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, PHASE5)                       # so `import seeds` (Phase 5/seeds.py) works
-import seeds
+OUT_DIR = os.path.join(HERE, 'data')
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
-NET_GLOB = os.path.join(PHASE5, 'networks', '**', '*.npz')
+#: (structure, marginal) pairs actually sampled. `uniform` is paired only with `iid` because the
+#: marginal makes the driver irrelevant -- every other combination with it is the same field.
+K_COMBOS = [('iid', 'uniform'),
+            ('iid', 'lognormal'), ('iid', 'bimodal'), ('iid', 'heavy_tail'),
+            ('correlated', 'lognormal'), ('correlated', 'bimodal'), ('correlated', 'heavy_tail'),
+            ('gradient', 'lognormal'), ('gradient', 'bimodal'),
+            ('orientation', 'lognormal'), ('orientation', 'bimodal'),
+            ('sublattice', 'lognormal'), ('sublattice', 'bimodal'),
+            ('length', 'lognormal')]
 
-# coarse (nu, E) grid used for the coverage / occupied-cell metric (same as Phase 5/dataset.py)
-NU_BINS = np.linspace(-0.6, 0.6, 13)             # 12 columns
-E_BINS = np.linspace(0.0, 2.5, 11)               # 10 rows
+#: Dilution fractions. f = 0.40 puts live coordination at z ~ 3.6, BELOW the 2D isostatic point
+#: z_c = 4 -- the rigidity region the v1 zoo never visited (every mesh there is a triangulation, so
+#: live z = 6 exactly). Safe because `k_soft` stays inside the S0b bound; `fields.dilute` enforces it.
+DILUTION_FRACS = (0.10, 0.20, 0.30, 0.40)
+DILUTION_K_SOFT = 1e-6                      # 100x inside the measured 1e-8 boundary
+
+#: The BRAVAIS sweep, over the measured fundamental domain phi in [0, 1] (a2 -> a2 + n*a1 sends
+#: phi -> phi + 2 and phi -> -phi is the mirror, so nu(phi) has period 2 and mirrors about phi = 1;
+#: verified to 1e-16). `psi` is the row spacing and is the knob that is genuinely open.
+#: The DIAGONAL is a sampled axis, not a tie-break, and it flips the sign of nu: at psi=1 the
+#: `a2-a1` branch runs 0 -> +0.333 across phi while `a1+a2` runs 0 -> -0.579, the two meeting at
+#: phi = 0 where they are equivalent by symmetry. The auxetic branch is unreachable by Delaunay,
+#: which always takes the shorter diagonal.
+BRAVAIS_PHI = (0.0, 0.25, 0.5, 0.75, 1.0)
+BRAVAIS_PSI = (0.6, 0.8, 1.0, 1.4, 1.8)
+BRAVAIS_REPS = 6
+
+#: DISORDER IS ITS OWN CATEGORY (3.1b), not a knob inside `bravais`: a perturbed crystal is a
+#: different class of material, and mixing the two blurs the leave-one-family-out holdout -- the
+#: plan's instruction is to hold families out at LOW disorder and treat high disorder as its own
+#: regime, reporting the score against the disorder parameter. Frozen connectivity throughout (no
+#: re-triangulation), which is what `bravais_lattice(eta=...)` gives and a point-cloud generator
+#: cannot promise.
+DISORDER_ETAS = (0.15, 0.30)
+DISORDER_SEEDS = (0, 1, 2)
 
 
-# ---- solver label ----------------------------------------------------------------------------
-def solver_response(geo, k):
-    """SOLVER directional response for a (geo,k): (nu_theta(37,), E_theta(37,), C6(6,)) numpy."""
+def _commit():
+    try:
+        h = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=REPO,
+                           capture_output=True, text=True, timeout=10).stdout.strip()
+        d = subprocess.run(['git', 'status', '--porcelain'], cwd=REPO,
+                           capture_output=True, text=True, timeout=10).stdout.strip()
+        return h, bool(d)
+    except Exception:                                                    # noqa: BLE001
+        return 'unknown', True
+
+
+def solver_label(geo, k):
+    """Label one (graph, k) with the solver's tensor.  Returns a dict, or None if it is unusable.
+
+    Returns the tensor in PHYSICAL units (the convention every stored result in this project uses),
+    plus derived nu/E and the diagnostics the validation protocol asks to report: SPD, `max|W|` (how
+    much non-affine content the sample actually carries) and the worst triangle shape quality."""
+    import positions as POS                       # lazy: positions -> designer -> seeds is a cycle
+    geo = dict(geo)
+    geo['bond_k'] = k
+    geo['tri_k'] = k[geo['tri_bond']]
     prob = DesignProblem.from_geo(geo)
-    out = prob.forward(torch.as_tensor(np.asarray(k, float)))
-    C6 = prob.region_tensor(out['per_triangle'], None)
-    nu_th, E_th = (t.detach().numpy() for t in c6_to_nuE_theta(C6, ANG))
-    return nu_th, E_th, C6.detach().numpy()
+    with torch.no_grad():
+        out = prob.forward(torch.as_tensor(k), physical_units=True)
+        c6 = np.asarray(prob.region_tensor(out['per_triangle'], None), float)
+        nu, E = (float(x) for x in c6_to_nuE(torch.as_tensor(c6)))
+        nt, Et = (np.asarray(t) for t in c6_to_nuE_theta(torch.as_tensor(c6), ANG))
+        wmax = float(np.abs(np.asarray(out['W'], float)).max())
+    if not (np.isfinite(c6).all() and np.isfinite(nu) and np.isfinite(E)):
+        return None
+    Cm = np.array([[c6[0], c6[1], c6[2]], [c6[1], c6[3], c6[4]], [c6[2], c6[4], c6[5]]])
+    eig = np.linalg.eigvalsh(Cm)
+    return dict(C6=c6, nu=nu, E=E, nu_theta=nt, E_theta=Et, w_max=wmax,
+                spd=bool(eig.min() > 0), min_eig=float(eig.min()),
+                anisotropy=float(Et.max() / max(Et.min(), 1e-300)),
+                min_quality=float(np.min(POS.tri_shape_quality(geo))),
+                label_source='solver')
 
 
-def _descriptors(nu_th, E_th):
-    """(mean nu, mean E, anisotropy) — anisotropy = normalised spread of E(theta)."""
-    mnu, mE = float(np.mean(nu_th)), float(np.mean(E_th))
-    Emax, Emin = float(np.max(E_th)), float(np.min(E_th))
-    aniso = (Emax - Emin) / (Emax + Emin + 1e-12)
-    return mnu, mE, aniso
+def graph_of(geo, k, is_fictional=None):
+    """The stored graph.  Everything the GNN needs and nothing it does not.
+
+    `is_fictional` is stored as PROVENANCE, and is deliberately **NOT a model input**.
+
+    A fictional bond is an edge added only to triangulate a non-triangular face, held at ~eps so it
+    carries almost no load.  But the forward map is `C = f(geometry, k)`: the solver never sees the
+    label, only the stiffness, so the label adds nothing physical.  The model's edge features
+    already carry `k/k_mean` and `log(k/k_mean)`, where a fictional bond reads as log ~ -7 against
+    ~0 for a real rib -- it is REDUNDANT with an input the model already has.
+
+    And feeding it in would be worse than redundant: "has fictional bonds" is almost perfectly
+    correlated with FAMILY (`tiling`, `auxetic`), so it is a construction-provenance shortcut, and a
+    model that latched onto it would inflate the leave-one-family-out score -- the single number the
+    whole validation protocol exists to protect.
+
+    It is stored because the BUILDER needs it (which bonds to leave soft when a k-field is drawn --
+    see `respect_fictional`), the PLOTTER needs it (every edge in the compute is drawn, fictional
+    ones dashed), and analysis needs it (live coordination z, stratification, re-derivation)."""
+    nb = len(geo['bond_R'])
+    fict = np.zeros(nb, bool) if is_fictional is None else np.asarray(is_fictional, bool)
+    return dict(is_fictional=fict,
+                pts=np.asarray(geo['pts'], float),
+                bond_u=np.asarray(geo['bond_u'], np.int32),
+                bond_v=np.asarray(geo['bond_v'], np.int32),
+                bond_R=np.asarray(geo['bond_R'], float),
+                tri_bond=np.asarray(geo['tri_bond'], np.int32),
+                tri_verts=np.asarray(geo['simplices'], np.int32),
+                areas=np.asarray(geo['areas'], float),
+                k=np.asarray(k, float),
+                Lx=float(geo['BL1'][0]), Ly=float(geo['BL2'][1]))
 
 
-# ---- k-patterns (parameterized) --------------------------------------------------------------
-def k_patterns(geo, k0, seed, which=('k0', 'uniform', 'lognormal', 'graded')):
-    """Yield (name, k) stiffness fields to place on ONE topology.
+def respect_fictional(k, k0, fict):
+    """Re-impose the fictional bonds' softness after a k-field has been drawn over every bond.
 
-        k0        — the seed's own reference field (native=1 / fictional=EPS for tilings).
-        uniform   — all k=1.
-        lognormal — structured multiplicative disorder exp(N(0,sigma)).
-        graded    — smooth spatial gradient in k across x (soft one side, stiff the other).
-    """
-    nbond = len(geo['bond_R'])
-    rng = np.random.default_rng(seed)
-    if 'k0' in which:
-        yield 'k0', np.asarray(k0, float)
-    if 'uniform' in which:
-        yield 'uniform', np.ones(nbond)
-    if 'lognormal' in which:
-        for i, sig in enumerate((0.4, 0.8)):
-            yield f'lognormal{i}', np.exp(rng.normal(0.0, sig, nbond))
-    if 'graded' in which:
-        # bond midpoint x (minimal-image midpoint = pts[u] + bond_R/2), wrapped into [0,Lx)
-        mid = geo['pts'][geo['bond_u']] + 0.5 * geo['bond_R']
-        Lx = float(geo['BL1'][0])
-        xf = np.mod(mid[:, 0], Lx) / max(Lx, 1e-9)
-        for i, amp in enumerate((1.5, 3.0)):
-            yield f'graded{i}', np.exp(amp * (xf - 0.5))
+    THE BUG THIS FIXES (found 2026-08-25, from the rendered figure, by the user).  A fictional bond
+    represents a bond that IS NOT THERE -- it exists only so the face is a valid triangle, and sits
+    at k = eps so it carries no load.  Sampling a k-field over ALL bonds gives those edges real
+    stiffness, which BRACES the face and turns the structure into a different material: measured on
+    `_reentrant_honeycomb(v=1.15)`, nu went **-2.514 -> +0.195** and the re-entrant honeycomb became
+    an ordinary triangulated mesh.  Across the family it made **42 of 45 samples labelled `auxetic`
+    not auxetic** (2 % with nu < 0, against 67 % on the motif's own k0) -- not merely lost coverage
+    but MISLABELLED data, which under leave-one-family-out would inflate the held-out score.
+
+    The native:fictional RATIO is preserved (rather than a fixed eps) because only the shape of k
+    matters -- `fields` normalises to mean 1, so the ratio is the invariant."""
+    if fict is None or not fict.any() or fict.all():
+        return k
+    ratio = float(np.median(k0[fict]) / np.median(k0[~fict]))     # e.g. 1e-3
+    out = np.array(k, float)
+    out[fict] = ratio * float(np.mean(out[~fict]))
+    return out / out.mean()
 
 
-# ---- (A) forward scan ------------------------------------------------------------------------
-def forward_scan(n_random, n_nodes, reps_mult, which_k, seed=0):
-    """Seed-zoo topologies x k-patterns, solver-labelled.  Yields sample dicts."""
-    pool = list(seeds.seed_pool(n_random=n_random, n_nodes=n_nodes,
-                                include=('bravais', 'random', 'tiling', 'basis', 'auxetic')))
-    print(f"      seed pool: {len(pool)} topologies")
-    for j, rec in enumerate(pool):
-        geo, k0 = rec['geo'], rec['k0']
-        for kname, k in k_patterns(geo, k0, seed + 1000 * j, which=which_k):
-            try:
-                nu_th, E_th, C6 = solver_response(geo, k)
-            except Exception as e:                                # skip degenerate/unstable
-                print(f"        [skip] {rec['name']}/{kname}: {e}")
-                continue
-            if not (np.all(np.isfinite(nu_th)) and np.all(np.isfinite(E_th)) and np.all(np.isfinite(C6))):
-                continue
-            mnu, mE, aniso = _descriptors(nu_th, E_th)
-            yield dict(name=f"{rec['name']}::{kname}", source='forward', geo=geo,
-                       k=np.asarray(k, float), C6=C6, nu_theta=nu_th, E_theta=E_th,
-                       mean_nu=mnu, mean_E=mE, aniso=aniso)
+def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
+    """Yield `(family, topology_id, record)` across every family, with each family swept along ITS
+    OWN parameter (§3.1b) rather than a blanket disorder amplitude.
+
+    A blanket eta is not a universal axis: on `random` it adds nothing (already disordered), on
+    `tiling` the geometry IS the tiling, and on `auxetic` it DESTROYS the motif -- depopulating the
+    rare region the family exists to populate."""
+    if smoke:
+        yield from (('cells', r['name'], r) for r in
+                    S.seed_cells(n_basis_range=(3, 5, 8), n_cfg=2, aspects=(1.0,), seed=seed))
+        yield ('anchor', 'anchor_triangular_N2', list(S.seed_cells_anchors())[-1])
+        for phi in (0.0, 0.5, 1.0):
+            for diag in S.BRAVAIS_DIAGONALS:
+                r = S.bravais_lattice(phi, 1.0, reps=BRAVAIS_REPS, diagonal=diag)
+                yield ('bravais', r['name'], r)
+        for eta in (0.25,):
+            r = S.bravais_lattice(1.0, 1.0, reps=BRAVAIS_REPS, eta=eta, seed=0)
+            yield ('disordered', r['name'], r)
+        for i in range(3):
+            r = S.random_patch(60, seed=i, process=('uniform', 'poisson_disk', 'graded')[i])
+            yield ('random', r['name'], r)
+        yield ('tiling', 'tiling_kagome_r2', S.seed_tiling('kagome', 2))
+        for r in S.auxetic_motifs(reps=4, thetas=(25.0,), vs=(0.85, 1.15)):
+            yield ('auxetic', r['name'], r)
+        return
+
+    for r in S.seed_cells(n_basis_range=range(S.N_BASIS_MIN, 13), n_cfg=6, seed=seed):
+        yield ('cells', r['name'], r)
+    yield from (('anchor', r['name'], r) for r in S.seed_cells_anchors() if r.get('geo') is not None)
+    for phi in BRAVAIS_PHI:                      # ORDERED crystals -- family 'bravais'
+        for psi in BRAVAIS_PSI:
+            for diag in S.BRAVAIS_DIAGONALS:
+                try:
+                    r = S.bravais_lattice(phi, psi, reps=BRAVAIS_REPS, diagonal=diag)
+                except (ValueError, AssertionError):
+                    continue
+                yield ('bravais', r['name'], r)
+    for phi in (0.0, 0.5, 1.0):                  # DISORDERED -- its own family, frozen connectivity
+        for psi in (0.8, 1.0, 1.4):
+            for diag in S.BRAVAIS_DIAGONALS:
+                for eta in DISORDER_ETAS:
+                    for sd in DISORDER_SEEDS:
+                        try:
+                            r = S.bravais_lattice(phi, psi, reps=BRAVAIS_REPS, diagonal=diag,
+                                                  eta=eta, seed=sd)
+                        except (ValueError, AssertionError):
+                            continue
+                        yield ('disordered', r['name'], r)
+    procs = ('uniform', 'poisson_disk', 'blue_noise', 'graded')
+    for i in range(n_random):
+        yield ('random', f'random_{i}', S.random_patch(n_nodes, seed=seed + i,
+                                                       process=procs[i % 4]))
+    for tname, reps in (('square', 4), ('honeycomb', 3), ('kagome', 3), ('square_octagon', 3)):
+        yield ('tiling', f'tiling_{tname}_r{reps}', S.seed_tiling(tname, reps))
+    for r in (S.honeycomb(reps=3), S.kagome(reps=3)):
+        yield ('basis', r['name'], r)
+    for r in S.auxetic_motifs(reps=4):
+        yield ('auxetic', r['name'], r)
 
 
-# ---- (B) ingest designed networks ------------------------------------------------------------
-def ingest_designs():
-    """Load ALL Phase 5/networks/**/*.npz as labelled samples.  Where a sim per-triangle tensor
-    C6_per is present, the label is the INDEPENDENT-SIM region C6 (populates interesting regions);
-    otherwise fall back to the solver forward pass on the stored k."""
-    files = sorted(glob.glob(NET_GLOB, recursive=True))
-    print(f"      found {len(files)} saved networks under Phase 5/networks/")
-    for f in files:
-        try:
-            geo, kb, C6_per, meta = C.load_network(f)
-            if C6_per is not None and np.size(C6_per) > 0:
-                C6 = C.sim_bulk_C6(geo)
-                nu_th, E_th = C.nu_E_theta(C6, ANG)               # sim directional response
-                src = 'design_sim'
-            else:
-                nu_th, E_th, C6 = solver_response(geo, kb)        # seeds w/o C6_per
-                src = 'design_solver'
-            if not (np.all(np.isfinite(nu_th)) and np.all(np.isfinite(E_th)) and np.all(np.isfinite(C6))):
-                continue
-            mnu, mE, aniso = _descriptors(nu_th, E_th)
-            yield dict(name=f"ingest::{os.path.splitext(os.path.basename(f))[0]}", source=src,
-                       geo=geo, k=np.asarray(kb, float), C6=np.asarray(C6, float),
-                       nu_theta=np.asarray(nu_th), E_theta=np.asarray(E_th),
-                       mean_nu=mnu, mean_E=mE, aniso=aniso)
-        except Exception as e:                                    # noqa: BLE001
-            print(f"        [skip ingest] {os.path.basename(f)}: {e}")
+def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True):
+    """Sample every topology x geometry variant x k-field, label with the solver, save one npz."""
+    warnings.simplefilter('ignore')
+    rng_master = np.random.default_rng(seed)
+    commit, dirty = _commit()
+    samples, skipped = [], {}
+    t0 = time.time()
+
+    for family, topo_id, rec in topologies(smoke, n_random, n_nodes, seed):
+        geo0, k0, fict = rec['geo'], rec['k0'], rec.get('is_fictional')
+        if geo0 is None:
+            continue
+        if not MB.check_mesh_preconditions(geo0, periodic=True)[0]:
+            # Never label a mesh the solver is WRONG (not merely inaccurate) on. This is the hole
+            # that let an invalid mesh into `goal1`'s pool: `build_topologies` only checks areas>0
+            # and never calls this gate. A dataset builder must not repeat it.
+            skipped[topo_id] = 'mesh_preconditions'
             continue
 
+        variants = [('base', geo0)]
+        if family in ('cells', 'random'):
+            for amp, st in ((0.06, 'correlated'), (0.12, 'correlated'), (0.10, 'white')):
+                pts, gm = F.displace(geo0, np.random.default_rng(rng_master.integers(1 << 30)),
+                                     amp=amp, structure=st)
+                try:
+                    g2 = C._periodic_delaunay(pts, *F.box_of(geo0))
+                except Exception:                                        # noqa: BLE001
+                    continue
+                if MB.check_mesh_preconditions(g2, periodic=True)[0]:
+                    variants.append((f'{st}_a{amp}', g2))
 
-# ---- occupied-cell coverage metric -----------------------------------------------------------
-def occupied_cells(mean_nu, mean_E):
-    cells = set()
-    for a, b in zip(mean_nu, mean_E):
-        cells.add((int(np.digitize(a, NU_BINS)), int(np.digitize(b, E_BINS))))
-    return cells
+        for vname, geo in variants:
+            k_specs = [('native', dict())] if fict is not None and fict.any() else []
+            k_specs += [(f'{st}_{mg}', dict(structure=st, marginal=mg)) for st, mg in K_COMBOS]
+            if family in ('cells', 'bravais', 'disordered', 'random'):
+                k_specs += [(f'dilution_f{f}', dict(dilution=f)) for f in DILUTION_FRACS]
 
+            for kname, spec in k_specs:
+                rng = np.random.default_rng(rng_master.integers(1 << 30))
+                if kname == 'native':
+                    k, kmeta = k0 / k0.mean(), dict(structure='native_k0', marginal='bimodal',
+                                                    contrast=float(k0.max() / k0.min()),
+                                                    k_source='seed_k0')
+                elif 'dilution' in spec:
+                    k, kmeta = F.dilute(geo, rng, frac=spec['dilution'], k_soft=DILUTION_K_SOFT)
+                else:
+                    k, kmeta = F.k_field(geo, rng, **spec)
+                    k = respect_fictional(k, k0, fict)
+                    kmeta['contrast'] = float(k.max() / k.min())
+                    kmeta['fictional_preserved'] = bool(fict is not None and fict.any())
+                lab = solver_label(geo, k)
+                if lab is None:
+                    skipped[f'{topo_id}/{vname}/{kname}'] = 'non_finite'
+                    continue
+                samples.append(dict(**graph_of(geo, k, fict), **lab, **kmeta,
+                                    family=family, topology_id=topo_id, geom_variant=vname,
+                                    k_pattern=kname, seed=seed,
+                                    traj_id=f'{topo_id}|{vname}|{kname}', traj_step=0,
+                                    tiling_method='fan', n_threads=N_THREADS,
+                                    commit=commit, dirty=dirty))
+        if verbose and len(samples) % 200 < len(k_specs):
+            print(f'  {len(samples):6d} samples  ({time.time()-t0:6.1f}s)  last: {topo_id[:40]}')
 
-# ---- persist consolidated dataset ------------------------------------------------------------
-def save_consolidated(samples, path):
-    """Concatenate all graphs into one file (batch-of-graphs ptr scheme) + labels + descriptors."""
-    node_ptr = [0]; edge_ptr = [0]; tri_ptr = [0]
-    pts, bu, bv, bR, kk, tri_bond, areas = [], [], [], [], [], [], []
-    BL1, BL2 = [], []
-    C6, nu_all, E_all = [], [], []
-    mnu, mE, aniso, names, sources = [], [], [], [], []
-    for s in samples:
-        g = s['geo']
-        pts.append(np.asarray(g['pts'], float))
-        bu.append(np.asarray(g['bond_u'], np.int64))
-        bv.append(np.asarray(g['bond_v'], np.int64))
-        bR.append(np.asarray(g['bond_R'], float))
-        kk.append(np.asarray(s['k'], float))
-        tri_bond.append(np.asarray(g['tri_bond'], np.int64))
-        areas.append(np.asarray(g['areas'], float))
-        BL1.append(np.asarray(g['BL1'], float)); BL2.append(np.asarray(g['BL2'], float))
-        node_ptr.append(node_ptr[-1] + len(g['pts']))
-        edge_ptr.append(edge_ptr[-1] + len(g['bond_u']))
-        tri_ptr.append(tri_ptr[-1] + len(g['tri_bond']))
-        C6.append(np.asarray(s['C6'], float))
-        nu_all.append(np.asarray(s['nu_theta'], float)); E_all.append(np.asarray(s['E_theta'], float))
-        mnu.append(s['mean_nu']); mE.append(s['mean_E']); aniso.append(s['aniso'])
-        names.append(s['name']); sources.append(s['source'])
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    np.savez_compressed(
-        path,
-        node_ptr=np.array(node_ptr, np.int64), edge_ptr=np.array(edge_ptr, np.int64),
-        tri_ptr=np.array(tri_ptr, np.int64),
-        pts=np.concatenate(pts), bond_u=np.concatenate(bu), bond_v=np.concatenate(bv),
-        bond_R=np.concatenate(bR), k=np.concatenate(kk),
-        tri_bond=np.concatenate(tri_bond), areas=np.concatenate(areas),
-        BL1=np.stack(BL1), BL2=np.stack(BL2),
-        C6=np.stack(C6), nu_theta=np.stack(nu_all), E_theta=np.stack(E_all),
-        mean_nu=np.array(mnu), mean_E=np.array(mE), aniso=np.array(aniso),
-        thetas=ANG, names=np.array(names), source=np.array(sources),
-        meta=json.dumps(dict(n=len(names), n_theta=len(ANG),
-                             nu_bins=NU_BINS.tolist(), e_bins=E_BINS.tolist())))
-    return len(names)
-
-
-# ---- coverage figure -------------------------------------------------------------------------
-def coverage_plot(samples, occ, path):
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    mnu = np.array([s['mean_nu'] for s in samples])
-    mE = np.array([s['mean_E'] for s in samples])
-    src = np.array([s['source'] for s in samples])
-    cmap = {'forward': '#4C78A8', 'design_sim': '#E45756', 'design_solver': '#F58518'}
-    fig, ax = plt.subplots(figsize=(6.0, 6.0))
-    for grp, col in cmap.items():
-        m = src == grp
-        if m.any():
-            ax.scatter(mnu[m], mE[m], s=20, alpha=0.65, c=col, edgecolors='none',
-                       label=f'{grp} (n={int(m.sum())})')
-    # draw the coarse coverage grid
-    for x in NU_BINS:
-        ax.axvline(x, color='0.85', lw=0.6, zorder=0)
-    for y in E_BINS:
-        ax.axhline(y, color='0.85', lw=0.6, zorder=0)
-    ax.set_xlim(NU_BINS[0], NU_BINS[-1]); ax.set_ylim(E_BINS[0], E_BINS[-1])
-    ax.set_aspect(1.0 / ax.get_data_ratio())                      # square plot region
-    ax.set_xlabel('mean ν'); ax.set_ylabel('mean E')
-    ax.set_title(f'M2 dataset coverage — {len(samples)} samples, '
-                 f'{len(occ)} occupied cells (old: 16)')
-    ax.legend(loc='upper left', fontsize=8, framealpha=0.9)
-    fig.tight_layout(); fig.savefig(path, dpi=170); plt.close(fig)
+    out = out or os.path.join(OUT_DIR, 'dataset_smoke.npz' if smoke else 'dataset.npz')
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    save(samples, out)
+    if verbose:
+        print(f'\n{len(samples)} samples -> {out}   ({time.time()-t0:.1f}s, {N_THREADS} thread(s))')
+        if skipped:
+            print(f'skipped {len(skipped)}: {sorted(set(skipped.values()))}')
+    return samples, out
 
 
-# ---- main ------------------------------------------------------------------------------------
-def build(n_random=24, n_nodes=90, reps_mult=1, do_ingest=True,
-          which_k=('k0', 'uniform', 'lognormal', 'graded'), seed=0):
-    t0 = time.time()
-    os.makedirs(DATA_DIR, exist_ok=True)
-    print("=" * 88)
-    print("BUILDING M2 DATASET (scaled, coverage-driven)")
-    print("=" * 88)
-
-    print(f"\n[A] forward scan  (n_random={n_random}, n_nodes={n_nodes}, k_patterns={which_k})")
-    samples = list(forward_scan(n_random, n_nodes, reps_mult, which_k, seed=seed))
-    print(f"      -> {len(samples)} forward samples")
-
-    if do_ingest:
-        print("\n[B] ingest designed networks (interesting-region coverage)")
-        dsamples = list(ingest_designs())
-        print(f"      -> {len(dsamples)} ingested samples")
-        samples += dsamples
-
-    print("\n[C] saving consolidated dataset + coverage")
-    path = os.path.join(DATA_DIR, 'dataset.npz')
-    n = save_consolidated(samples, path)
-    mnu = [s['mean_nu'] for s in samples]; mE = [s['mean_E'] for s in samples]
-    occ = occupied_cells(mnu, mE)
-    cov_png = os.path.join(DATA_DIR, 'coverage.png')
-    coverage_plot(samples, occ, cov_png)
-
-    print("-" * 88)
-    print(f"  dataset      : {n} samples -> {path}")
-    print(f"  coverage     : {len(occ)} occupied cells on the coarse (nu,E) grid  (OLD: 16)")
-    print(f"  coverage png : {cov_png}")
-    print(f"  nu range     : [{min(mnu):+.3f}, {max(mnu):+.3f}]   "
-          f"E range: [{min(mE):.3f}, {max(mE):.3f}]")
-    print(f"  elapsed      : {time.time() - t0:.1f}s")
-    print("DATASET BUILD DONE")
-    return path, n, len(occ)
+def save(samples, path):
+    """Concatenate the variable-size graphs into flat arrays + offsets (the pointer scheme)."""
+    if not samples:
+        raise RuntimeError('no samples to save')
+    d = {}
+    for key in ('pts', 'bond_u', 'bond_v', 'bond_R', 'tri_bond', 'tri_verts', 'areas', 'k',
+                'is_fictional'):
+        d[key] = np.concatenate([np.atleast_1d(s[key]) for s in samples], axis=0)
+        d[key + '_ptr'] = np.cumsum([0] + [len(np.atleast_1d(s[key])) for s in samples])
+    for key in ('C6', 'nu_theta', 'E_theta'):
+        d[key] = np.stack([s[key] for s in samples])
+    for key in ('nu', 'E', 'Lx', 'Ly', 'w_max', 'min_eig', 'anisotropy', 'min_quality',
+                'contrast', 'traj_step', 'seed', 'n_threads'):
+        d[key] = np.array([s.get(key, np.nan) for s in samples], float)
+    d['spd'] = np.array([s['spd'] for s in samples], bool)
+    for key in ('family', 'topology_id', 'geom_variant', 'k_pattern', 'structure', 'marginal',
+                'label_source', 'traj_id', 'tiling_method', 'commit', 'k_source'):
+        d[key] = np.array([str(s.get(key, '')) for s in samples])
+    np.savez_compressed(path, **d)
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--scale', action='store_true',
-                    help='overnight-scale build (many more topologies)')
-    ap.add_argument('--n_random', type=int, default=None)
-    ap.add_argument('--n_nodes', type=int, default=None)
-    ap.add_argument('--no_ingest', action='store_true')
-    args = ap.parse_args()
-    if args.scale:
-        build(n_random=args.n_random or 200, n_nodes=args.n_nodes or 140,
-              do_ingest=not args.no_ingest)
-    else:
-        build(n_random=args.n_random or 24, n_nodes=args.n_nodes or 90,
-              do_ingest=not args.no_ingest)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--smoke', action='store_true', help='small fast build for inspection')
+    ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--n_random', type=int, default=24)
+    ap.add_argument('--n_nodes', type=int, default=120)
+    ap.add_argument('--out', default=None)
+    a = ap.parse_args()
+    build(smoke=a.smoke, out=a.out, seed=a.seed, n_random=a.n_random, n_nodes=a.n_nodes)
