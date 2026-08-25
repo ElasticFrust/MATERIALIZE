@@ -145,7 +145,16 @@ even numerically positive-definite.
 (and coincides with `test_hex_closed_form`'s benign `k_spoke = 1e-8`); it could be relaxed to 1e-10
 with two orders if more contrast is ever wanted. And it is **falsifiable**: changing the regulariser
 constant must move the boundary proportionally — the clean causal test, requiring a protected-core
-change.
+change. **Deferred as LOW PRIORITY (user, 2026-08-25):** the evidence is already triple-confirmed
+(scaling over 8 decades; the measured jump; and two bases whose *different* prefactors each match
+their own prediction), and the `k_soft ≥ 1e-8` bound does not depend on it.
+
+**The spin-off that IS worth something.** `eps` uses a **GLOBAL** max over all triangles, so a soft
+triangle is regularised against the stiffest triangle anywhere in the mesh. A **per-triangle**
+relative regulariser `eps_s = 1e-12 · |A(s)|max` would scale with each triangle's own magnitude and
+would not swamp the soft ones — plausibly pushing this boundary down by many orders and **widening
+the solver's usable domain**. That is a capability change, not a confirmation, and it is the version
+worth doing if any. (Protected core; would need the full gate set.)
 
 *Caveat:* the 5-component → 3×3 unpacking used here reconstructs the shear-entry factor. The
 `λ_min ∝ k_soft` scaling and the crossover location are robust to an O(1) error there; the exact

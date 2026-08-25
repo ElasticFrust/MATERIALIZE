@@ -155,6 +155,20 @@ metrics this time (`M2.md` still has `<FILL>`).
   the residual `tiling_honeycomb_r3` disagreement survives the fix.
 - **`build_topologies` accepts meshes that `check_mesh_preconditions` rejects** — it only checks
   `areas > 0`. That is how an invalid mesh reached production. Deliberately not guarded.
+- **LOW PRIORITY — the regulariser causal test, and the per-triangle regulariser it points at.**
+  S0b showed the dilution validity boundary IS the solver's `eps = 1e-12 * A3.abs().max()`
+  (`Phase 5/results/dilution_validity/DILUTION_VALIDITY.md` §5b): predicted `k_soft_crit = 2e-12`,
+  measured jump between 1e-10 and 1e-12, on TWO bases whose different geometric prefactors (0.5 and
+  0.093) each match their own prediction. The definitive test — change the constant and check the
+  boundary moves proportionally — is **deliberately deferred** (user's call, 2026-08-25): the
+  evidence is already triple-confirmed, the practical bound `k_soft ≥ 1e-8` has ~4 orders of margin
+  and does not depend on it, and it edits the PROTECTED CORE, so it costs a full gate re-run to
+  learn something we would act on identically.
+  **The reason to keep it alive:** `eps` uses a **GLOBAL** max, so a soft triangle is regularised
+  against the stiffest triangle in the whole mesh. A **per-triangle** relative regulariser
+  (`eps_s = 1e-12 · |A(s)|max`) would scale with each triangle's own magnitude, not swamp the soft
+  ones, and could push the validity boundary down by MANY ORDERS — a genuine widening of the
+  solver's usable domain, not just a confirmation. That is the version worth doing, if any.
 - goal2 over its full target range — its target set has never been scoped (directional/full-tensor).
 - `A-8` open-boundary suite · `A-17` tail (centre-vertex re-representation) · `A-18` analytic-oracle
   generalisation · TODO 2.6 `open_stretch` guard.
