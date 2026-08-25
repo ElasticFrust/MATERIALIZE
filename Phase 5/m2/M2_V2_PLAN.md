@@ -456,13 +456,45 @@ measured to return the wrong sign.
 
 **Target ≈ 10 000 samples** (η makes this cheap), with **no family below ~10 %** of the total.
 
-### 3.3 Labels
+### 3.3 Labels — **PER-TRIANGLE `C(s)`, not the bulk** *(changed 2026-08-25)*
 
-- Forward scan → **solver** `C6` (cheap, the bulk).
-- Ingested designed networks (`Phase 5/networks/**/*.npz`) → **sim** `C6` where `C6_per` exists.
-  These populate the auxetic/anisotropic corners the forward scan misses.
+The target is the **per-triangle tensor field `C(s)`**, shape `(n_tri, 6)` — not six bulk numbers.
+
+**Why.** The §2.1 head predicts `C(s)` and *then* averages to `C_eff`. Supervising only the average
+means the gradient signal is averaged over ~200 triangles before it reaches the thing that produced
+it, and local errors **cancel**: one triangle too stiff and another too soft scores zero bulk loss,
+so many wrong local fields give the right mean. It is also the user's framing — the point is to
+teach the network **the mechanics**, i.e. the details of the physics, rather than the total response.
+
+**What it buys, measured** (`Phase 5/results/m2_locality/M2_LOCALITY.md`):
+
+| | |
+|---|---|
+| raw numbers | **59×** on the smoke mix (298 704 vs 5 088); ~139× on a mix of larger networks |
+| **effective** signal | **≈20×** — `C(s)` decorrelates in 2–3 hops and a 2-hop ball holds ~10 triangles, so a 228-triangle network gives ~23 independent local samples against **1** |
+| local structure the bulk mean destroys | median `std(C_xxxx)/|mean|` = **0.625** per sample (p90 1.107) |
+| cost | 2.9 MB for 848 samples / 49 784 triangle rows — negligible |
+
+**Invariants, enforced at build time:**
+- `C_eff` is the **UNWEIGHTED** mean of `C(s)` (`CLAUDE.md` §3 — an area weight biases ν on
+  unequal-area meshes) and is stored alongside as a derived diagnostic. The builder **asserts**
+  `bulk == mean(per)`; measured agreement 5.33e-15 over all samples, so the two cannot drift.
+- **Both are stored in PHYSICAL units.** `out['per_triangle']` comes out of the solver in INTERNAL
+  units and `physical_units=True` does *not* rescale it (it touches only `elastic_tensor`/`young`),
+  while `region_tensor` applies `8·n_tri/ΣS` itself. Stored as they come, the target and the bulk
+  label would sit in different unit systems a factor **18.475** apart. The assert above is what
+  caught it.
+
+**Sources and provenance, unchanged:**
+- Forward scan → **solver** labels (cheap, the bulk of the set).
+- Ingested designed networks (`Phase 5/networks/**/*.npz`) → **sim** labels where `C6_per` exists;
+  these populate the auxetic/anisotropic corners the forward scan misses.
 - **Record which label source each sample used.** Mixing solver and sim labels without a flag would
   make the validation uninterpretable.
+
+**The bulk-only scheme is kept runnable** at `Phase 5/m2/build_dataset_bulk_legacy.py` — it is the
+only record of what every M2 number before 2026-08-25 was produced under, and it builds the *same*
+graphs, so the two schemes can be compared by re-derivation rather than by reading old numbers.
 
 ### 3.4 Schema — store TRAJECTORIES, not just endpoints
 

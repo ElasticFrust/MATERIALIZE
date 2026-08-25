@@ -1,3 +1,26 @@
+"""LEGACY -- the BULK-ONLY label scheme.  Superseded 2026-08-25 by `build_dataset.py`.
+
+KEPT DELIBERATELY, not dead code: this is the only runnable record of the scheme every M2 number
+before 2026-08-25 was produced under, so the two label schemes can be compared on the same
+generators rather than by reading old numbers (the project's standing rule -- re-derive, do not
+re-read).  It writes to `data/dataset_bulk_legacy.npz` so it cannot clobber the live dataset.
+
+WHAT CHANGED, AND WHY.  This scheme labels each graph with the BULK `C6` -- six numbers.  The v2
+head predicts per-triangle `C(s)` and averages to `C_eff`, so supervising the average means the
+gradient signal has been averaged over ~200 triangles before it reaches the thing that produced it,
+and local errors CANCEL: one triangle too stiff and another too soft scores zero loss, so many
+wrong local fields produce the right mean.
+
+Measured (`Phase 5/results/m2_locality/M2_LOCALITY.md`): per-triangle labels carry ~139x the raw
+numbers and -- after discounting for correlation, since `C(s)` decorrelates in 2-3 hops and a 2-hop
+ball holds ~10 triangles -- about **20x the EFFECTIVE signal**, ~23 independent local samples per
+228-triangle network against 1 here.
+
+Build the SAME graphs under both schemes and the comparison is exact; that is what this file is for.
+
+Original header follows.
+"""
+
 """Build the M2 v2 training set:  graph -> elastic tensor C6.
 
 Implements `Phase 5/m2/M2_V2_PLAN.md` §3 (dataset) under decisions D2/D3/D4/D5/D8/D9.
@@ -6,22 +29,9 @@ audit A-19) and its sampling covered roughly one of the four `k` knobs.
 
 WHAT IS LABELLED
 ----------------
-The **PER-TRIANGLE TENSOR `C(s)`** -- an (n_tri, 6) field, not six bulk numbers (changed 2026-08-25;
-the bulk-only scheme is preserved runnable in `build_dataset_bulk_legacy.py`).
-
-It is the tensor and not the derived curves (D2): nu(theta), E(theta) are ratios/reciprocals of
-quartics in `C`, so a model predicting 74 numbers directly can emit profiles **no positive-definite
-`C` can produce**.  nu and E are stored, but as DERIVED diagnostics -- never as the target.
-
-It is PER-TRIANGLE because that is what the section 2.1 head actually produces: it predicts `C(s)`
-and averages to `C_eff`.  Supervising only the average lets local errors CANCEL -- one triangle too
-stiff and another too soft scores zero bulk loss, so many wrong local fields give the right mean.
-Measured (`Phase 5/results/m2_locality/M2_LOCALITY.md`): ~139x the raw numbers, and about **20x the
-EFFECTIVE signal** once correlation is discounted (`C(s)` decorrelates in 2-3 hops and a 2-hop ball
-holds ~10 triangles, so a 228-triangle network supplies ~23 independent local samples against 1).
-
-`C_eff` remains the UNWEIGHTED mean of `C(s)` (`CLAUDE.md` section 3) and is stored alongside; the
-two are asserted consistent at build time so they cannot drift apart.
+The **TENSOR** (D2), not the derived curves.  nu(theta), E(theta) are ratios/reciprocals of quartics
+in `C`, so a model predicting 74 numbers directly can emit profiles **no positive-definite `C` can
+produce**.  nu and E are stored too, but as DERIVED diagnostics -- never as the training target.
 
 THREADS ARE PINNED (D4)
 -----------------------
@@ -136,29 +146,15 @@ def solver_label(geo, k):
     prob = DesignProblem.from_geo(geo)
     with torch.no_grad():
         out = prob.forward(torch.as_tensor(k), physical_units=True)
-        # `out['per_triangle']` is ALWAYS in INTERNAL units -- `physical_units` rescales only
-        # `elastic_tensor` / `young`, not this field (verified: identical for both settings).
-        # `region_tensor` applies the physical factor 8*n_tri/sum(areas) itself. Storing the two as
-        # they come would put the per-triangle target and the bulk label in DIFFERENT unit systems,
-        # a factor 18.475 apart on the regular lattice -- so convert here and keep everything
-        # physical, which is the convention every stored result in this project uses.
-        phys = 8.0 * prob.n_tri / float(np.asarray(prob.areas).sum())
-        C6_per = np.asarray(out['per_triangle'], float) * phys       # (n_tri, 6) -- THE TARGET
         c6 = np.asarray(prob.region_tensor(out['per_triangle'], None), float)
         nu, E = (float(x) for x in c6_to_nuE(torch.as_tensor(c6)))
         nt, Et = (np.asarray(t) for t in c6_to_nuE_theta(torch.as_tensor(c6), ANG))
         wmax = float(np.abs(np.asarray(out['W'], float)).max())
-    if not (np.isfinite(c6).all() and np.isfinite(C6_per).all()
-            and np.isfinite(nu) and np.isfinite(E)):
+    if not (np.isfinite(c6).all() and np.isfinite(nu) and np.isfinite(E)):
         return None
     Cm = np.array([[c6[0], c6[1], c6[2]], [c6[1], c6[3], c6[4]], [c6[2], c6[4], c6[5]]])
     eig = np.linalg.eigvalsh(Cm)
-    # bulk C_eff is the UNWEIGHTED mean of C(s) -- asserted, so the stored bulk label can never
-    # drift from the per-triangle field it is derived from (an area weight here would bias nu on
-    # unequal-area meshes; CLAUDE.md section 3).
-    assert np.allclose(c6, C6_per.mean(0), rtol=1e-10, atol=1e-12), \
-        'bulk C6 is not the unweighted mean of the per-triangle field'
-    return dict(C6=c6, C6_per=C6_per, nu=nu, E=E, nu_theta=nt, E_theta=Et, w_max=wmax,
+    return dict(C6=c6, nu=nu, E=E, nu_theta=nt, E_theta=Et, w_max=wmax,
                 spd=bool(eig.min() > 0), min_eig=float(eig.min()),
                 anisotropy=float(Et.max() / max(Et.min(), 1e-300)),
                 min_quality=float(np.min(POS.tri_shape_quality(geo))),
@@ -343,7 +339,8 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
         if verbose and len(samples) % 200 < len(k_specs):
             print(f'  {len(samples):6d} samples  ({time.time()-t0:6.1f}s)  last: {topo_id[:40]}')
 
-    out = out or os.path.join(OUT_DIR, 'dataset_smoke.npz' if smoke else 'dataset.npz')
+    out = out or os.path.join(OUT_DIR, 'dataset_bulk_legacy%s.npz'
+                          % ('_smoke' if smoke else ''))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     save(samples, out)
     if verbose:
@@ -359,7 +356,7 @@ def save(samples, path):
         raise RuntimeError('no samples to save')
     d = {}
     for key in ('pts', 'bond_u', 'bond_v', 'bond_R', 'tri_bond', 'tri_verts', 'areas', 'k',
-                'is_fictional', 'C6_per'):
+                'is_fictional'):
         d[key] = np.concatenate([np.atleast_1d(s[key]) for s in samples], axis=0)
         d[key + '_ptr'] = np.cumsum([0] + [len(np.atleast_1d(s[key])) for s in samples])
     for key in ('C6', 'nu_theta', 'E_theta'):
