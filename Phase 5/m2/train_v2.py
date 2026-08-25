@@ -39,21 +39,32 @@ import model_v2 as M                                                      # noqa
 torch.set_default_dtype(torch.float64)
 
 
+#: variable-length per-sample arrays, stored flat with a companion `<key>_ptr` offset array
+VAR_KEYS = ('pts', 'bond_u', 'bond_v', 'bond_R', 'tri_bond', 'tri_verts', 'areas', 'k',
+            'is_fictional', 'C6_per')
+
+
 def load(path):
-    """npz (pointer scheme) -> list of per-sample dicts ready for the model."""
-    d = np.load(path)
-    n = len(d['C6'])
+    """npz (pointer scheme) -> list of per-sample dicts ready for the model.
+
+    Every array is pulled out of the archive ONCE, before the per-sample loop.  `np.load` on an npz
+    returns a lazy `NpzFile` whose `__getitem__` DECOMPRESSES THE WHOLE ARRAY on each access, so
+    indexing it inside the loop meant ~100 000 full decompressions of a 65 MB archive -- which both
+    crawled and died with `Unable to allocate 13.0 MiB` from the churn, on a machine with plenty of
+    memory free.  Hoisting the reads is the entire fix."""
+    with np.load(path) as d:
+        arrs = {k: d[k] for k in VAR_KEYS}
+        ptrs = {k: d[k + '_ptr'] for k in VAR_KEYS}
+        C6 = d['C6']
+        family, traj = d['family'], d['traj_id']
+        sim_ok = d['sim_ok'] if 'sim_ok' in d else np.ones(len(C6), bool)
+        size_bin = d['size_bin'] if 'size_bin' in d else np.array(['train'] * len(C6))
+
     out = []
-    for i in range(n):
-        g = {}
-        for key in ('pts', 'bond_u', 'bond_v', 'bond_R', 'tri_bond', 'tri_verts', 'areas', 'k',
-                    'is_fictional', 'C6_per'):
-            p = d[key + '_ptr']
-            g[key] = d[key][p[i]:p[i + 1]]
-        g['n_nodes'] = len(g['pts'])
-        g['family'] = str(d['family'][i])
-        g['traj_id'] = str(d['traj_id'][i])
-        g['C6'] = d['C6'][i]
+    for i in range(len(C6)):
+        g = {k: arrs[k][ptrs[k][i]:ptrs[k][i + 1]] for k in VAR_KEYS}
+        g.update(n_nodes=len(g['pts']), C6=C6[i], family=str(family[i]), traj_id=str(traj[i]),
+                 sim_ok=bool(sim_ok[i]), size_bin=str(size_bin[i]))
         out.append(g)
     return out
 
@@ -100,9 +111,45 @@ def tri_edge_vectors(g):
     return g['bond_R'][g['tri_bond'].astype(np.int64)]          # (n_tri, 3, 2)
 
 
+def collate(ts):
+    """Merge prepared samples into ONE block-diagonal graph.
+
+    Graphs of different sizes batch by concatenation with index offsets -- there is no padding and
+    no masking, because message passing only ever follows edges and the blocks share none.  Without
+    this the trainer takes one optimiser step per graph: measured 0.014 s/graph, i.e. 136 s per epoch
+    over 9715 graphs and ~3.8 h for 100 epochs, which is also 9715 very noisy gradient steps.
+
+    The physical scale is PER SAMPLE (`8*n_tri/sum(areas)` and `mean(k)` differ between graphs), so
+    it is carried as a per-TRIANGLE vector rather than a scalar."""
+    nb = bo = to = 0
+    bu, bv, tb, tv, ef, nf, Q, tg, sc = [], [], [], [], [], [], [], [], []
+    for t in ts:
+        bu.append(t['bond_u'] + nb)
+        bv.append(t['bond_v'] + nb)
+        tb.append(t['tri_bond'] + bo)
+        tv.append(t['tri_verts'] + nb)
+        ef.append(t['edge_feat'])
+        nf.append(t['node_feat'])
+        Q.append(t['Q'])
+        tg.append(t['target'])
+        sc.append(torch.full((len(t['Q']),), float(t['phys'] * t['kbar'])))
+        nb += t['n_nodes']
+        bo += len(t['edge_feat'])
+        to += len(t['Q'])
+    return dict(bond_u=torch.cat(bu), bond_v=torch.cat(bv), tri_bond=torch.cat(tb),
+                tri_verts=torch.cat(tv), edge_feat=torch.cat(ef), node_feat=torch.cat(nf),
+                n_nodes=nb, Q=torch.cat(Q), target=torch.cat(tg),
+                scale=torch.cat(sc).reshape(-1, 1, 1))
+
+
 def predict(net, t):
+    """Per-triangle C6 (and, for a SINGLE graph, the bulk mean).
+
+    For a batch the bulk is meaningless -- `C_eff` is the mean over ONE network's triangles -- so it
+    is returned only when the input is a single prepared sample, and `evaluate` uses that path."""
     G = net(t)
-    C_per, C_eff = M.assemble(t['Q'], G, physical_factor=t['phys'] * t['kbar'])
+    scale = t['scale'] if 'scale' in t else t['phys'] * t['kbar']
+    C_per, C_eff = M.assemble(t['Q'], G, physical_factor=scale)
     return M.sym3_to_c6(C_per), M.sym3_to_c6(C_eff)
 
 
@@ -133,13 +180,27 @@ def main():
                          "WITHIN-family memorisation baseline")
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--limit', type=int, default=0)
+    ap.add_argument('--batch', type=int, default=32, help='graphs per optimiser step')
+    ap.add_argument('--keep_untrusted', action='store_true',
+                    help='train on labels the independent sim disagrees with (default: exclude)')
     a = ap.parse_args()
 
     torch.manual_seed(a.seed)
     raw = load(a.data)
+    n_all = len(raw)
+    # Untrusted labels are EXCLUDED, not silently absent: they are flagged in the dataset (the
+    # builder keeps every sample, audit A-11/A-12) and filtered here, with the count reported so the
+    # denominator stays honest.
+    if not a.keep_untrusted:
+        raw = [g for g in raw if g['sim_ok']]
+    # The large-size bin is held out for size generalisation and is never trained on (section 3.1c).
+    large = [g for g in raw if g['size_bin'] == 'large_holdout']
+    raw = [g for g in raw if g['size_bin'] != 'large_holdout']
     if a.limit:
         raw = raw[:a.limit]
-    print('%d samples from %s' % (len(raw), os.path.basename(a.data)))
+    print('%d samples from %s  (%d total, %d untrusted excluded, %d held-out large)'
+          % (len(raw), os.path.basename(a.data), n_all,
+             n_all - len(raw) - len(large), len(large)))
 
     if a.holdout != 'random':
         tr_i = [i for i, g in enumerate(raw) if g['family'] != a.holdout]
@@ -174,21 +235,22 @@ def main():
     for ep in range(a.epochs):
         net.train()
         np.random.default_rng(ep).shuffle(order)
-        tot = 0.0
-        for j in order:
-            t = train[j]
+        tot = nb = 0.0
+        for b0 in range(0, len(order), a.batch):
+            t = collate([train[j] for j in order[b0:b0 + a.batch]])
             pc6, _ = predict(net, t)
             loss = (((pc6 - t['target']) / sd) ** 2).mean()
             opt.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), 5.0)
             opt.step()
-            tot += float(loss)
+            tot += float(loss); nb += 1
+        tot /= max(nb, 1)
         sched.step()
         if ep % max(1, a.epochs // 10) == 0 or ep == a.epochs - 1:
             per, bulk, bad = evaluate(net, valid, mu, sd)
             print('  ep %4d  train %.4f   val MAE/std per-tri %.4f  bulk %.4f   SPD viol %.4f  (%.0fs)'
-                  % (ep, tot / len(train), float((per / sd).mean()), float((bulk / sd).mean()),
+                  % (ep, tot, float((per / sd).mean()), float((bulk / sd).mean()),
                      bad, time.time() - t0))
 
     per, bulk, bad = evaluate(net, valid, mu, sd)

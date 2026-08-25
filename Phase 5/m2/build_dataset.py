@@ -16,9 +16,12 @@ quartics in `C`, so a model predicting 74 numbers directly can emit profiles **n
 It is PER-TRIANGLE because that is what the section 2.1 head actually produces: it predicts `C(s)`
 and averages to `C_eff`.  Supervising only the average lets local errors CANCEL -- one triangle too
 stiff and another too soft scores zero bulk loss, so many wrong local fields give the right mean.
-Measured (`Phase 5/results/m2_locality/M2_LOCALITY.md`): ~139x the raw numbers, and about **20x the
-EFFECTIVE signal** once correlation is discounted (`C(s)` decorrelates in 2-3 hops and a 2-hop ball
-holds ~10 triangles, so a 228-triangle network supplies ~23 independent local samples against 1).
+Measured (`Phase 5/results/m2_locality/M2_LOCALITY.md`): ~139x the raw numbers, but the EFFECTIVE
+gain is much smaller and **depends on the size mix**, so quote it per dataset rather than as a
+constant.  `C(s)` decorrelates in 2-3 hops and a 2-hop ball holds ~10 triangles, so a 228-triangle
+network gives ~23 independent local samples against 1 -- while a network SMALLER than one ball gives
+exactly 1 however many triangles it has.  The first smoke build measured **5.95x**, not 20x, because
+its median was 16 triangles and 36 % of samples fell below one ball.  See the SIZE LADDER note.
 
 `C_eff` remains the UNWEIGHTED mean of `C(s)` (`CLAUDE.md` section 3) and is stored alongside; the
 two are asserted consistent at build time so they cannot drift apart.
@@ -91,6 +94,11 @@ K_COMBOS = [('iid', 'uniform'),
 DILUTION_FRACS = (0.10, 0.20, 0.30, 0.40)
 DILUTION_K_SOFT = 1e-6                      # 100x inside the measured 1e-8 boundary
 
+#: Relative tensor gap above which a label is marked untrusted (`sim_ok=False`).  Samples are
+#: FLAGGED, never dropped: the project's survivorship rule (audit A-11/A-12) is that every run is
+#: kept and the denominator stays honest -- the trainer filters, the builder records.
+SIM_GAP_TOL = 0.05
+
 #: The BRAVAIS sweep, over the measured fundamental domain phi in [0, 1] (a2 -> a2 + n*a1 sends
 #: phi -> phi + 2 and phi -> -phi is the mirror, so nu(phi) has period 2 and mirrors about phi = 1;
 #: verified to 1e-16). `psi` is the row spacing and is the knob that is genuinely open.
@@ -110,6 +118,28 @@ BRAVAIS_REPS = 6
 #: cannot promise.
 DISORDER_ETAS = (0.15, 0.30)
 DISORDER_SEEDS = (0, 1, 2)
+
+#: SIZE LADDER -- and the reason it is weighted the way it is.
+#:
+#: With PER-TRIANGLE supervision the useful quantity is not the sample count but the number of
+#: EFFECTIVELY INDEPENDENT local samples, and `C(s)` decorrelates in 2-3 hops with a 2-hop ball
+#: holding ~10 triangles (`Phase 5/results/m2_locality/M2_LOCALITY.md`).  So a network smaller than
+#: one ball yields ONE effective sample however many triangles it has, and yield grows ~ n_tri/10
+#: above that.
+#:
+#: Measured on the first smoke build: 848 samples -> 5044 effective, a 5.95x multiplier rather than
+#: the ~20x quoted for a 228-triangle network, because the median was 16 triangles and **36 % of
+#: samples were smaller than a single ball**.  `cells` was 51 % of the samples and 10 % of the
+#: signal; `random` was 25 % of the samples and 51 % of the signal.
+#:
+#: Consequence, and it is in tension with D9 read naively: MINIMAL CELLS ARE GATES, NOT TRAINING
+#: DATA.  They carry the analytic ground truth (`test_m2_head.py` uses exactly that) and they cost
+#: almost nothing, so they stay -- but they are sampled thinly, and the training mass goes to sizes
+#: that actually carry independent local environments.
+RANDOM_SIZES = (60, 120, 240)          # training bulk (3.1c: 60-250 nodes)
+LARGE_SIZES = (500,)                   # HELD OUT for size generalisation -- never trained on
+N_LARGE = 6
+CELL_N_CFG = 2                         # was 6; cells are the analytic band, not the training mass
 
 
 def _commit():
@@ -163,6 +193,39 @@ def solver_label(geo, k):
                 anisotropy=float(Et.max() / max(Et.min(), 1e-300)),
                 min_quality=float(np.min(POS.tri_shape_quality(geo))),
                 label_source='solver')
+
+
+def sim_check(geo, k):
+    """Cross-check one label against the INDEPENDENT sim.  Returns (ok, relative gap, status).
+
+    Section 3.1g requires this for dilution specifically -- "bounded, health-gated, and CROSS-CHECKED
+    AGAINST THE INDEPENDENT SIM FAR MORE DENSELY THAN ELSEWHERE" -- and skipping it is what let wrong
+    labels into the first full build.
+
+    WHY A PARAMETER BOUND IS NOT ENOUGH, measured 2026-08-25.  S0b established `k_soft >= 1e-8` and I
+    extended it to small cells on 16/16 agreement.  Both hold in the BULK of the regime and neither
+    covers its NEAR-MECHANISM TAIL: regenerating that tail gave solver -7.82 vs sim +1.07, and solver
+    -94.18 vs sim +0.55 -- opposite signs.  Worse, two cases with essentially the SAME `min_eig`
+    (2.29e-06 and 2.26e-06) came out one exact and one wrong by a factor of 170, so no scalar health
+    metric separates them.  The only thing that does is running the other code path.
+
+    Compares the full bulk tensor via `_common.sim_bulk_C6` -> `physical_homog.virial_C`, which is
+    genuinely independent (`CLAUDE.md` section 3); NOT `sim_region_C6`, which routes the sim's
+    relaxation back through the solver's own contraction and would be self-verification."""
+    g = dict(geo)
+    C.apply_k_to_geo(g, np.asarray(k, float))
+    try:
+        c6_sim = np.asarray(C.sim_bulk_C6(g), float)
+    except Exception as e:                                               # noqa: BLE001
+        return False, float('nan'), type(e).__name__
+    prob = DesignProblem.from_geo(g)
+    with torch.no_grad():
+        c6_slv = np.asarray(prob.region_tensor(
+            prob.forward(torch.as_tensor(np.asarray(k, float)),
+                         physical_units=True)['per_triangle'], None), float)
+    denom = max(float(np.abs(c6_sim).max()), 1e-30)
+    gap = float(np.abs(c6_slv - c6_sim).max() / denom)
+    return gap <= SIM_GAP_TOL, gap, 'checked'
 
 
 def graph_of(geo, k, is_fictional=None):
@@ -246,7 +309,7 @@ def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
             yield ('auxetic', r['name'], r)
         return
 
-    for r in S.seed_cells(n_basis_range=range(S.N_BASIS_MIN, 13), n_cfg=6, seed=seed):
+    for r in S.seed_cells(n_basis_range=range(S.N_BASIS_MIN, 13), n_cfg=CELL_N_CFG, seed=seed):
         yield ('cells', r['name'], r)
     yield from (('anchor', r['name'], r) for r in S.seed_cells_anchors() if r.get('geo') is not None)
     for phi in BRAVAIS_PHI:                      # ORDERED crystals -- family 'bravais'
@@ -269,9 +332,16 @@ def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
                             continue
                         yield ('disordered', r['name'], r)
     procs = ('uniform', 'poisson_disk', 'blue_noise', 'graded')
-    for i in range(n_random):
-        yield ('random', f'random_{i}', S.random_patch(n_nodes, seed=seed + i,
-                                                       process=procs[i % 4]))
+    for i in range(n_random):                    # training bulk, cycling the size ladder
+        nn = RANDOM_SIZES[i % len(RANDOM_SIZES)]
+        r = S.random_patch(nn, seed=seed + i, process=procs[i % 4])
+        r['size_bin'] = 'train'
+        yield ('random', r['name'], r)
+    for j in range(N_LARGE):                     # HELD-OUT large bin -- size generalisation (3.1c)
+        nn = LARGE_SIZES[j % len(LARGE_SIZES)]
+        r = S.random_patch(nn, seed=seed + 500 + j, process=procs[j % 4])
+        r['size_bin'] = 'large_holdout'
+        yield ('random_large', r['name'], r)
     for tname, reps in (('square', 4), ('honeycomb', 3), ('kagome', 3), ('square_octagon', 3)):
         yield ('tiling', f'tiling_{tname}_r{reps}', S.seed_tiling(tname, reps))
     for r in (S.honeycomb(reps=3), S.kagome(reps=3)):
@@ -300,7 +370,8 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
             continue
 
         variants = [('base', geo0)]
-        if family in ('cells', 'random'):
+        if family in ('cells', 'random'):        # not 'random_large': its labels are spent on
+                                                 # validation, so it gets one variant, not four
             for amp, st in ((0.06, 'correlated'), (0.12, 'correlated'), (0.10, 'white')):
                 pts, gm = F.displace(geo0, np.random.default_rng(rng_master.integers(1 << 30)),
                                      amp=amp, structure=st)
@@ -334,10 +405,17 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
                 if lab is None:
                     skipped[f'{topo_id}/{vname}/{kname}'] = 'non_finite'
                     continue
+                # DENSE cross-check where the solver is known to be fragile (section 3.1g)
+                if kmeta.get('structure') == 'dilution':
+                    ok, gap, status = sim_check(geo, k)
+                    lab.update(sim_ok=bool(ok), sim_gap=float(gap), sim_status=status)
+                else:
+                    lab.update(sim_ok=True, sim_gap=0.0, sim_status='not_checked')
                 samples.append(dict(**graph_of(geo, k, fict), **lab, **kmeta,
                                     family=family, topology_id=topo_id, geom_variant=vname,
                                     k_pattern=kname, seed=seed,
                                     traj_id=f'{topo_id}|{vname}|{kname}', traj_step=0,
+                                    size_bin=rec.get('size_bin', 'train'),
                                     tiling_method='fan', n_threads=N_THREADS,
                                     commit=commit, dirty=dirty))
         if verbose and len(samples) % 200 < len(k_specs):
@@ -347,6 +425,14 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     save(samples, out)
     if verbose:
+        checked = [x for x in samples if x.get('sim_status') == 'checked']
+        if checked:
+            bad = [x for x in checked if not x['sim_ok']]
+            print(f'\nsim cross-check (dilution): {len(checked)} checked, {len(bad)} FLAGGED '
+                  f'untrusted ({100.0*len(bad)/len(checked):.2f}%)')
+            if bad:
+                g = sorted(x['sim_gap'] for x in bad)
+                print(f'  flagged gap: median {g[len(g)//2]:.3f}  max {g[-1]:.3f}')
         print(f'\n{len(samples)} samples -> {out}   ({time.time()-t0:.1f}s, {N_THREADS} thread(s))')
         if skipped:
             print(f'skipped {len(skipped)}: {sorted(set(skipped.values()))}')
@@ -365,11 +451,13 @@ def save(samples, path):
     for key in ('C6', 'nu_theta', 'E_theta'):
         d[key] = np.stack([s[key] for s in samples])
     for key in ('nu', 'E', 'Lx', 'Ly', 'w_max', 'min_eig', 'anisotropy', 'min_quality',
-                'contrast', 'traj_step', 'seed', 'n_threads'):
+                'contrast', 'traj_step', 'seed', 'n_threads', 'sim_gap'):
         d[key] = np.array([s.get(key, np.nan) for s in samples], float)
     d['spd'] = np.array([s['spd'] for s in samples], bool)
+    d['sim_ok'] = np.array([bool(s.get('sim_ok', True)) for s in samples], bool)
     for key in ('family', 'topology_id', 'geom_variant', 'k_pattern', 'structure', 'marginal',
-                'label_source', 'traj_id', 'tiling_method', 'commit', 'k_source'):
+                'label_source', 'traj_id', 'tiling_method', 'commit', 'k_source', 'size_bin',
+                'sim_status'):
         d[key] = np.array([str(s.get(key, '')) for s in samples])
     np.savez_compressed(path, **d)
 

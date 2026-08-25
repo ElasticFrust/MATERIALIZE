@@ -160,25 +160,62 @@ worth doing if any. (Protected core; would need the full gate set.)
 `λ_min ∝ k_soft` scaling and the crossover location are robust to an O(1) error there; the exact
 `2e-12` could shift by an O(1) factor. The measured `frac(λ<eps)` transition is the solid part.
 
-## 5c. EXTENSION 2026-08-25 — the boundary holds on SMALL CELLS too
+## 5c. EXTENSION 2026-08-25 — small cells: the bound holds in the BULK, and FAILS in the TAIL
 
-§6 below notes that this sweep used **two bases at one size** (regular and eta=0.25, half = 5.0) and
-that the threshold could move with size. M2 dataset work needed dilution on the small unit cells of
-`seeds.seed_cells` (N = 3..12 basis nodes, i.e. 6..24 triangles) — a base class an order of
-magnitude smaller, where a single diluted bond is a much larger fraction of the network.
+**⚠ This section was CORRECTED the same day it was written. The first version overstated it; the
+correction is the substantive content, so both are kept.**
 
-**Measured: 16 of 16 cases agree with the independent sim to four decimal places** — cells N = 3, 5,
-8, 12 crossed with f = 0.1, 0.2, 0.3, 0.4 at `k_soft = 1e-6`, including live coordination
-z = 3.33..3.67, i.e. **below the isostatic point z_c = 4**. Relative gap 0.000 throughout.
+**What was asked.** §6 below notes that this sweep used two bases at one size (`half = 5.0`) and that
+the threshold could move with size. M2 dataset work needed dilution on the small unit cells of
+`seeds.seed_cells` (N = 3…12 basis nodes, 6…24 triangles) — a base class an order of magnitude
+smaller, where one diluted bond is a much larger fraction of the network.
 
-So the `k_soft >= 1e-8` bound transfers to the small-cell regime unchanged, which is consistent
-with §5b's root cause: the crossover is set by the solver's RELATIVE regulariser
-`eps = 1e-12 * max|A3|` and the geometric prefactor cancels, so it should be size-independent —
-and now it has been checked on a size that differs by ~an order of magnitude rather than assumed.
+**First measurement (correct, but under-powered).** 16 of 16 cases agreed with the independent sim
+to four decimal places — cells N = 3, 5, 8, 12 crossed with f = 0.1…0.4 at `k_soft = 1e-6`,
+including live coordination z = 3.33…3.67, i.e. **below** the isostatic point. Relative gap 0.000
+throughout.
 
-*(Producer: the check is inline in the M2 dataset work rather than a standalone script; the numbers
-are reproduced by diluting `seeds.seed_cell(N, seed=100*N)` and comparing
-`DesignProblem.from_geo` against `_common.sim_region_nuE`.)*
+**What I wrongly concluded from it:** *"the `k_soft ≥ 1e-8` bound transfers to the small-cell regime
+unchanged."* Those 16 draws all landed at |ν| ≤ 1.06. **They never sampled the near-mechanism tail**,
+and the conclusion was generalised as though they had.
+
+### The tail is where it breaks
+
+Regenerating the same regime and selecting for |ν| > 5:
+
+| cell | f | `min_eig` | ν solver | ν sim | |
+|---|---|---|---|---|---|
+| N3 | 0.4 | 1.59e-06 | **−7.82** | **+1.07** | opposite sign |
+| N4 | 0.3 | 2.29e-06 | −18.59 | −18.59 | agrees exactly |
+| N4 | 0.3 | 2.26e-06 | **−94.18** | **+0.55** | opposite sign, ×170 |
+| N5 | 0.4 | 2.82e-06 | −26.88 | −26.88 | agrees exactly |
+
+**2 of 6 disagree — and no scalar health metric separates them.** The two N4 rows have essentially
+the same `min_eig` (2.29e-06 vs 2.26e-06); one is exact and one is wrong by a factor of 170. Neither
+`min_eig`, nor `E`, nor the geometric health gate, nor the `k_soft` bound distinguishes a good label
+from a bad one here. **The only thing that does is running the other code path.**
+
+Measured rate over a whole diluted population (M2 smoke build, 172 diluted samples, gap on the full
+bulk tensor against `sim_bulk_C6` → `physical_homog.virial_C`): **12 flagged, 6.98 %**, median gap
+0.210, max 0.565.
+
+### The corrected statement
+
+- `k_soft ≥ 1e-8` remains **necessary** and remains correct as a bound on numerical deadness (§5b's
+  root cause is unaffected — the regulariser is relative, so the geometric prefactor cancels and
+  that crossover really is size-independent).
+- It is **not sufficient**. In the near-mechanism tail — reachable on small, heavily diluted cells —
+  solver and sim diverge at a rate of ~7 %, with sign errors, while every parameter and health
+  metric looks fine.
+- Therefore **dilution labels must be cross-checked per sample against the independent sim**, which
+  is what `M2_V2_PLAN.md` §3.1g asked for all along ("bounded — health-gated, and **cross-checked
+  against the independent sim far more densely than elsewhere**"). That requirement was skipped in
+  the first M2 build and is now implemented in `Phase 5/m2/build_dataset.py: sim_check`; samples are
+  FLAGGED (`sim_ok`, `sim_gap`), never dropped, and the trainer filters.
+
+**The generalisable lesson:** a validity boundary established on the *bulk* of a regime does not
+transfer to its *tail*, and 16 agreeing draws that never enter the tail are not evidence about it.
+Sample the failure mode you are trying to bound, not the comfortable middle of the range.
 
 ## 6. Limitations
 
