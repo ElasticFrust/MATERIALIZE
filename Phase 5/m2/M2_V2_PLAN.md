@@ -61,7 +61,17 @@ document.
 labels **the solver itself gets wrong** (dead-`k` rank loss: 11 % dead bonds gave solver ν = −0.110
 vs sim ν = +0.136, **opposite signs**), and softness alone does not predict which — the hexagon gate
 is benign at `k_spoke = 1e-8` because there the soft edge is a **spoke** that lets the face hinge.
-So: **S0b, a dilution sweep mapping solver-vs-sim divergence against dilution fraction** (~1 h). It
+**MEASURED 2026-08-25 (S0b DONE) — `Phase 5/results/dilution_validity/DILUTION_VALIDITY.md`:**
+the boundary is in **SOFTNESS, not dilution fraction**. `k_soft ≥ 1e-8` is safe at **every** `f`
+tested (up to 0.40, including `z = 3.6` **below** the isostatic point); `k_soft ≤ 1e-12` breaks at the
+**first nonzero `f`**. 6 of 266 cases returned ν of the **opposite sign** (worst: solver −0.189 vs
+sim +0.986). The threshold coincides with `test_hex_closed_form`'s benign `k_spoke = 1e-8` —
+independent corroboration. **⇒ sample dilution with `k_soft ≥ 1e-8`, full `f ∈ [0,0.40]` usable;
+never below 1e-12 with solver labels.** This bounds §3.1h's contrast knob.
+*(Also: being sub-isostatic is NOT the problem — a bond at 1e-8 still carries load. The failure is
+numerical deadness of `A(s)`, and it is INVISIBLE to any geometric health gate.)*
+
+The original reasoning: **S0b, a dilution sweep mapping solver-vs-sim divergence** (~1 h). It
 yields a **validity boundary** useful independently of M2 (it is the open question behind
 `FUTURE_DIRECTIONS #2`), and it prevents poisoning a 10 k dataset with an unknown fraction of wrong
 labels. Then include dilution **up to the measured boundary**; beyond it, label with the **sim** or
@@ -467,7 +477,7 @@ id, k-pattern, seed, label source, trajectory id + step, tiling method, thread c
 | # | deliverable | gate before proceeding |
 |---|---|---|
 | **S0** | fix `CLAUDE.md`'s "edit-policy" wording (DONE); pin threads + tiling method in the builder | — |
-| **S0b** | **dilution validity sweep** — solver vs sim vs dilution fraction (D8) | a measured boundary; dilution sampled only up to it |
+| **S0b** | ✅ **DONE 2026-08-25** — dilution validity sweep (266 cases) | boundary MEASURED: `k_soft ≥ 1e-8` safe at all `f ≤ 0.40`; below 1e-12 unusable |
 | **S1** | new head (§2.1) + invariant features, trained on MINIMAL CELLS (§3.1c) — analytic ground truth | `MMᵀ` diagonal `= k_e/4ℓ_e²` on minimal cells; SPD rate 100 %; **supercell invariance**; self-loops handled; ν=1/3, E=2/√3 |
 | **S2** | scaled, balanced dataset (§3), ~10 000 samples, trajectories + provenance | coverage cells ≫ 19; no family < 10 %; leakage checks pass |
 | **S3** | full 5-fold leave-one-family-out training | the §1 **must** tier, or the kill criterion |
