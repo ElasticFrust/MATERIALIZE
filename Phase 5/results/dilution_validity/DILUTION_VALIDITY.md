@@ -160,6 +160,26 @@ worth doing if any. (Protected core; would need the full gate set.)
 `λ_min ∝ k_soft` scaling and the crossover location are robust to an O(1) error there; the exact
 `2e-12` could shift by an O(1) factor. The measured `frac(λ<eps)` transition is the solid part.
 
+## 5c. EXTENSION 2026-08-25 — the boundary holds on SMALL CELLS too
+
+§6 below notes that this sweep used **two bases at one size** (regular and eta=0.25, half = 5.0) and
+that the threshold could move with size. M2 dataset work needed dilution on the small unit cells of
+`seeds.seed_cells` (N = 3..12 basis nodes, i.e. 6..24 triangles) — a base class an order of
+magnitude smaller, where a single diluted bond is a much larger fraction of the network.
+
+**Measured: 16 of 16 cases agree with the independent sim to four decimal places** — cells N = 3, 5,
+8, 12 crossed with f = 0.1, 0.2, 0.3, 0.4 at `k_soft = 1e-6`, including live coordination
+z = 3.33..3.67, i.e. **below the isostatic point z_c = 4**. Relative gap 0.000 throughout.
+
+So the `k_soft >= 1e-8` bound transfers to the small-cell regime unchanged, which is consistent
+with §5b's root cause: the crossover is set by the solver's RELATIVE regulariser
+`eps = 1e-12 * max|A3|` and the geometric prefactor cancels, so it should be size-independent —
+and now it has been checked on a size that differs by ~an order of magnitude rather than assumed.
+
+*(Producer: the check is inline in the M2 dataset work rather than a standalone script; the numbers
+are reproduced by diluting `seeds.seed_cell(N, seed=100*N)` and comparing
+`DesignProblem.from_geo` against `_common.sim_region_nuE`.)*
+
 ## 6. Limitations
 
 - Two bases only (regular, η=0.25) at one size (`half = 5.0`). The threshold could move with size or
