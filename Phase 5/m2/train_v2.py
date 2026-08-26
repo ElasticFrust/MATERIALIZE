@@ -64,6 +64,9 @@ def load(path):
         ptrs = {k: d[k + '_ptr'] for k in VAR_KEYS}
         C6 = d['C6']
         family, traj = d['family'], d['traj_id']
+        kpat = d['k_pattern'] if 'k_pattern' in d else np.array([''] * len(C6))
+        # `w_max` is what `oracle_check` selects on: W == 0 means C(s) = A(s) is a closed form
+        wmax = d['w_max'] if 'w_max' in d else np.full(len(C6), np.inf)
         sim_ok = d['sim_ok'] if 'sim_ok' in d else np.ones(len(C6), bool)
         size_bin = d['size_bin'] if 'size_bin' in d else np.array(['train'] * len(C6))
 
@@ -71,7 +74,8 @@ def load(path):
     for i in range(len(C6)):
         g = {k: arrs[k][ptrs[k][i]:ptrs[k][i + 1]] for k in VAR_KEYS}
         g.update(n_nodes=len(g['pts']), C6=C6[i], family=str(family[i]), traj_id=str(traj[i]),
-                 sim_ok=bool(sim_ok[i]), size_bin=str(size_bin[i]))
+                 sim_ok=bool(sim_ok[i]), size_bin=str(size_bin[i]),
+                 k_pattern=str(kpat[i]), w_max=float(wmax[i]))
         out.append(g)
     return out
 
@@ -135,6 +139,42 @@ def tri_edge_vectors(g):
     and the edge features of bond `i`, and both are gathered in `tri_bond` order.  Verified against
     `geo['edge_vecs']` on four mesh kinds: identical carrier sets, `max|QQ^T diff| <= 1e-14`."""
     return g['bond_R'][g['tri_bond'].astype(np.int64)]          # (n_tri, 3, 2)
+
+
+def oracle_check(prepped, raws, tol=1e-9):
+    """Push the ANALYTIC answer through the exact pipeline and demand machine precision.
+
+    THIS IS THE CHECK THAT CATCHES THE BUG CLASS NO STRUCTURAL GATE CAN.  Twice on 2026-08-26 the
+    model "failed to learn" because the target was unreachable from its inputs -- once because `Q`
+    was unnormalised so `C_pred` scaled as `lbar^2` (a ~4x per-sample factor), once because the
+    target sat in INTERNAL units while the prediction was PHYSICAL (18..220x).  SPD, equivariance,
+    intensivity and expressiveness all passed in both cases, because they check the FORM of the head
+    rather than whether the target is REACHABLE.
+
+    On any sample with `W == 0` the answer is closed form: `C(s) = A(s)`, i.e. `G = diag(k_e/16 l_e^2)`
+    in the same hatted units `prepare` builds.  If assembling that does not reproduce the stored
+    target to machine precision, the units, the scale or the geometry are inconsistent and training
+    is pointless -- so this raises rather than warns.
+
+    Returns the number of samples checked (0 if the dataset contains no W == 0 sample)."""
+    n = 0
+    for t, g in zip(prepped, raws):
+        if g.get('w_max', 1.0) > 1e-9:
+            continue
+        l2 = t['Q'][:, 0, :] + t['Q'][:, 2, :]
+        ktri = torch.as_tensor(g['k'][g['tri_bond'].astype(np.int64)])
+        G = torch.diag_embed(ktri / (16.0 * l2))
+        Cp, _ = M.assemble(t['Q'], G, physical_factor=t['phys'] * t['kbar'])
+        rel = float((M.sym3_to_c6(Cp) - t['target']).abs().max()
+                    / t['target'].abs().max().clamp_min(1e-300))
+        if rel > tol:
+            raise SystemExit(
+                'ORACLE CHECK FAILED on a W=0 sample (%s): the analytic C(s) = A(s) reproduces the '
+                'stored target only to rel %.3e. The units, scale or geometry are inconsistent -- '
+                'training would fit an unreachable target. See `oracle_check`.'
+                % (g.get('family', '?'), rel))
+        n += 1
+    return n
 
 
 def collate(ts):
@@ -210,6 +250,8 @@ def main():
     ap.add_argument('--batch', type=int, default=32, help='graphs per optimiser step')
     ap.add_argument('--no_angles', dest='angles', action='store_false',
                     help='ABLATION: degree-only node features, no triangle angles')
+    ap.add_argument('--only_family', default=None, help='restrict to one family')
+    ap.add_argument('--only_kpattern', default=None, help='restrict to one k-pattern')
     ap.add_argument('--keep_untrusted', action='store_true',
                     help='train on labels the independent sim disagrees with (default: exclude)')
     a = ap.parse_args()
@@ -220,6 +262,16 @@ def main():
     # Untrusted labels are EXCLUDED, not silently absent: they are flagged in the dataset (the
     # builder keeps every sample, audit A-11/A-12) and filtered here, with the count reported so the
     # denominator stays honest.
+    # Optional restriction to a sub-problem. `--only_family bravais --only_kpattern iid_uniform`
+    # selects the ORDERED CRYSTALS at k = 1, where W == 0 (measured 1.3e-14) so C(s) = A(s) is a
+    # closed form in the triangle's OWN three edges -- a purely LOCAL target needing no message
+    # passing, and therefore the sharpest simple test of head plus features.
+    if a.only_family:
+        raw = [g for g in raw if g['family'] == a.only_family]
+    if a.only_kpattern:
+        raw = [g for g in raw if g['k_pattern'] == a.only_kpattern]
+    if not raw:
+        raise SystemExit('no samples left after --only_family/--only_kpattern')
     n_untrusted = sum(1 for g in raw if not g['sim_ok'])
     if not a.keep_untrusted:
         raw = [g for g in raw if g['sim_ok']]
@@ -257,6 +309,10 @@ def main():
     valid = [prepare(raw[i], a.angles) for i in va_i]
     allt = torch.cat([t['target'] for t in train])
     mu, sd = allt.mean(0), allt.std(0).clamp_min(1e-12)
+
+    n_ok = oracle_check(train + valid, [raw[i] for i in tr_i] + [raw[i] for i in va_i])
+    print('oracle check: %d W=0 samples reproduce the stored target to machine precision'
+          % n_ok if n_ok else 'oracle check: no W=0 sample in this split -- NOT verified')
 
     net = M.ForwardGNNv2(hidden=a.hidden, n_layers=a.layers, passive=True,
                          n_node_feat=train[0]['node_feat'].shape[1],
