@@ -80,7 +80,17 @@ def prepare(g, angles=True):
     """Per-sample tensors: invariant features, the equivariant basis Q, and the target."""
     k = torch.as_tensor(g['k'])
     kbar = k.mean().clamp_min(1e-12)
+    # LENGTH SCALE. The carriers q_e = vec3(dx dx^T) are dimension length^2, so an unnormalised Q
+    # makes C_pred scale as lbar^2 -- while the TARGET (physical C) is scale-INVARIANT and every
+    # network input (k/kbar, l/lbar, angles, degree) is scale-invariant too, so the head would have
+    # to guess a per-network factor it cannot see. Measured spread across the dataset: lbar 0.752 to
+    # 1.600, i.e. a factor ~4 in C. Building Q from dx/lbar makes it dimensionless, and lbar^2 moves
+    # into the physical factor, where `phys * lbar^2` is itself scale-invariant (phys = 8N/sum(areas)
+    # and sum(areas) ~ N lbar^2).
     ev = tri_edge_vectors(g)
+    lbar = float(np.hypot(g['bond_R'][:, 0], g['bond_R'][:, 1]).mean())
+    lbar = max(lbar, 1e-12)
+    ev = ev / lbar
     t = dict(
         bond_u=torch.as_tensor(g['bond_u'].astype(np.int64)),
         bond_v=torch.as_tensor(g['bond_v'].astype(np.int64)),
@@ -107,7 +117,7 @@ def prepare(g, angles=True):
         t['tri_feat'] = torch.zeros(len(t['Q']), 0)
     # physical factor, so predictions land in the same units as the stored labels
     areas = torch.as_tensor(g['areas'])
-    t['phys'] = 8.0 * len(g['tri_verts']) / areas.sum()
+    t['phys'] = 8.0 * len(g['tri_verts']) / areas.sum() * (lbar ** 2)   # lbar^2 from the hatted Q
     return t
 
 
