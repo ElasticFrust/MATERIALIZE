@@ -92,10 +92,9 @@ def prepare(g):
         kbar=kbar,                          # the scaling symmetry: feed k/kbar, rescale C by kbar
         target=torch.as_tensor(g['C6_per']),
     )
-    deg = torch.zeros(t['n_nodes'], 1)
-    for idx in (t['bond_u'], t['bond_v']):
-        deg = deg.index_add(0, idx, torch.ones(len(idx), 1))
-    t['node_feat'] = deg / deg.mean().clamp_min(1.0)
+    # ANGULAR features (section 2.3) -- degree alone leaves the scalar path blind to geometry
+    t['node_feat'] = M.node_angle_features(g['bond_u'], g['bond_v'], g['bond_R'], t['n_nodes'])
+    t['tri_feat'] = M.triangle_angle_features(t['Q'])
     # physical factor, so predictions land in the same units as the stored labels
     areas = torch.as_tensor(g['areas'])
     t['phys'] = 8.0 * len(g['tri_verts']) / areas.sum()
@@ -129,7 +128,7 @@ def collate(ts):
     The physical scale is PER SAMPLE (`8*n_tri/sum(areas)` and `mean(k)` differ between graphs), so
     it is carried as a per-TRIANGLE vector rather than a scalar."""
     nb = bo = to = 0
-    bu, bv, tb, tv, ef, nf, Q, tg, sc = [], [], [], [], [], [], [], [], []
+    bu, bv, tb, tv, ef, nf, tf, Q, tg, sc = [], [], [], [], [], [], [], [], [], []
     for t in ts:
         bu.append(t['bond_u'] + nb)
         bv.append(t['bond_v'] + nb)
@@ -137,6 +136,7 @@ def collate(ts):
         tv.append(t['tri_verts'] + nb)
         ef.append(t['edge_feat'])
         nf.append(t['node_feat'])
+        tf.append(t['tri_feat'])
         Q.append(t['Q'])
         tg.append(t['target'])
         sc.append(torch.full((len(t['Q']),), float(t['phys'] * t['kbar'])))
@@ -145,7 +145,7 @@ def collate(ts):
         to += len(t['Q'])
     return dict(bond_u=torch.cat(bu), bond_v=torch.cat(bv), tri_bond=torch.cat(tb),
                 tri_verts=torch.cat(tv), edge_feat=torch.cat(ef), node_feat=torch.cat(nf),
-                n_nodes=nb, Q=torch.cat(Q), target=torch.cat(tg),
+                tri_feat=torch.cat(tf), n_nodes=nb, Q=torch.cat(Q), target=torch.cat(tg),
                 scale=torch.cat(sc).reshape(-1, 1, 1))
 
 
@@ -278,7 +278,9 @@ def main():
     tag = a.holdout if a.holdout != 'random' else 'within'
     ck = os.path.join(HERE, 'checkpoint_v2_%s.pt' % tag)
     torch.save(dict(state=net.state_dict(), hidden=a.hidden, layers=a.layers,
-                    mu=mu, sd=sd, holdout=a.holdout, data=os.path.basename(a.data)), ck)
+                    mu=mu, sd=sd, holdout=a.holdout, data=os.path.basename(a.data),
+                    n_node_feat=int(train[0]['node_feat'].shape[1]),
+                    n_tri_feat=int(train[0]['tri_feat'].shape[1])), ck)
     print('  saved', ck)
 
     os.makedirs(RESULTS, exist_ok=True)

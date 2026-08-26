@@ -136,9 +136,9 @@ DISORDER_SEEDS = (0, 1, 2)
 #: DATA.  They carry the analytic ground truth (`test_m2_head.py` uses exactly that) and they cost
 #: almost nothing, so they stay -- but they are sampled thinly, and the training mass goes to sizes
 #: that actually carry independent local environments.
-RANDOM_SIZES = (60, 120, 240)          # training bulk (3.1c: 60-250 nodes)
+RANDOM_SIZES = (60, 120, 240, 360)     # training bulk; effective yield scales with n_tri
 LARGE_SIZES = (500,)                   # HELD OUT for size generalisation -- never trained on
-N_LARGE = 6
+N_LARGE = 20
 CELL_N_CFG = 2                         # was 6; cells are the analytic band, not the training mass
 
 

@@ -46,6 +46,11 @@ import torch.nn as nn
 
 VEC3 = 3
 
+#: sizes of the invariant scalar feature blocks; a checkpoint trained with different
+#: values is architecturally incompatible, so they are constants rather than something to probe
+N_NODE_FEAT = 4        # [degree, min gap, max gap, std gap]
+N_TRI_FEAT = 3         # the triangle's sorted interior angles
+
 
 # ---- geometry -> the equivariant basis --------------------------------------------------------
 def edge_carriers(edge_vecs):
@@ -119,6 +124,62 @@ def edge_features(k, bond_R, eps=1e-12):
     return torch.stack([k / kb, torch.log(k / kb + eps), ell / ell.mean().clamp_min(eps)], dim=-1)
 
 
+def node_angle_features(bond_u, bond_v, bond_R, n_nodes):
+    """Per-node ROTATION-INVARIANT angular features: `[degree, min gap, max gap, std gap]`, where the
+    gaps are the angular spacings between the directions of the bonds incident on that node.
+
+    The MEAN gap is deliberately absent: gaps around a node sum to 2*pi, so mean = 2*pi/degree and it
+    carries nothing degree does not.
+
+    WHY THIS EXISTS -- it was specified and then omitted.  Section 2.3 asks for "per node, the sorted
+    angles between incident bonds"; the first implementation used DEGREE ALONE.  That leaves the
+    scalar path with no angular information whatever, so two triangles with identical edge lengths
+    and stiffnesses sitting in differently-shaped neighbourhoods get IDENTICAL features while having
+    different `W`, hence different `C(s)`.  The features were degenerate with respect to the target,
+    which is the natural explanation for the first runs learning the bulk response and giving up on
+    the local part.  (The head still had the full geometry through `Q(s)`, but `Q` only ROTATES the
+    answer -- the scalar network deciding WHAT the answer is could not see angles at all.)
+
+    Gaps rather than raw angles because gaps are invariant under a global rotation: rotating every
+    direction shifts all angles equally and leaves their differences alone.  Summary statistics
+    rather than the sorted list because degree varies, and the feature vector must not."""
+    R = np.asarray(bond_R, float)
+    u = np.asarray(bond_u, np.int64)
+    v = np.asarray(bond_v, np.int64)
+    out_dirs = [[] for _ in range(n_nodes)]
+    for e in range(len(u)):
+        ang = np.arctan2(R[e, 1], R[e, 0])
+        out_dirs[u[e]].append(ang)                       # leaving u
+        out_dirs[v[e]].append(np.arctan2(-R[e, 1], -R[e, 0]))   # leaving v, i.e. reversed
+    feat = np.zeros((n_nodes, 4))
+    for i, angs in enumerate(out_dirs):
+        d = len(angs)
+        feat[i, 0] = d
+        if d < 2:
+            continue
+        a = np.sort(np.mod(np.asarray(angs), 2 * np.pi))
+        gaps = np.diff(np.concatenate([a, a[:1] + 2 * np.pi]))
+        feat[i, 1:] = (gaps.min(), gaps.max(), gaps.std())
+    feat[:, 0] /= max(feat[:, 0].mean(), 1.0)            # degree, normalised
+    return torch.as_tensor(feat)
+
+
+def triangle_angle_features(Q):
+    """Per-triangle interior angles, sorted, from the edge carriers.
+
+    `q_e = vec3(dx dx^T)` gives `|dx_e|^2 = q_xx + q_yy`, so the three squared edge lengths are read
+    straight off `Q` and the angles follow from the law of cosines.  Sorted, so the feature does not
+    depend on which edge the mesh happened to list first.  Rotation-invariant by construction."""
+    l2 = Q[:, 0, :] + Q[:, 2, :]                          # (n_tri, 3) squared lengths
+    l2 = l2.clamp_min(1e-300)
+    a2, b2, c2 = l2[:, 0], l2[:, 1], l2[:, 2]
+    ang = []
+    for x2, y2, z2 in ((a2, b2, c2), (b2, c2, a2), (c2, a2, b2)):
+        cos = ((x2 + y2 - z2) / (2 * torch.sqrt(x2 * y2))).clamp(-1.0, 1.0)
+        ang.append(torch.arccos(cos))
+    return torch.sort(torch.stack(ang, -1), dim=-1).values
+
+
 class ForwardGNNv2(nn.Module):
     """Graph -> per-triangle `M` (or `G`) -> C(s) -> C_eff.  Plain torch, no torch_geometric.
 
@@ -126,10 +187,11 @@ class ForwardGNNv2(nn.Module):
     and emits that triangle's head weights.  v1 pooled GLOBALLY and emitted a bulk C6 directly,
     which is both non-equivariant and unable to express per-triangle structure."""
 
-    def __init__(self, hidden=128, n_layers=5, n_edge_feat=3, passive=True):
+    def __init__(self, hidden=128, n_layers=5, n_edge_feat=3, passive=True, n_node_feat=N_NODE_FEAT,
+                 n_tri_feat=N_TRI_FEAT):
         super().__init__()
         self.passive, self.hidden = passive, hidden
-        self.node_embed = nn.Linear(1, hidden)
+        self.node_embed = nn.Linear(n_node_feat, hidden)
         self.edge_mlp = nn.ModuleList(
             nn.Sequential(nn.Linear(2 * hidden + n_edge_feat, hidden), nn.SiLU(),
                           nn.Linear(hidden, hidden)) for _ in range(n_layers))
@@ -140,7 +202,7 @@ class ForwardGNNv2(nn.Module):
         # A triangle contributes its 3 NODE embeddings (3*hidden) and its 3 BOND features
         # (3*n_edge_feat, raw -- the bonds are not embedded), hence 3*hidden + 3*n_edge_feat.
         self.readout = nn.Sequential(
-            nn.Linear(3 * hidden + 3 * n_edge_feat, hidden), nn.SiLU(),
+            nn.Linear(3 * hidden + 3 * n_edge_feat + n_tri_feat, hidden), nn.SiLU(),
             nn.Linear(hidden, hidden), nn.SiLU(), nn.Linear(hidden, n_out))
 
     def forward(self, graph):
@@ -158,7 +220,8 @@ class ForwardGNNv2(nn.Module):
             h = h + nmlp(torch.cat([h, agg / cnt.clamp_min(1.0)], -1))
 
         tv, tb = graph['tri_verts'].long(), graph['tri_bond'].long()
-        feats = torch.cat([h[tv].reshape(len(tv), -1), ef[tb].reshape(len(tb), -1)], -1)
+        feats = torch.cat([h[tv].reshape(len(tv), -1), ef[tb].reshape(len(tb), -1),
+                           graph['tri_feat']], -1)
         raw = self.readout(feats)
         return self._to_G(raw)
 
