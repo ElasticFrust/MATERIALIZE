@@ -76,7 +76,7 @@ def load(path):
     return out
 
 
-def prepare(g):
+def prepare(g, angles=True):
     """Per-sample tensors: invariant features, the equivariant basis Q, and the target."""
     k = torch.as_tensor(g['k'])
     kbar = k.mean().clamp_min(1e-12)
@@ -92,9 +92,19 @@ def prepare(g):
         kbar=kbar,                          # the scaling symmetry: feed k/kbar, rescale C by kbar
         target=torch.as_tensor(g['C6_per']),
     )
-    # ANGULAR features (section 2.3) -- degree alone leaves the scalar path blind to geometry
-    t['node_feat'] = M.node_angle_features(g['bond_u'], g['bond_v'], g['bond_R'], t['n_nodes'])
-    t['tri_feat'] = M.triangle_angle_features(t['Q'])
+    # ANGULAR features (section 2.3) -- degree alone leaves the scalar path blind to geometry.
+    # `angles=False` reproduces the degree-only feature set exactly, so the two can be run as a
+    # controlled ABLATION on identical data and seed: comparing against an earlier run would confound
+    # the feature change with a different dataset and different code.
+    if angles:
+        t['node_feat'] = M.node_angle_features(g['bond_u'], g['bond_v'], g['bond_R'], t['n_nodes'])
+        t['tri_feat'] = M.triangle_angle_features(t['Q'])
+    else:
+        deg = torch.zeros(t['n_nodes'], 1)
+        for idx in (t['bond_u'], t['bond_v']):
+            deg = deg.index_add(0, idx, torch.ones(len(idx), 1))
+        t['node_feat'] = deg / deg.mean().clamp_min(1.0)
+        t['tri_feat'] = torch.zeros(len(t['Q']), 0)
     # physical factor, so predictions land in the same units as the stored labels
     areas = torch.as_tensor(g['areas'])
     t['phys'] = 8.0 * len(g['tri_verts']) / areas.sum()
@@ -188,6 +198,8 @@ def main():
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--limit', type=int, default=0)
     ap.add_argument('--batch', type=int, default=32, help='graphs per optimiser step')
+    ap.add_argument('--no_angles', dest='angles', action='store_false',
+                    help='ABLATION: degree-only node features, no triangle angles')
     ap.add_argument('--keep_untrusted', action='store_true',
                     help='train on labels the independent sim disagrees with (default: exclude)')
     a = ap.parse_args()
@@ -198,16 +210,20 @@ def main():
     # Untrusted labels are EXCLUDED, not silently absent: they are flagged in the dataset (the
     # builder keeps every sample, audit A-11/A-12) and filtered here, with the count reported so the
     # denominator stays honest.
+    n_untrusted = sum(1 for g in raw if not g['sim_ok'])
     if not a.keep_untrusted:
         raw = [g for g in raw if g['sim_ok']]
     # The large-size bin is held out for size generalisation and is never trained on (section 3.1c).
     large = [g for g in raw if g['size_bin'] == 'large_holdout']
     raw = [g for g in raw if g['size_bin'] != 'large_holdout']
+    # Counted BEFORE --limit truncates, or the limit is reported as exclusions: a 200-sample limit
+    # on an 848-sample set claimed "648 untrusted excluded" when the true number was 12.
+    n_limited = max(0, len(raw) - a.limit) if a.limit else 0
     if a.limit:
         raw = raw[:a.limit]
-    print('%d samples from %s  (%d total, %d untrusted excluded, %d held-out large)'
+    print('%d samples from %s  (%d total, %d untrusted excluded, %d held-out large, %d cut by --limit)'
           % (len(raw), os.path.basename(a.data), n_all,
-             n_all - len(raw) - len(large), len(large)))
+             0 if a.keep_untrusted else n_untrusted, len(large), n_limited))
 
     if a.holdout != 'random':
         tr_i = [i for i, g in enumerate(raw) if g['family'] != a.holdout]
@@ -227,12 +243,14 @@ def main():
         return 1
     print('%s\n  train %d / val %d' % (split, len(tr_i), len(va_i)))
 
-    train = [prepare(raw[i]) for i in tr_i]
-    valid = [prepare(raw[i]) for i in va_i]
+    train = [prepare(raw[i], a.angles) for i in tr_i]
+    valid = [prepare(raw[i], a.angles) for i in va_i]
     allt = torch.cat([t['target'] for t in train])
     mu, sd = allt.mean(0), allt.std(0).clamp_min(1e-12)
 
-    net = M.ForwardGNNv2(hidden=a.hidden, n_layers=a.layers, passive=True)
+    net = M.ForwardGNNv2(hidden=a.hidden, n_layers=a.layers, passive=True,
+                         n_node_feat=train[0]['node_feat'].shape[1],
+                         n_tri_feat=train[0]['tri_feat'].shape[1])
     opt = torch.optim.Adam(net.parameters(), lr=a.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=a.epochs)
     print('%d parameters' % sum(p.numel() for p in net.parameters()))
@@ -275,7 +293,7 @@ def main():
           % (float((per / sd).mean()), float((bulk / sd).mean())))
     print('  SPD violation rate = %.5f   (must be 0 -- structural in passive mode)' % bad)
     # checkpoint name carries the SPLIT, so sequential runs cannot overwrite each other
-    tag = a.holdout if a.holdout != 'random' else 'within'
+    tag = (a.holdout if a.holdout != 'random' else 'within') + ('' if a.angles else '_noang')
     ck = os.path.join(HERE, 'checkpoint_v2_%s.pt' % tag)
     torch.save(dict(state=net.state_dict(), hidden=a.hidden, layers=a.layers,
                     mu=mu, sd=sd, holdout=a.holdout, data=os.path.basename(a.data),

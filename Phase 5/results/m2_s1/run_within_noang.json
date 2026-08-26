@@ -1,0 +1,56 @@
+{
+  "split": "within-family (trajectory split) -- MEMORISATION BASELINE, not a result",
+  "holdout": "random",
+  "data": "dataset_smoke.npz",
+  "epochs": 1,
+  "batch": 32,
+  "hidden": 32,
+  "layers": 2,
+  "lr": 0.003,
+  "seed": 0,
+  "params": 17446,
+  "n_train": 160,
+  "n_val": 40,
+  "n_total": 848,
+  "n_untrusted_excluded": 648,
+  "n_large_holdout": 0,
+  "per_triangle_mae": [
+    4.182610567063145,
+    2.029169338175355,
+    1.306674447785824,
+    3.5386977333126537,
+    2.2349873934752678,
+    5.93248341774285
+  ],
+  "bulk_mae": [
+    4.088926794695243,
+    1.2864587681830653,
+    0.5230892879969447,
+    3.5378097487503384,
+    1.4128026834521112,
+    5.844300187580123
+  ],
+  "label_std": [
+    0.5541872854761591,
+    0.39788836070532363,
+    0.3304095666392058,
+    0.2589274781407354,
+    0.37947208722411113,
+    0.8677974796001945
+  ],
+  "per_triangle_mae_over_std": 7.165763024579442,
+  "bulk_mae_over_std": 6.052607099047691,
+  "spd_violation_rate": 0.0,
+  "history": [
+    {
+      "epoch": 0,
+      "train_loss": 369.73596448462536,
+      "val_per_tri": 7.165763024579442,
+      "val_bulk": 6.052607099047691,
+      "spd": 0.0,
+      "seconds": 0.2
+    }
+  ],
+  "wall_seconds": 0.3,
+  "commit": "c21c94e"
+}
