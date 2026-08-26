@@ -24,6 +24,7 @@ reproduced.
 Run:  C:\Users\doron\anaconda3\python.exe "Phase 5/m2/train_v2.py" --epochs 200
 """
 import argparse
+import json
 import os
 import sys
 import time
@@ -35,6 +36,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, HERE)
 import model_v2 as M                                                      # noqa: E402
+
+#: Every run writes its metrics here, in-repo.  Results that live only in a terminal or a scratch
+#: file are the project's documented failure mode ("findings live in prose, not data"), and the
+#: first two S1 runs hit it -- their only record was a temp log, and a fixed checkpoint name meant
+#: the second run silently overwrote the first one's weights.
+RESULTS = os.path.join(REPO, 'Phase 5', 'results', 'm2_s1')
 
 torch.set_default_dtype(torch.float64)
 
@@ -231,6 +238,7 @@ def main():
     print('%d parameters' % sum(p.numel() for p in net.parameters()))
 
     t0 = time.time()
+    history = []
     order = np.arange(len(train))
     for ep in range(a.epochs):
         net.train()
@@ -249,6 +257,10 @@ def main():
         sched.step()
         if ep % max(1, a.epochs // 10) == 0 or ep == a.epochs - 1:
             per, bulk, bad = evaluate(net, valid, mu, sd)
+            history.append(dict(epoch=ep, train_loss=float(tot),
+                                val_per_tri=float((per / sd).mean()),
+                                val_bulk=float((bulk / sd).mean()), spd=float(bad),
+                                seconds=round(time.time() - t0, 1)))
             print('  ep %4d  train %.4f   val MAE/std per-tri %.4f  bulk %.4f   SPD viol %.4f  (%.0fs)'
                   % (ep, tot, float((per / sd).mean()), float((bulk / sd).mean()),
                      bad, time.time() - t0))
@@ -262,11 +274,39 @@ def main():
     print('  normalised per-triangle MAE/std = %.4f     bulk MAE/std = %.4f'
           % (float((per / sd).mean()), float((bulk / sd).mean())))
     print('  SPD violation rate = %.5f   (must be 0 -- structural in passive mode)' % bad)
-    ck = os.path.join(HERE, 'checkpoint_v2.pt')
+    # checkpoint name carries the SPLIT, so sequential runs cannot overwrite each other
+    tag = a.holdout if a.holdout != 'random' else 'within'
+    ck = os.path.join(HERE, 'checkpoint_v2_%s.pt' % tag)
     torch.save(dict(state=net.state_dict(), hidden=a.hidden, layers=a.layers,
                     mu=mu, sd=sd, holdout=a.holdout, data=os.path.basename(a.data)), ck)
     print('  saved', ck)
+
+    os.makedirs(RESULTS, exist_ok=True)
+    rec = dict(split=split, holdout=a.holdout, data=os.path.basename(a.data),
+               epochs=a.epochs, batch=a.batch, hidden=a.hidden, layers=a.layers, lr=a.lr,
+               seed=a.seed, params=int(sum(p.numel() for p in net.parameters())),
+               n_train=len(train), n_val=len(valid), n_total=n_all,
+               n_untrusted_excluded=int(n_all - len(raw) - len(large)), n_large_holdout=len(large),
+               per_triangle_mae=[float(x) for x in per], bulk_mae=[float(x) for x in bulk],
+               label_std=[float(x) for x in sd],
+               per_triangle_mae_over_std=float((per / sd).mean()),
+               bulk_mae_over_std=float((bulk / sd).mean()),
+               spd_violation_rate=float(bad), history=history,
+               wall_seconds=round(time.time() - t0, 1), commit=_commit())
+    out_json = os.path.join(RESULTS, 'run_%s.json' % tag)
+    with open(out_json, 'w', encoding='utf-8') as fh:
+        json.dump(rec, fh, indent=2)
+    print('  metrics ->', out_json)
     return 0
+
+
+def _commit():
+    import subprocess
+    try:
+        return subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=REPO,
+                              capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:                                                    # noqa: BLE001
+        return 'unknown'
 
 
 if __name__ == '__main__':
