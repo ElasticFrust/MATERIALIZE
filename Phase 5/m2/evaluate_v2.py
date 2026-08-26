@@ -80,6 +80,9 @@ def main():
     ap.add_argument('--data', default=os.path.join(HERE, 'data', 'dataset.npz'))
     ap.add_argument('--family', default='bravais', help='the held-out family to score')
     ap.add_argument('--max_n', type=int, default=250, help='cap on networks scored (sim is slow)')
+    ap.add_argument('--size_bin', default=None, choices=(None, 'train', 'large_holdout'),
+                    help="score a SIZE bin instead of a family; 'large_holdout' is the ~1000-triangle "
+                         "set that is never trained on (section 3.1c)")
     a = ap.parse_args()
 
     ck = torch.load(os.path.join(HERE, a.ckpt), weights_only=False)
@@ -100,13 +103,27 @@ def main():
     net.load_state_dict(ck['state'])
     net.eval()
 
-    raw = [g for g in T.load(a.data) if g['sim_ok'] and g['size_bin'] != 'large_holdout']
-    held = [g for g in raw if g['family'] == a.family]
+    raw = T.load(a.data)
+    if a.size_bin:
+        # SIZE GENERALISATION (section 3.1c). `M2_LOCALITY.md` measured C(s) decorrelating in 2-3
+        # hops and concluded a 4-5 layer receptive field suffices; the honest test of that claim is
+        # a model trained only on 60-360-node graphs, scored on ~1000-triangle ones it never saw.
+        # The large bin is excluded from training by the trainer, so this is a clean holdout.
+        held = [g for g in raw if g['sim_ok'] and g['size_bin'] == a.size_bin]
+        label = 'size bin %r' % a.size_bin
+    else:
+        held = [g for g in raw
+                if g['sim_ok'] and g['size_bin'] != 'large_holdout' and g['family'] == a.family]
+        label = 'family %r' % a.family
     rng = np.random.default_rng(0)
     if len(held) > a.max_n:
         held = [held[i] for i in rng.choice(len(held), a.max_n, replace=False)]
-    print('checkpoint %s (holdout=%s)  scoring %d networks of family %r'
-          % (a.ckpt, ck.get('holdout'), len(held), a.family))
+    if not held:
+        raise SystemExit('no networks selected (%s)' % label)
+    print('checkpoint %s (trained holdout=%s)  scoring %d networks -- %s'
+          % (a.ckpt, ck.get('holdout'), len(held), label))
+    ntri = [len(g['C6_per']) for g in held]
+    print('   n_tri  min %d  median %d  max %d' % (min(ntri), int(np.median(ntri)), max(ntri)))
 
     rows, n_fail, t0 = [], 0, time.time()
     for i, g in enumerate(held):
@@ -157,9 +174,9 @@ def main():
     print('  NOTE the floor above: no model trained on solver labels can beat SOLVER-vs-SIM.')
 
     os.makedirs(RESULTS, exist_ok=True)
-    out = os.path.join(RESULTS, 'eval_%s.json' % a.family)
+    out = os.path.join(RESULTS, 'eval_%s.json' % (a.size_bin or a.family))
     with open(out, 'w', encoding='utf-8') as fh:
-        json.dump(dict(ckpt=a.ckpt, family=a.family, n=len(r),
+        json.dump(dict(ckpt=a.ckpt, family=a.family, size_bin=a.size_bin, scored=label, n=len(r),
                        mae_nu_model_vs_sim=float(np.mean(np.abs(nu_m - nu_p))),
                        mae_nu_solver_vs_sim=float(np.mean(np.abs(nu_s - nu_p))),
                        mae_E_rel_model_vs_sim=float(np.mean(np.abs((E_m - E_p) / np.maximum(np.abs(E_p), 1e-30)))),
