@@ -63,6 +63,7 @@ def load(path):
         arrs = {k: d[k] for k in VAR_KEYS}
         ptrs = {k: d[k + '_ptr'] for k in VAR_KEYS}
         C6 = d['C6']
+        Lx, Ly = d['Lx'], d['Ly']            # the periodic box; needed to rebuild a geo
         family, traj = d['family'], d['traj_id']
         kpat = d['k_pattern'] if 'k_pattern' in d else np.array([''] * len(C6))
         # `w_max` is what `oracle_check` selects on: W == 0 means C(s) = A(s) is a closed form
@@ -75,7 +76,8 @@ def load(path):
         g = {k: arrs[k][ptrs[k][i]:ptrs[k][i + 1]] for k in VAR_KEYS}
         g.update(n_nodes=len(g['pts']), C6=C6[i], family=str(family[i]), traj_id=str(traj[i]),
                  sim_ok=bool(sim_ok[i]), size_bin=str(size_bin[i]),
-                 k_pattern=str(kpat[i]), w_max=float(wmax[i]))
+                 k_pattern=str(kpat[i]), w_max=float(wmax[i]),
+                 Lx=float(Lx[i]), Ly=float(Ly[i]))
         out.append(g)
     return out
 

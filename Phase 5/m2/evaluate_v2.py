@@ -67,7 +67,11 @@ def geo_of(g):
                 areas=g['areas'], edge_vecs=ev, actual_len2=(ev ** 2).sum(-1),
                 centroids=np.zeros((len(g['tri_verts']), 2)),
                 tri_verts=np.zeros((len(g['tri_verts']), 3, 2)),
-                BL1=np.array([g['Lx'], 0.0]), BL2=np.array([0.0, g['Ly']]))
+                BL1=np.array([g['Lx'], 0.0]), BL2=np.array([0.0, g['Ly']]),
+                # the sim reads its stiffness off the geo -- without this it would silently
+                # relax a UNIFORM-k network and the comparison would be against the wrong material
+                bond_k=np.asarray(g['k'], float),
+                tri_k=np.asarray(g['k'], float)[g['tri_bond'].astype(np.int64)])
 
 
 def main():
@@ -104,7 +108,7 @@ def main():
     print('checkpoint %s (holdout=%s)  scoring %d networks of family %r'
           % (a.ckpt, ck.get('holdout'), len(held), a.family))
 
-    rows, t0 = [], time.time()
+    rows, n_fail, t0 = [], 0, time.time()
     for i, g in enumerate(held):
         t = T.prepare(g)
         with torch.no_grad():
@@ -113,12 +117,23 @@ def main():
         nu_s, E_s = nuE(g['C6'])                       # solver label (what it trained on)
         try:
             nu_p, E_p = nuE(C.sim_bulk_C6(geo_of(g)))  # INDEPENDENT sim
-        except Exception:                                                 # noqa: BLE001
+        except Exception as e:                                            # noqa: BLE001
+            # Report, never swallow. A bare `continue` here hid THREE bugs at once (missing box,
+            # unapplied k, and its own silence) and produced an empty result array that failed far
+            # downstream with an unrelated IndexError.
+            n_fail += 1
+            if n_fail <= 3:
+                print('   sim failed on %s: %s: %s' % (g.get('family', '?'), type(e).__name__,
+                                                       str(e)[:80]))
             continue
         rows.append((nu_m, E_m, nu_s, E_s, nu_p, E_p))
         if (i + 1) % 50 == 0:
             print('   %d/%d  (%.0fs)' % (i + 1, len(held), time.time() - t0))
 
+    if not rows:
+        raise SystemExit('every sim call failed (%d) -- see the messages above' % n_fail)
+    if n_fail:
+        print('   %d of %d sim calls failed' % (n_fail, n_fail + len(rows)))
     r = np.array(rows)
     nu_m, E_m, nu_s, E_s, nu_p, E_p = (r[:, j] for j in range(6))
 
