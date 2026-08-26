@@ -162,11 +162,44 @@ section used to pose are answered:
 |---|---|---|
 | **S0** | `CLAUDE.md` wording; **pin `OMP/MKL_NUM_THREADS` + the tiling method in the builder** | wording ✅ (swept across *all* docs 2026-08-25); **thread + method pinning NOT DONE — the one S0 item still open** |
 | **S0b** | dilution validity sweep, 266 cases | ✅ **`k_soft ≥ 1e-8` is safe at every `f ≤ 0.40`**, including sub-isostatic `z = 3.6`; below 1e-12 unusable. `results/dilution_validity/DILUTION_VALIDITY.md` |
-| **S1 ← THE NEXT ACTION** | the new head `C(s) = Q·MMᵀ·Qᵀ` + rotation-invariant features + triangle-level readout, trained on **MINIMAL CELLS** | premise ✅ (`C_eff` verified **intensive** to 5e-16…7e-13, `results/supercell_invariance/`); **the model itself is unwritten**. Gates: `MMᵀ` diagonal `= k_e/4ℓ_e²`; SPD rate 100 %; supercell invariance; self-loops (`u == v`) handled; ν=1/3, E=2/√3. ~30 min |
+| **S1 — IN PROGRESS** | head `C(s) = Q·MMᵀ·Qᵀ` + invariant features + triangle readout | **parametrisation ✅ 7/7 before training** (`test_m2_head.py`; expressive to 3.52e-16 at `max|W|`=2.43). **Simplest case ✅**: k=1 Bravais crystals (W=0, closed form) learned to **0.00107 MAE/std with ZERO message-passing layers**, 0.00025 with one — `results/m2_s1_crystals/`. **Still open:** the full-set family holdout (earlier numbers INVALIDATED, see below), the angle ablation, ν/E-vs-sim, and the large-size bin |
 | S2 | scaled, balanced dataset (~10 k), trajectories + provenance | after S1 — see §3 |
 | S3 | 5-fold leave-one-family-out training | **must**: MAE(ν) ≤ 0.02 and MAE(E)/E ≤ 5 % **against the independent sim**; **kill criterion** MAE(ν) > 0.05 ⇒ stop and report, which is a legitimate result |
 | S4 | wire in as an M1 pre-filter | solver calls per design reduced at unchanged design quality |
 | S5 | **the edit-policy** — the actual endpoint of this arc | separate plan; trains on the trajectories S2 stores |
+
+> ### ⚠ 2026-08-26 — TWO BUGS OF ONE CLASS, and the guard that now catches them
+>
+> Twice in one day the model "failed to learn" because it was asked for an output determined by a
+> **per-sample factor its inputs cannot see**:
+> 1. **unnormalised `Q`** — `C_pred` scaled as `lbar²` while the target and every input are
+>    scale-invariant (`lbar` spans 0.752–1.600 across the dataset, ~4× in `C`);
+> 2. **internal-vs-physical units** on a per-triangle target (per-crystal factor **18–220**).
+>
+> **Both passed every structural gate** — SPD, equivariance, intensivity, expressiveness — because
+> those check the FORM of the head, not whether the target is REACHABLE. Both presented identically,
+> as the model plateauing.
+>
+> **`train_v2.oracle_check` now runs before the first gradient step and RAISES**: on any `W = 0`
+> sample it pushes the analytic `C(s) = A(s)` through the exact pipeline and demands machine
+> precision. Negative-tested — reintroduce either bug and it fires.
+>
+> **Consequence: `Phase 5/results/m2_s1/M2_S1.md`'s training numbers are INVALID** (within-family
+> 0.4613, leave-one-family-out 0.5343, and the "does not beat the bulk baseline" conclusion). They
+> were measured with both bugs present. Its §1 parametrisation gates survive.
+>
+> **Rule that follows:** before training on any new target, push the ANALYTIC answer through the
+> exact pipeline and demand machine precision. No structural gate substitutes for it.
+>
+> Two other things measured the same day, both correcting earlier claims of mine:
+> * **a crystal is ONE sample, not one per triangle** — every triangle is equivalent by translation
+>   and the primitive cell's two are inversion-related while `C` is even under inversion (4920
+>   triangles over 50 crystals → 50 distinct values). Resolution must come from the (φ, ψ) grid.
+> * **φ is NOT periodic** at fixed diagonal (ν runs 0 → +1/3 → 0 → −0.579 → −1.381 over [0,4]); the
+>   earlier period-2 claim was an artefact of the Delaunay generator always taking the shorter
+>   diagonal. What IS redundant is the diagonal flag: `(φ, a₁+a₂)` = `(φ+2, a₂−a₁)` to 0.00e+00.
+> * **depth HURTS on a local target** — 2 layers 13× worse than 0 on the crystals. `n_layers` 4–5 is
+>   now something to test, not assume.
 
 **The order is load-bearing: do NOT scale data before S1 passes.** S1 is deliberately tiny — an
 architecture check with **analytic ground truth** (in the small-cell limit the non-affine correction
