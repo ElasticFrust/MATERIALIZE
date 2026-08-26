@@ -211,8 +211,8 @@ def main():
 
     print('\n%-8s %8s %10s   %-12s %s' % ('layers', 'hidden', 'params', 'val MAE/std', 'note'))
     results = {}
-    for layers, hidden in ((0, 16), (0, 32), (1, 16), (1, 32), (2, 32)):
-        net, err, va, hist = run(recs, layers, hidden, epochs=400)
+    for layers, hidden in ((0, 32), (1, 32), (2, 32)):
+        net, err, va, hist = run(recs, layers, hidden, epochs=3000)
         n_par = sum(p.numel() for p in net.parameters())
         results[(layers, hidden)] = (err, va, hist)
         print('%-8d %8d %10d   %-12.5f %s'
