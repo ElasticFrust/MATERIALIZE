@@ -161,7 +161,11 @@ area weighting biases ν and is tombstoned). Physical units via the same `8N/ΣS
 unchanged** and `C → λC`. Therefore: feed `k / mean(k)` to the network and multiply the predicted
 `C` by `mean(k)`. `ν` is then scale-invariant by construction, as the physics requires.
 
-### 2.3 Body
+### 2.3 Body — **v2, SUPERSEDED by §2.4 (2026-08-27)**
+
+> The "direction enters only through `Q(s)` in the head, where it belongs" decision below is
+> **the one that failed**, and "optional later: simplicial/triangle-native message passing" is
+> **what replaced it**. Kept as the record of what was tried; §2.4 is what the body is now.
 
 Keep v1's plain-torch message passing (no `torch_geometric`): `n_layers ≈ 4–5`, `hidden ≈ 128`.
 Changes from v1:
@@ -174,6 +178,57 @@ Changes from v1:
   globally and emitted `C6` directly, which is both non-equivariant and unable to express per-triangle
   structure.
 - Optional later: simplicial/triangle-native message passing (`PLAN §9`).
+
+### 2.4 Body — v3: TENSOR messages on TRIANGLE adjacency  *(the user's, 2026-08-27)*
+
+§2.3's body **could not** solve the problem, and this was measured rather than argued.
+
+**The network never saw the geometry.** `Q` appears nowhere in v2's `forward()` — only in
+`assemble(Q, G)` afterwards. What reached the network was, per bond, a single **scalar** length, plus
+node-level **summary statistics** (min/max/std angular gap). Consequences, both measured:
+
+| where | what happens | why |
+|---|---|---|
+| `W = 0` | learned to **0.001 with ZERO message-passing layers** | `C(s) = A(s)` needs only each edge's own `(k, ℓ)`, and those *are* in the scalars |
+| `W ≠ 0` | nearest neighbours in feature space (distance 1.74) differ by **0.716** MAE/std, against **0.697** for predicting the global mean | the scalars do not determine the target at all |
+
+and depth did not rescue it: 0, 1 and 2 layers all land at ~0.51, which **is** the own-bulk oracle
+(0.5144). The information that decides `W` is the **relative arrangement** of adjacent triangles, and
+v2 destroyed it twice — once by reducing each bond to a length, once by mean-aggregating **scalar**
+messages between **nodes**, when the physics couples **triangles** through shared edges (edge
+compatibility `J`, and the vertex angle sum in the curvature operator `𝒞`).
+
+**v3 (`model_v3.py`), inputs:** `q_e = vec3(Δx Δxᵀ)` — the edge vector as a **tensor** — plus `k_e`
+and `ℓ₀,e`. **Nothing derived**: lengths, angles, degrees and gap statistics are gone; the network
+forms them if it wants them. Absolute position is *not* passed — `C` is exactly translation-invariant
+(measured 5.9e-16), so it carries no information about it, while `bond_R` additionally carries the
+periodic wrap that `pts[v] - pts[u]` does not. `ℓ₀` is passed although `ℓ₀ = ℓ` in all current data,
+because it is a real input of `A(s)` and the residual-stress programme makes it independent.
+
+**Messages** run on **triangle adjacency** (triangles sharing a bond) and carry **both** invariants
+(`⟨T_s,T_t⟩`, `⟨T_s,q⟩`, `⟨T_t,q⟩`, `k`, `ℓ₀`) **and tensors** (a scalar-gated combination of `T_t`
+and `q_b`), so orientation propagates instead of collapsing to a scalar at every hop.
+
+**The algebra this rests on, measured first:** the invariant inner product on vec3 `[xx, xy, yy]` is
+`diag(1, 2, 1)`, i.e. `tr(AB)` — **not** the plain dot product, which changes by up to **11×** under
+rotation. `G` must be **invariant** (`Q → 𝒮Q` already carries the rotation), so the readout builds
+it from tensor inner products; that is where relative orientation finally reaches the scalars.
+
+**Gates before training** (`Phase 5/verifications/test_m2_head_v3.py`): `G` invariant **2.2e-16**;
+`C → 𝒮 C 𝒮ᵀ` equivariant **3.8e-16 / 5.3e-16** at two angles; SPD by construction (min eig
+1.3e-02); adjacency ~3 neighbours per triangle; and the **receptive field is exactly `L` hops**
+— perturbing one bond's `k` moves 6/6 triangles within 1 hop at `L=1` and 13/13 within 2 hops at
+`L=2`, with **zero** movement beyond, which is the locality claim `M2_LOCALITY.md` rests on.
+*(That test has to perturb the PREPARED tensors: `lbar` and `k̄` are global means, so perturbing
+the geometry moves every triangle through the normaliser. An earlier version did exactly that
+and "showed" influence on 112/112 triangles at `L=2` — impossible, and the giveaway that the
+test, not the model, was wrong.)*
+
+**One stability note, a property of the design rather than a tuning detail:** the readout consumes
+`⟨T, T⟩`, which is **quadratic** in the tensor state, so unnormalised growth squares into it — the
+first training step saw a loss of **2e33**. Fixed by rescaling tensor channels by a scalar built from
+their own invariants, equivariant **by construction** (a scalar commutes with `T → 𝒮 T`);
+equivariance re-verified at 2.2e-16 afterwards.
 
 ---
 

@@ -126,6 +126,18 @@ def main():
     ap.add_argument('--holdout', default='bravais')
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--limit', type=int, default=0)
+    ap.add_argument('--w_max_cut', type=float, default=0.0,
+                    help='drop TRAINING samples with max|W| above this (0 = keep all). Near-mechanism '
+                         'networks are where the solver is least trustworthy, and measured 7x worse: '
+                         'MAE(nu) 0.12 at max|W|<3 rising to 0.86 above 200. They are rare, so this '
+                         'is a ~20 %% effect on the total error, NOT a fix on its own. The HOLDOUT is '
+                         'never filtered -- the domain restriction has to stay visible.')
+    ap.add_argument('--huber', type=float, default=0.0,
+                    help='Huber delta on the NORMALISED residual (0 = plain squared error). The label '
+                         'distribution is heavy-tailed, so a few triangles dominate the squared-error '
+                         'gradient; Huber bounds their influence. This is NOT regularisation -- the '
+                         'model underfits (train 0.3921 vs val 0.3906), so weight decay or dropout '
+                         'would push the wrong way.')
     a = ap.parse_args()
 
     torch.manual_seed(a.seed)
@@ -147,6 +159,11 @@ def main():
         tr = [g for g in raw if g['traj_id'] not in val]
         va = [g for g in raw if g['traj_id'] in val]
         split = 'within-family (trajectory split) -- MEMORISATION BASELINE'
+    if a.w_max_cut:
+        n0 = len(tr)
+        tr = [g for g in tr if float(g['w_max']) <= a.w_max_cut]
+        print('near-mechanism filter: max|W| <= %g keeps %d/%d training samples (%.1f %% dropped); '
+              'holdout left UNFILTERED' % (a.w_max_cut, len(tr), n0, 100 * (1 - len(tr) / max(n0, 1))))
     if not tr or not va:
         raise SystemExit('empty split: train %d, val %d (holdout=%r). With --limit the holdout '
                          'family may not have survived the subsample.' % (len(tr), len(va), a.holdout))
@@ -170,12 +187,17 @@ def main():
         tot = nb = 0.0
         for b0 in range(0, len(order), a.batch):
             t = collate([train[j] for j in order[b0:b0 + a.batch]])
-            loss = (((predict(net, t) - t['target']) / sd) ** 2).mean()
+            resid = (predict(net, t) - t['target']) / sd
+            if a.huber:
+                loss = torch.nn.functional.huber_loss(resid, torch.zeros_like(resid),
+                                                      delta=a.huber)
+            else:
+                loss = (resid ** 2).mean()
             opt.zero_grad(); loss.backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), 5.0)
-            opt.step(); tot += float(loss); nb += 1
+            opt.step(); tot += float(loss.detach()); nb += 1
         sch.step()
-        if ep % max(1, a.epochs // 10) == 0 or ep == a.epochs - 1:
+        if ep % max(1, a.epochs // 25) == 0 or ep == a.epochs - 1:
             per, bad = evaluate(net, valid, sd)
             hist.append(dict(epoch=ep, train=tot / max(nb, 1),
                              val=float((per / sd).mean()), spd=bad))
@@ -188,10 +210,14 @@ def main():
     print('  for reference: bulk baseline 0.5144 ;  v2 scalar-message 0.509-0.511')
     os.makedirs(RESULTS, exist_ok=True)
     tag = a.holdout if a.holdout != 'random' else 'within'
-    torch.save(dict(state=net.state_dict(), ns=a.ns, nt=a.nt, hidden=a.hidden, layers=a.layers),
+    if a.w_max_cut or a.huber:
+        tag += '_w%g_h%g' % (a.w_max_cut, a.huber)          # never overwrite the unfiltered result
+    torch.save(dict(state=net.state_dict(), ns=a.ns, nt=a.nt, hidden=a.hidden, layers=a.layers,
+                    holdout=a.holdout, w_max_cut=a.w_max_cut, huber=a.huber),
                os.path.join(HERE, 'checkpoint_v3_%s.pt' % tag))
     with open(os.path.join(RESULTS, 'run_v3_%s.json' % tag), 'w', encoding='utf-8') as fh:
         json.dump(dict(model='v3', split=split, epochs=a.epochs, ns=a.ns, nt=a.nt,
+                       w_max_cut=a.w_max_cut, huber=a.huber, batch=a.batch, lr=a.lr,
                        hidden=a.hidden, layers=a.layers, n_train=len(train), n_val=len(valid),
                        params=int(sum(p.numel() for p in net.parameters())),
                        per_triangle_mae=[float(x) for x in per],

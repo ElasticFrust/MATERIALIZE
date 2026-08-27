@@ -17,6 +17,7 @@ Conventions enforced here (see CLAUDE.md §3 for the why):
 - per-triangle field maps FILL each triangle: ν → diverging cmap centred at 0, E → sequential;
 - directional response: cartesian (MAIN) + polar (|ν| radius, blue ν>0 / red ν<0; E direct);
 - means-together / spread-separate (combine-all only for ≤3 groups whose overlap is the point);
+- learning curves LOG-y, with the trivial-predictor BASELINE drawn as a line, not quoted in prose;
 - standalone reusable elements ≥300 DPI, montages 200; each element also saved as its own image;
 - figures LOAD saved data, never re-optimise (that is the caller's contract).
 
@@ -337,6 +338,42 @@ def plot_means_spread(groups, xlabel='x', ylabel='y', suptitle=None, combine_all
         ax.set_title(f'{nm}  (mean±σ)'); ax.set_xlabel(xlabel); ax.grid(alpha=0.25)
     if suptitle:
         fig.suptitle(suptitle, fontsize=12)
+    fig.tight_layout()
+    return fig
+
+
+# ---- 4b. learning curves -------------------------------------------------------------------
+def plot_learning_curves(runs, xlabel='epoch', ylabel='validation MAE / label σ',
+                         baselines=None, title=None, logy=True, figsize=(6.4, 4.6),
+                         markers=True):
+    """Training/validation curves for one or more runs, with horizontal REFERENCE levels.
+
+    `runs`      = dict name -> (x, y); one line per run, colours from tab10 as elsewhere here.
+    `baselines` = dict label -> value; drawn as horizontal dashed lines. This is the part that
+                  makes the plot readable: a learning curve alone says nothing about whether the
+                  model learned anything, since the only question that matters is where it sits
+                  relative to the trivial predictor (here the per-sample bulk mean). Plotting the
+                  baseline as data rather than quoting it in a caption is what keeps a run that
+                  merely reproduces it from being read as a success.
+
+    `logy` by default: these curves span decades when a model actually fits (the M2 crystal case
+    went 0.08 -> 0.00025), and a linear axis flattens everything below the first point into the
+    x-axis. Returns the Figure."""
+    fig, ax = plt.subplots(figsize=figsize)
+    cm = plt.get_cmap('tab10')
+    for i, (nm, (x, y)) in enumerate(runs.items()):
+        ax.plot(x, y, color=cm(i % 10), lw=1.8, label=nm,
+                marker='o' if markers else None, ms=3.5)
+    for j, (nm, v) in enumerate((baselines or {}).items()):
+        ax.axhline(v, color='0.35', ls=(0, (5, 3)), lw=1.4, zorder=0)
+        ax.annotate('%s = %.4g' % (nm, v), xy=(0.99, v), xycoords=('axes fraction', 'data'),
+                    ha='right', va='bottom', fontsize=8, color='0.25')
+    if logy:
+        ax.set_yscale('log')
+    ax.set_xlabel(xlabel); ax.set_ylabel(ylabel); ax.grid(alpha=0.25)
+    ax.legend(fontsize=8)
+    if title:
+        ax.set_title(title, fontsize=11)
     fig.tight_layout()
     return fig
 

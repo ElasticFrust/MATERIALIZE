@@ -44,7 +44,9 @@ sys.path.insert(0, os.path.join(REPO, 'Phase 5'))
 sys.path.insert(0, HERE)
 import torch                                                              # noqa: E402
 import model_v2 as M                                                      # noqa: E402
+import model_v3 as M3                                                     # noqa: E402
 import train_v2 as T                                                      # noqa: E402
+import train_v3 as T3                                                     # noqa: E402
 from inverse_design import c6_to_nuE                                      # noqa: E402
 
 warnings.simplefilter('ignore')
@@ -80,12 +82,34 @@ def main():
     ap.add_argument('--data', default=os.path.join(HERE, 'data', 'dataset.npz'))
     ap.add_argument('--family', default='bravais', help='the held-out family to score')
     ap.add_argument('--max_n', type=int, default=250, help='cap on networks scored (sim is slow)')
+    ap.add_argument('--E_eps_frac', type=float, default=0.05, help="regularise the relative-E denominator as |E_sim| + eps_E, with eps_E = this fraction of the MEDIAN E_sim -- the convention CLAUDE.md section 3 already uses for nu (eps_nu = 0.05). Without it the metric is unusable: E_sim is BIMODAL, ~4 %% of networks at ~1e-5 against a median of 0.68, and those alone drove the mean relative error to 7648 %% against a median of 8.86 %%. Approved 2026-08-27.")
     ap.add_argument('--size_bin', default=None, choices=(None, 'train', 'large_holdout'),
                     help="score a SIZE bin instead of a family; 'large_holdout' is the ~1000-triangle "
                          "set that is never trained on (section 3.1c)")
     a = ap.parse_args()
 
     ck = torch.load(os.path.join(HERE, a.ckpt), weights_only=False)
+    # v3 checkpoints carry 'ns'/'nt' (tensor channels); v2's do not. Detecting from the checkpoint
+    # rather than a flag means a v2/v3 mix-up cannot be made silently on the command line.
+    kind = 'v3' if 'ns' in ck else 'v2'
+    if kind == 'v3':
+        net = M3.ForwardGNNv3(ns=ck['ns'], nt=ck['nt'], hidden=ck['hidden'], n_layers=ck['layers'])
+        net.load_state_dict(ck['state'])
+        net.eval()
+
+        def predict_bulk(g):
+            """C_eff = the UNWEIGHTED mean of the per-triangle C(s) -- the project's homogenisation
+            (CLAUDE.md section 3); area weighting would bias nu on unequal-area meshes."""
+            with torch.no_grad():
+                return T3.predict(net, T3.prepare(g)).mean(0)
+    else:
+        net, predict_bulk = _load_v2(a, ck)
+
+    _run(a, ck, kind, predict_bulk)
+    return 0
+
+
+def _load_v2(a, ck):
     # A checkpoint is only loadable if it was trained with the CURRENT feature set. The angle
     # features (section 2.3) were added on 2026-08-26, changing node_embed 1 -> 4 inputs and the
     # readout 201 -> 204; earlier checkpoints are architecturally obsolete, not merely stale, and
@@ -103,6 +127,14 @@ def main():
     net.load_state_dict(ck['state'])
     net.eval()
 
+    def predict_bulk(g):
+        with torch.no_grad():
+            return T.predict(net, T.prepare(g, angles=n_node == M.N_NODE_FEAT))[1]
+
+    return net, predict_bulk
+
+
+def _run(a, ck, kind, predict_bulk):
     raw = T.load(a.data)
     if a.size_bin:
         # SIZE GENERALISATION (section 3.1c). `M2_LOCALITY.md` measured C(s) decorrelating in 2-3
@@ -120,17 +152,14 @@ def main():
         held = [held[i] for i in rng.choice(len(held), a.max_n, replace=False)]
     if not held:
         raise SystemExit('no networks selected (%s)' % label)
-    print('checkpoint %s (trained holdout=%s)  scoring %d networks -- %s'
-          % (a.ckpt, ck.get('holdout'), len(held), label))
+    print('checkpoint %s [%s] (trained holdout=%s)  scoring %d networks -- %s'
+          % (a.ckpt, kind, ck.get('holdout'), len(held), label))
     ntri = [len(g['C6_per']) for g in held]
     print('   n_tri  min %d  median %d  max %d' % (min(ntri), int(np.median(ntri)), max(ntri)))
 
     rows, n_fail, t0 = [], 0, time.time()
     for i, g in enumerate(held):
-        t = T.prepare(g)
-        with torch.no_grad():
-            _, bulk = T.predict(net, t)
-        nu_m, E_m = nuE(bulk)
+        nu_m, E_m = nuE(predict_bulk(g))
         nu_s, E_s = nuE(g['C6'])                       # solver label (what it trained on)
         try:
             nu_p, E_p = nuE(C.sim_bulk_C6(geo_of(g)))  # INDEPENDENT sim
@@ -154,37 +183,51 @@ def main():
     r = np.array(rows)
     nu_m, E_m, nu_s, E_s, nu_p, E_p = (r[:, j] for j in range(6))
 
+    eps_E = a.E_eps_frac * float(np.median(np.abs(E_p)))
+    print('   relative-E denominator floored: eps_E = %.4g  (%.0f %% of median E_sim = %.4g)'
+          % (eps_E, 100 * a.E_eps_frac, float(np.median(np.abs(E_p)))))
+
+    def relE(dE, ref):
+        return dE / (np.abs(ref) + eps_E)
+
     def rep(tag, dnu, dE_rel):
         print('  %-28s MAE(nu) %8.4f   median %8.4f   MAE(E)/E %7.2f %%   median %6.2f %%'
               % (tag, np.mean(np.abs(dnu)), np.median(np.abs(dnu)),
                  100 * np.mean(np.abs(dE_rel)), 100 * np.median(np.abs(dE_rel))))
 
     print('\nn = %d networks\n' % len(r))
-    rep('MODEL vs SIM  (headline)', nu_m - nu_p, (E_m - E_p) / np.maximum(np.abs(E_p), 1e-30))
-    rep('model vs solver labels', nu_m - nu_s, (E_m - E_s) / np.maximum(np.abs(E_s), 1e-30))
-    rep('SOLVER vs SIM (the floor)', nu_s - nu_p, (E_s - E_p) / np.maximum(np.abs(E_s), 1e-30))
-    rep('baseline: dataset mean nu', np.mean(nu_s) - nu_p,
-        (np.mean(E_s) - E_p) / np.maximum(np.abs(E_p), 1e-30))
+    rep('MODEL vs SIM  (headline)', nu_m - nu_p, relE(E_m - E_p, E_p))
+    rep('model vs solver labels', nu_m - nu_s, relE(E_m - E_s, E_s))
+    rep('SOLVER vs SIM (the floor)', nu_s - nu_p, relE(E_s - E_p, E_s))
+    rep('baseline: dataset mean nu', np.mean(nu_s) - nu_p, relE(np.mean(E_s) - E_p, E_p))
+    # the UNFLOORED mean too, so the floor can never quietly manufacture a pass
+    print('  %-28s %.4g   (unfloored, reference only)' % ('raw mean |dE|/|E_sim|:',
+          float(np.mean(np.abs((E_m - E_p) / np.maximum(np.abs(E_p), 1e-30))))))
 
     must = np.mean(np.abs(nu_m - nu_p)) <= 0.02 and \
-        np.mean(np.abs((E_m - E_p) / np.maximum(np.abs(E_p), 1e-30))) <= 0.05
+        np.mean(np.abs(relE(E_m - E_p, E_p))) <= 0.05
     kill = np.mean(np.abs(nu_m - nu_p)) > 0.05
     print('\n  section 1 MUST tier (MAE(nu) <= 0.02 and MAE(E)/E <= 5 %%): %s' % ('MET' if must else 'NOT met'))
     print('  section 1 KILL criterion (MAE(nu) > 0.05): %s' % ('TRIGGERED' if kill else 'not triggered'))
     print('  NOTE the floor above: no model trained on solver labels can beat SOLVER-vs-SIM.')
 
     os.makedirs(RESULTS, exist_ok=True)
-    out = os.path.join(RESULTS, 'eval_%s.json' % (a.size_bin or a.family))
+    # tag the output with the MODEL too, or a v3 run silently overwrites the v2 result it is
+    # meant to be compared against
+    out = os.path.join(RESULTS, 'eval_%s_%s.json' % (kind, a.size_bin or a.family))
     with open(out, 'w', encoding='utf-8') as fh:
-        json.dump(dict(ckpt=a.ckpt, family=a.family, size_bin=a.size_bin, scored=label, n=len(r),
+        json.dump(dict(ckpt=a.ckpt, model=kind, family=a.family, size_bin=a.size_bin,
+                       scored=label, n=len(r),
                        mae_nu_model_vs_sim=float(np.mean(np.abs(nu_m - nu_p))),
                        mae_nu_solver_vs_sim=float(np.mean(np.abs(nu_s - nu_p))),
-                       mae_E_rel_model_vs_sim=float(np.mean(np.abs((E_m - E_p) / np.maximum(np.abs(E_p), 1e-30)))),
+                       eps_E=float(eps_E), E_eps_frac=float(a.E_eps_frac),
+                       mae_E_rel_model_vs_sim=float(np.mean(np.abs(relE(E_m - E_p, E_p)))),
+                       mae_E_rel_unfloored=float(np.mean(np.abs(
+                           (E_m - E_p) / np.maximum(np.abs(E_p), 1e-30)))),
                        must_tier_met=bool(must), kill_triggered=bool(kill),
                        nu_model=nu_m.tolist(), nu_sim=nu_p.tolist(), nu_solver=nu_s.tolist(),
                        E_model=E_m.tolist(), E_sim=E_p.tolist(), E_solver=E_s.tolist()), fh, indent=2)
     print('  ->', out)
-    return 0
 
 
 if __name__ == '__main__':

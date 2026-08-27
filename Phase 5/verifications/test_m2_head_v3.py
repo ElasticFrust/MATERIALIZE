@@ -55,12 +55,51 @@ with torch.no_grad():
     g = build(geo, k, 0.0)
     print('[4] n_layers=0 runs (no message passing): %s' % (tuple(net2(g).shape),))
 
-# does the tensor channel actually carry orientation? perturb ONE neighbour and see if G moves
-geo2 = dict(geo); pts = np.asarray(geo['pts']).copy()
-b = np.asarray(geo['bond_R']).copy(); b[5] = b[5] @ np.array([[0.9, .3], [-.3, 0.9]]).T
-geo2['bond_R'] = b
-with torch.no_grad():
-    Gp = net(build(geo2, k, 0.0))
-moved = (Gp - G0).abs().max(-1).values.max(-1).values
-print('[5] perturbing ONE bond changes G on %d of %d triangles (max |dG| = %.2e)'
-      % (int((moved > 1e-12).sum()), len(moved), float(moved.max())))
+# [5] RECEPTIVE FIELD. Perturb the PREPARED tensors, not the geometry: `build` normalises lengths by
+# `lbar` and k by `mean(k)`, both GLOBAL, so perturbing an input moves every triangle through the
+# normaliser and says nothing about message passing. (An earlier version of this test did exactly
+# that and "showed" influence on 112 of 112 triangles at n_layers=2 -- impossible, and the giveaway
+# that the test, not the model, was wrong.) Perturbing the prepared arrays isolates the graph: with
+# L layers the influence must reach EXACTLY the triangles within L hops and leave the rest
+# bit-identical. That is also the claim `M2_LOCALITY.md` rests on, so it is worth gating.
+def hop_distance(src, dst, roots, n):
+    """BFS hop count over the triangle adjacency; -1 = unreachable."""
+    d = np.full(n, -1)
+    d[list(roots)] = 0
+    src, dst = np.asarray(src), np.asarray(dst)
+    for h in range(n):
+        frontier = np.where(d == h)[0]
+        if not len(frontier):
+            break
+        nbr = dst[np.isin(src, frontier)]
+        d[nbr[d[nbr] < 0]] = h + 1
+    return d
+
+
+BOND = 5                                                   # the one bond whose k is perturbed
+tri_bond = np.asarray(geo['tri_bond'])
+owns = (tri_bond == BOND).any(1)                           # triangles having BOND as an edge
+src_np, dst_np = np.asarray(g0['tri_src']), np.asarray(g0['tri_dst'])
+# message slots whose SHARED bond is BOND: both endpoints own it
+slots = np.where(owns[src_np] & owns[dst_np])[0]
+
+for L in (1, 2):
+    netL = M3.ForwardGNNv3(ns=16, nt=6, hidden=32, n_layers=L)
+    with torch.no_grad():
+        base = netL(g0)
+        gp = dict(g0)
+        # raise k on BOND wherever it enters: the owning triangles' own scalars, and the messages
+        # carried across it -- exactly the two places a real change in k_BOND would appear
+        gp['bond_feat'] = g0['bond_feat'].clone()
+        gp['bond_feat'][slots, 0] *= 1.5
+        gp['tri_scalars'] = g0['tri_scalars'].clone()
+        for t in np.where(owns)[0]:
+            col = int(np.where(tri_bond[t] == BOND)[0][0])
+            gp['tri_scalars'][t, col] *= 1.5               # k/kbar block occupies columns 0..2
+        moved = (netL(gp) - base).abs().amax(-1).amax(-1).numpy()
+    d = hop_distance(g0['tri_src'], g0['tri_dst'], np.where(owns)[0], len(base))
+    inside = (d >= 0) & (d <= L)
+    beyond = int(((moved > 1e-12) & ~inside).sum())
+    print('[5] L=%d: %d/%d triangles within %d hops moved; %d beyond the receptive field '
+          '(MUST be 0)' % (L, int(((moved > 1e-12) & inside).sum()), int(inside.sum()), L, beyond))
+    assert beyond == 0, 'influence leaked past the %d-hop receptive field' % L
