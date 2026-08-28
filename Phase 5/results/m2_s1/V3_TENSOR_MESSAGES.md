@@ -181,7 +181,83 @@ it is a ~20% effect and removes the least trustworthy labels — but it is not t
 - **`ℓ₀ = ℓ` throughout**, so the `ℓ₀` input channel carries no information in this dataset. It is
   passed for the residual-stress programme, where it becomes independent — untested until then.
 
-## 6. Figures
+## 6. The DEEP run (depth 5, ‖W‖≤10 filter, Huber) — 2026-08-28
+
+Depth 5, `ns=48 nt=10 hidden=64`, 178 173 params, batch 64, 220 epochs, `--w_max_cut 10`
+(6599/8815 training samples kept, **holdout left UNFILTERED**), `--huber 1.0`. 11.5 h, 174 s/epoch.
+Final per-triangle MAE/σ = **0.3561** (shallow: 0.3906).
+
+**Three changes went in together — depth, filter and Huber — so their effects are NOT separated.**
+That is a deliberate cost (one overnight run instead of three) and a real weakness of this result.
+
+### 6.1 vs the independent sim, stratified by TRAINING DOMAIN
+
+The filter creates a train/test domain mismatch by design: the holdout still contains 107 networks
+with `max|W| > 10` that the model never trains on. Scoring must therefore be stratified, or the
+filter looks like a regression when it is a domain restriction.
+
+| domain | n | shallow d3 | **deep d5** |
+|---|---|---|---|
+| **trained (‖W‖≤10)** | 793 | 0.1235 / med 0.0833 | **0.1012 / med 0.0517** |
+| excluded (‖W‖>10) | 107 | 0.3726 / med 0.2239 | 0.3930 / med 0.2504 |
+| all | 900 | 0.1531 / med 0.0916 | 0.1359 / med 0.0599 |
+
+**In-domain the deep model is 18 % better on the mean and 38 % better on the median**, and its
+median (0.0517) sits essentially ON the 0.05 kill line. On the excluded regime it is only 5 % worse
+than the model that *did* train there — so those networks are **intrinsically hard, not merely
+unfamiliar**. They are 12 % of the holdout and carry **34 % of the total error**.
+
+`MUST` tier still NOT met (0.02); `KILL` still TRIGGERED (0.1359 overall, 0.1012 in-domain).
+Relative-E got worse on the mean (17.43 % → 26.96 %) while its median held (8.35 % → 8.95 %) — the
+same fat-tail signature.
+
+### 6.2 The regime FLIPPED: now a generalisation gap, so data IS the lever
+
+| split | per-triangle MAE/σ |
+|---|---|
+| train (‖W‖≤10, equal-size subsample) | **0.2647** |
+| val, in-domain (‖W‖≤10) | **0.3213** |
+| val, unfiltered | 0.3496 |
+
+A **21 % gap**, where the shallow model had none (0.3921 vs 0.3906). Capacity was the binding
+constraint; it no longer is. **This is the condition under which more data becomes the right lever**,
+and it is why the data scale-up was refused a day earlier and taken now — the diagnostic flipped,
+not the argument.
+
+### 6.3 ⚠ The large-size holdout looks like a triumph and is NOT one
+
+The never-trained ~1000-triangle bin scores **MAE(ν) = 0.0360, kill criterion NOT triggered**. That
+is an artefact:
+
+| | per-triangle MAE/σ | bulk MAE(ν) | std(ν_true) | **ratio** |
+|---|---|---|---|---|
+| bravais family holdout (median 96 tri) | 0.3496 | 0.1359 | 0.4330 | **0.314** |
+| large size holdout (median 1000 tri) | **0.4668** | 0.0360 | 0.1098 | **0.328** |
+
+- **Per-triangle the model is WORSE on the large bin** (0.4668 vs 0.3496) — local accuracy *degrades*
+  with size.
+- The ν target there has **4× less spread**, and the bulk averages ~1000 triangles instead of ~96.
+- **Normalised by target spread the two are identical** (0.328 vs 0.314).
+
+So the good absolute score buys nothing: it is a narrower target plus more averaging. **The genuine
+size-generalisation finding is the per-triangle number, and it is negative** — a real caveat on the
+locality argument. One untested suspect: `prepare()` normalises by the GLOBAL mean bond length and
+mean `k`, which are size-dependent couplings inside an otherwise local model.
+
+> **This also exposes a flaw in the §1 criterion itself.** `MAE(ν) ≤ 0.02` is an ABSOLUTE threshold
+> applied to sets whose ν spread differs 4×: it demands error ≤ 0.18·σ on the large bin but
+> ≤ 0.046·σ on `bravais` — **four times harder for the same model**. The tier is not measuring one
+> thing across families. Flagged, not changed — changing a success criterion mid-investigation is
+> how results get manufactured.
+
+### 6.4 Reproducibility note
+
+Training is **bit-identical across 1, 4 and 8 BLAS threads** (train 2.0961/0.4630, val
+0.9757/0.9267 on the probe). This is NOT in tension with the standing warning that BLAS thread count
+changes *design* outcomes — that is the designer's L-BFGS path, a different code path. 4 threads is
+the throughput optimum (88 → 49 s/epoch); 8 is worse (65 s) through oversubscription.
+
+## 7. Figures
 
 | file | what |
 |---|---|

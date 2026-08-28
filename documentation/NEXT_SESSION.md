@@ -162,7 +162,7 @@ section used to pose are answered:
 |---|---|---|
 | **S0** | `CLAUDE.md` wording; **pin `OMP/MKL_NUM_THREADS` + the tiling method in the builder** | wording ✅ (swept across *all* docs 2026-08-25); **thread + method pinning NOT DONE — the one S0 item still open** |
 | **S0b** | dilution validity sweep, 266 cases | ✅ **`k_soft ≥ 1e-8` is safe at every `f ≤ 0.40`**, including sub-isostatic `z = 3.6`; below 1e-12 unusable. `results/dilution_validity/DILUTION_VALIDITY.md` |
-| **S1 — IN PROGRESS** | head `C(s) = Q·MMᵀ·Qᵀ` + invariant features + triangle readout | **parametrisation ✅ 7/7 before training** (`test_m2_head.py`; expressive to 3.52e-16 at `max|W|`=2.43). **Simplest case ✅**: k=1 Bravais crystals (W=0, closed form) learned to **0.00107 MAE/std with ZERO message-passing layers**, 0.00025 with one — `results/m2_s1_crystals/`. **Still open:** the full-set family holdout (earlier numbers INVALIDATED, see below), the angle ablation, ν/E-vs-sim, and the large-size bin |
+| **S1 — MEASURED; VERDICT PENDING A DEEPER RUN** | head `C(s) = Q·MMᵀ·Qᵀ`; body is now **v3 = TENSOR messages on TRIANGLE adjacency** (v2's scalar/node body is SUPERSEDED, plan §2.4) | **v3 beats the own-bulk oracle where v2 was beaten BY it**: 0.3906 vs oracle 0.4114 vs v2 0.5111 (per-triangle MAE/σ, `bravais` holdout); SPD 0 violations; r = 0.912 / 0.842. **BUT the §1 KILL criterion is TRIGGERED** — MAE(ν) vs the INDEPENDENT sim = **0.1619** against a 0.05 line, MAE(E)/E = 17.43 % against 5 %. **The verdict does NOT yet stand as "representation inadequate": train 0.3921 ≈ val 0.3906, i.e. UNDERFIT**, at depth 3 against `M2_LOCALITY.md`'s measured 4–5. Deeper run (depth 5, `max|W|≤10` filter, Huber, 220 ep, ~12 h) IN FLIGHT. `results/m2_s1/V3_TENSOR_MESSAGES.md` |
 | S2 | scaled, balanced dataset (~10 k), trajectories + provenance | after S1 — see §3 |
 | S3 | 5-fold leave-one-family-out training | **must**: MAE(ν) ≤ 0.02 and MAE(E)/E ≤ 5 % **against the independent sim**; **kill criterion** MAE(ν) > 0.05 ⇒ stop and report, which is a legitimate result |
 | S4 | wire in as an M1 pre-filter | solver calls per design reduced at unchanged design quality |
@@ -200,6 +200,26 @@ section used to pose are answered:
 >   diagonal. What IS redundant is the diagonal flag: `(φ, a₁+a₂)` = `(φ+2, a₂−a₁)` to 0.00e+00.
 > * **depth HURTS on a local target** — 2 layers 13× worse than 0 on the crystals. `n_layers` 4–5 is
 >   now something to test, not assume.
+
+> ### ⚠ 2026-08-27 — THREE THINGS FROM S1 NOT TO RE-LEARN
+>
+> 1. **The "0.5144 own-bulk baseline" is the TRAIN-split value; on the held-out split it is 0.4114.**
+>    Consequences: v3's margin over it is 5 %, not 24 %, and **v2 was beaten by the trivial
+>    per-network-mean predictor**. Always recompute model and baselines in ONE pass on ONE split —
+>    `Phase 5/verifications/m2_v3_report.py` does exactly this and exists because of this error.
+> 2. **MORE DATA IS NOT THE LEVER when train ≈ val.** The S1 model is underfit, so `dataset_large.npz`
+>    stays on the shelf until depth opens a generalisation gap. This is *also* why the kill criterion,
+>    though triggered, has not been invoked: it presupposes a trained representation.
+> 3. **BIN BEFORE YOU CORRELATE.** Error rises 7× with `max|W|` (0.12 below 3, 0.86 above 200), yet
+>    `corr(log₁₀ max|W|, |Δν|) = −0.045` — essentially zero, because the effect is a sparse tail on a
+>    flat bulk. The correlation alone says the opposite of the truth. Same trap as the hexagon `rcond`
+>    correlation in `CLAUDE.md` §3. *(Near-mechanisms carry only ~29 % of total error — filtering them
+>    is a ~20 % effect, NOT the fix; over half the error is in ordinary networks with `max|W| < 3`.)*
+>
+> Also settled: **`SOLVER vs SIM = 0.0000` on all 250 scored networks** — the labels are clean, so all
+> S1 error is the model's, and near-mechanism label corruption is REFUTED as the explanation. And the
+> relative-E metric is now **floored** (`|E_p| + 0.05·median E_sim`, mirroring `ε_ν`) because `E_sim` is
+> bimodal and drove the unfloored mean to 7648 % against a median of 8.86 %.
 
 **The order is load-bearing: do NOT scale data before S1 passes.** S1 is deliberately tiny — an
 architecture check with **analytic ground truth** (in the small-cell limit the non-affine correction

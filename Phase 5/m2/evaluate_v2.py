@@ -212,9 +212,12 @@ def _run(a, ck, kind, predict_bulk):
     print('  NOTE the floor above: no model trained on solver labels can beat SOLVER-vs-SIM.')
 
     os.makedirs(RESULTS, exist_ok=True)
-    # tag the output with the MODEL too, or a v3 run silently overwrites the v2 result it is
-    # meant to be compared against
-    out = os.path.join(RESULTS, 'eval_%s_%s.json' % (kind, a.size_bin or a.family))
+    # Tag by CHECKPOINT, not just by model kind. Tagging by kind alone was not enough: the
+    # depth-5 run overwrote the depth-3 result it was meant to be compared against (recovered
+    # from git, but the next one might not be). The checkpoint stem is what actually
+    # identifies a run.
+    stem = os.path.splitext(os.path.basename(a.ckpt))[0].replace('checkpoint_', '')
+    out = os.path.join(RESULTS, 'eval_%s_%s.json' % (stem, a.size_bin or a.family))
     with open(out, 'w', encoding='utf-8') as fh:
         json.dump(dict(ckpt=a.ckpt, model=kind, family=a.family, size_bin=a.size_bin,
                        scored=label, n=len(r),
