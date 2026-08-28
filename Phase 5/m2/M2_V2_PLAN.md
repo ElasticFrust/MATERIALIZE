@@ -416,6 +416,50 @@ slightly-strained crystal, globally structured**. That regime is exactly what pr
 receptive-field question of §3.1c: a finite-hop GNN sees a locally-crystalline environment while the
 global response differs. Sampling only white noise leaves that untested.
 
+> #### ✅ IMPLEMENTED 2026-08-28 — and it had been SPECIFIED HERE but never built
+>
+> Everything above was written into this plan and then **not done**: `fields.periodic_field` was
+> written with `q_max` and `spectrum` arguments, and its docstring even says *"sweeping these sweeps
+> the correlation length, which is the axis §3.1f says the plan had only the two endpoints of"* —
+> but **every call in `build_dataset.py` used the defaults**, so the axis was sampled at exactly ONE
+> point. A specification is not an implementation; this went unnoticed for the whole dataset era.
+>
+> **What now exists** (the user's push, 2026-08-28):
+>
+> | axis | before | now |
+> |---|---|---|
+> | k-field correlation length | one point (`q_max=3, spectrum=−1`) | **`CORR_SPECS`**: `xi_box` (q=1, −1), `xi_long` (q=2, −2), `xi_mid` (q=4, −1), `xi_short` (q=8, 0) × 2 marginals |
+> | long-range strain on an ORDERED lattice | **did not exist** | new **`longrange`** family: full (φ,ψ) grid × 2 diagonals × 2 amplitudes |
+> | disordered η grid | φ,ψ on a 3×3 subset, η ∈ (0.15, 0.30) | full 5×5 grid, **η ∈ (0.05, 0.10, 0.18, 0.30)** |
+> | what "ordered" means | asserted by family name | **`disorder_class`** ∈ {ordered, k, geom, both} per sample |
+>
+> **`disorder_class` exists because the family name was lying.** `bravais` is commented "ORDERED
+> crystals", yet every bravais topology is crossed with 14 k-fields and 4 dilution fractions.
+> Measured on the smoke build: of the `bravais` family, **6 samples are genuinely ordered and 150
+> carry k-disorder**. A crystal with a disordered stiffness field is disordered in the only sense
+> that matters to the elasticity — it breaks translational symmetry and makes `W` nonzero. The
+> geometry generator no longer gets to name the physics.
+>
+> **Verified before the rebuild:** `longrange` meshes are valid with **connectivity frozen**
+> (`tri_bond` identical to the parent lattice) and all areas positive; and the displacement really
+> is long-wavelength — mean cosine between NEIGHBOURING displacements **+0.632 correlated vs +0.063
+> white**.
+>
+> **⚠ The long-range displacement CANNOT go through `fields.displace`.** That function ends with
+> `np.mod(pts + d, box)`. Wrapping is correct for the point-cloud families, which are re-triangulated
+> afterwards, and **WRONG** for a frozen-connectivity lattice: the triangles carry integer image
+> shifts computed from the ideal lattice, so wrapping a point reconstructs its triangle a whole box
+> away. `seeds.py` documents that exact failure — 13 of 72 triangles inverted, signed area −15.2,
+> firing even at η = 0.05. It therefore goes through `bravais_lattice(disp_fn=...)`, where the
+> no-wrap invariant is documented and enforced.
+>
+> **Separately fixed: PROCESS AND SIZE WERE ALIASED.** `random` used `RANDOM_SIZES[i % 4]` and
+> `procs[i % 4]` — same period — so `uniform` was ALWAYS n=60 and `graded` ALWAYS n=360, and only
+> 4 of 16 (process, size) combinations existed. This also **confounded the size-generalisation
+> holdout**, whose ~500-node bin contains process/size pairs appearing nowhere in training: the
+> reported per-triangle degradation with size (0.3496 → 0.4668) is therefore **not a clean size
+> effect** and must be re-measured on the rebuilt data. Now 16 combinations.
+
 ### 3.1g WIDENING THE SPACE — by physics, not by more randomness
 
 The zoo is narrow, but "more random samples" is not the remedy. Widen along axes that move the

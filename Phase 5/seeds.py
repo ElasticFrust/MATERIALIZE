@@ -895,7 +895,8 @@ def _bravais_site(m, n, Nx, Ny, phi, row_h, Lx, Ly, xshift):
     return base, isx, isy
 
 
-def bravais_lattice(phi, psi, reps=6, diagonal='a2-a1', eta=0.0, seed=0, name=None):
+def bravais_lattice(phi, psi, reps=6, diagonal='a2-a1', eta=0.0, seed=0, name=None,
+                    disp_fn=None, disp_tag=''):
     """One Bravais lattice as an explicit periodic triangulation.  Returns a uniform record.
 
     a1 = (1, 0), a2 = (phi/2, psi*sqrt(3)/2) -- the parametrisation `make_lattice` uses, so
@@ -949,12 +950,27 @@ def bravais_lattice(phi, psi, reps=6, diagonal='a2-a1', eta=0.0, seed=0, name=No
         # outside [0,L) are perfectly well defined; the periodicity lives in the shifts, not in the
         # stored coordinates being in-box.
         rng = np.random.default_rng(seed)
-        a = rng.uniform(0, 2 * np.pi, len(pts))
-        pts = pts + eta * np.stack([np.cos(a), np.sin(a)], 1)
+        if disp_fn is None:
+            a = rng.uniform(0, 2 * np.pi, len(pts))
+            d = np.stack([np.cos(a), np.sin(a)], 1)          # white noise: zero correlation length
+        else:
+            # LONG-RANGE disorder: the caller supplies the displacement field, so a correlated
+            # (long-wavelength) perturbation can be applied without importing `m2.fields` here --
+            # `m2` depends on this module, so the reverse import would be circular.
+            #
+            # It must be applied HERE and not via `m2.fields.displace`, which ends with
+            # `np.mod(pts + d, box)`. Wrapping is right for the point-cloud families (they are
+            # re-triangulated afterwards) and WRONG for a frozen-connectivity lattice, for exactly
+            # the reason documented just above.
+            d = np.asarray(disp_fn(pts, rng, Lx, Ly), float)
+            if d.shape != pts.shape:
+                raise ValueError('disp_fn returned %s, expected %s' % (d.shape, pts.shape))
+        pts = pts + eta * d
 
     geo = geo_from_simplices(pts, np.asarray(tris, np.int64), Lx, Ly)
     if name is None:
-        name = 'bravais_phi%g_psi%g_%s_r%d_eta%g_s%d' % (phi, psi, diagonal, reps, eta, seed)
+        name = 'bravais_phi%g_psi%g_%s_r%d_eta%g%s_s%d' % (phi, psi, diagonal, reps, eta,
+                                                          disp_tag, seed)
     rec = make_record(name, geo)
     rec.update(mesh_ok=bool(MB.check_mesh_preconditions(geo, periodic=True)[0]),
                phi=float(phi), psi=float(psi), diagonal=diagonal, eta=float(eta))

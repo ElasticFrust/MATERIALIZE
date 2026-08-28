@@ -34,7 +34,31 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ID_KEYS = ('traj_id', 'topology_id')
 
 
-def merge(paths, out, verbose=True):
+def _dupe_mask(merged):
+    """True where a sample exactly repeats an earlier one.
+
+    Shards built at different seeds share their DETERMINISTIC families: the bravais (phi, psi,
+    diagonal) grid and the disordered (eta, seed) grid are not seed-dependent, so ~37 % of `bravais`
+    and ~36 % of `disordered` repeat exactly, while `cells`/`random` (seeded k-fields) do not repeat
+    at all. Those repeats are the SAME NETWORK, not new evidence: keeping them would double-weight
+    part of the holdout and part of the training distribution.
+
+    The key is the full per-sample label `C6` (6 float64, bit-exact) plus the family and triangle
+    count -- distinct networks agreeing to the last bit in all six components is not a realistic
+    collision."""
+    ptr = merged['C6_per_ptr']
+    ntri = np.diff(ptr)
+    seen, dup = set(), np.zeros(len(merged['C6']), bool)
+    for i, (row, fam, nt) in enumerate(zip(merged['C6'], merged['family'], ntri)):
+        key = (bytes(np.ascontiguousarray(row)), str(fam), int(nt))
+        if key in seen:
+            dup[i] = True
+        else:
+            seen.add(key)
+    return dup
+
+
+def merge(paths, out, dedupe=True, verbose=True):
     """Concatenate `paths` into `out`. Returns the merged sample count."""
     shards = []
     for p in paths:
@@ -82,6 +106,28 @@ def merge(paths, out, verbose=True):
         raise SystemExit('traj_id namespacing failed -- ids collide across shards, which would let '
                          'one trajectory land on both sides of the split (plan section 3.5)')
 
+    if dedupe:
+        dup = _dupe_mask(merged)
+        if dup.any():
+            keep = ~dup
+            ptr_keys = [k for k in merged if k.endswith('_ptr')]
+            for k in ptr_keys:
+                base = k[:-4]
+                lens = np.diff(merged[k])[keep]
+                parts = [merged[base][merged[k][i]:merged[k][i + 1]]
+                         for i in np.where(keep)[0]]
+                merged[base] = (np.concatenate(parts, axis=0) if parts
+                                else merged[base][:0])
+                merged[k] = np.concatenate([[0], np.cumsum(lens)])
+            for k in [k for k in merged if not k.endswith('_ptr')
+                      and k[:-4] not in [p[:-4] for p in ptr_keys]
+                      and k not in [p[:-4] for p in ptr_keys]]:
+                merged[k] = merged[k][keep]
+            n = int(keep.sum())
+            if verbose:
+                print('  deduped: dropped %d exact repeats (%.1f %%), %d remain'
+                      % (int(dup.sum()), 100 * dup.mean(), n))
+
     np.savez_compressed(out, **merged)
     if verbose:
         print('  -> %s   %d samples, %d distinct traj_id' % (out, n, len(set(merged['traj_id']))))
@@ -92,12 +138,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('shards', nargs='+', help='npz shards to merge (as built by build_dataset.py)')
     ap.add_argument('--out', required=True)
+    ap.add_argument('--no_dedupe', action='store_true',
+                    help='keep exact repeats (deterministic families recur across seeds)')
     a = ap.parse_args()
     paths = [p if os.path.isabs(p) else os.path.join(HERE, p) for p in a.shards]
     out = a.out if os.path.isabs(a.out) else os.path.join(HERE, a.out)
     if os.path.exists(out):
         raise SystemExit('refusing to overwrite %s -- merge writes a NEW file' % out)
-    merge(paths, out)
+    merge(paths, out, dedupe=not a.no_dedupe)
     return 0
 
 

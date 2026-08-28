@@ -224,6 +224,25 @@ constraint; it no longer is. **This is the condition under which more data becom
 and it is why the data scale-up was refused a day earlier and taken now — the diagnostic flipped,
 not the argument.
 
+> ### ⚠ SUPERSEDED IN PART — 2026-08-28: the size result below is CONFOUNDED
+>
+> §6.3's per-triangle degradation with size rests on a dataset flaw found after it was written.
+> `build_dataset.py` set the point process and the network size from the SAME index with the SAME
+> period (`procs[i % 4]`, `RANDOM_SIZES[i % 4]`, `len(RANDOM_SIZES) == 4`), so they were **completely
+> aliased**: `uniform` was ALWAYS n=60, `poisson_disk` ALWAYS n≈120, `blue_noise` ALWAYS n=240,
+> `graded` ALWAYS n=360 — only 4 of the 16 (process, size) combinations existed.
+>
+> The held-out large bin, by contrast, runs **all four processes at n≈500**. So its samples are not
+> merely *bigger*; they are **process×size combinations absent from training**. The measured
+> per-triangle degradation (0.3496 → 0.4668) therefore mixes a size effect with a
+> novel-combination effect, and **cannot be attributed to size**. The claim stands only as
+> "accuracy degrades on the held-out large bin", not as a statement about size generalisation, and
+> the locality caveat drawn from it is likewise unproven.
+>
+> The generator is fixed (all 16 combinations) and the datasets are being rebuilt; this must be
+> re-measured there. **Everything else in §6 — the in-domain gains, the generalisation gap, the
+> target-spread artefact — is unaffected**, since none of it depends on the process/size pairing.
+
 ### 6.3 ⚠ The large-size holdout looks like a triumph and is NOT one
 
 The never-trained ~1000-triangle bin scores **MAE(ν) = 0.0360, kill criterion NOT triggered**. That

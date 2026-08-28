@@ -80,6 +80,33 @@ OUT_DIR = os.path.join(HERE, 'data')
 
 #: (structure, marginal) pairs actually sampled. `uniform` is paired only with `iid` because the
 #: marginal makes the driver irrelevant -- every other combination with it is the same field.
+#: CORRELATION LENGTH -- (q_max, spectrum) pairs for `fields.periodic_field`.
+#:
+#: `periodic_field`'s own docstring says sweeping these sweeps the correlation length, "the axis
+#: section 3.1f says the plan had only the two endpoints of" -- and then every call in this builder
+#: used the DEFAULTS (q_max=3, spectrum=-1.0). The axis was sampled at exactly one point. A
+#: long-wavelength k field on an otherwise perfect lattice is disorder just as much as a positional
+#: eta is, and it is the regime that actually probes the finite-hop receptive field: locally the
+#: environment looks crystalline while the global response differs.
+#:
+#: q_max = 1 is a single box-scale mode (longest range the periodic cell admits); spectrum = 0 with
+#: a large q_max approaches white noise. Named so `k_pattern` records which was used.
+CORR_SPECS = (('xi_box',   dict(q_max=1, spectrum=-1.0)),
+              ('xi_long',  dict(q_max=2, spectrum=-2.0)),
+              ('xi_mid',   dict(q_max=4, spectrum=-1.0)),
+              ('xi_short', dict(q_max=8, spectrum=0.0)))
+
+#: ETA grid for the DISORDERED family, now crossed with the FULL (phi, psi) bravais grid rather
+#: than a coarser 3x3 subset. Disorder is not a single amplitude: 0.05 is a barely-strained crystal,
+#: 0.30 is well into the auxetic band (memory: eta drives nu from +1/3 to ~-0.11).
+BRAVAIS_ETAS = (0.05, 0.10, 0.18, 0.30)
+
+#: Long-wavelength POSITIONAL modulation applied to the ORDERED bravais lattices, so the dataset
+#: contains "perfect crystal + long-range strain" -- previously impossible, because `displace`
+#: variants were applied to `cells` and `random` only.
+BRAVAIS_DISPLACE = ((0.05, dict(q_max=1, spectrum=-1.0)),
+                    (0.10, dict(q_max=2, spectrum=-2.0)))
+
 K_COMBOS = [('iid', 'uniform'),
             ('iid', 'lognormal'), ('iid', 'bimodal'), ('iid', 'heavy_tail'),
             ('correlated', 'lognormal'), ('correlated', 'bimodal'), ('correlated', 'heavy_tail'),
@@ -88,10 +115,18 @@ K_COMBOS = [('iid', 'uniform'),
             ('sublattice', 'lognormal'), ('sublattice', 'bimodal'),
             ('length', 'lognormal')]
 
+#: `correlated` crossed with the correlation-length grid. Kept separate from K_COMBOS so the
+#: baseline combination list stays comparable with the earlier datasets.
+K_CORR_COMBOS = [(mg, cname, ckw) for mg in ('lognormal', 'bimodal')
+                 for cname, ckw in CORR_SPECS]
+
 #: Dilution fractions. f = 0.40 puts live coordination at z ~ 3.6, BELOW the 2D isostatic point
 #: z_c = 4 -- the rigidity region the v1 zoo never visited (every mesh there is a triangulation, so
 #: live z = 6 exactly). Safe because `k_soft` stays inside the S0b bound; `fields.dilute` enforces it.
 DILUTION_FRACS = (0.10, 0.20, 0.30, 0.40)
+
+#: Write a `<out>.part` snapshot every this many samples (see the partial-save note in `build`).
+PART_EVERY = 2000
 DILUTION_K_SOFT = 1e-6                      # 100x inside the measured 1e-8 boundary
 
 #: Relative tensor gap above which a label is marked untrusted (`sim_ok=False`).  Samples are
@@ -320,21 +355,56 @@ def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
                 except (ValueError, AssertionError):
                     continue
                 yield ('bravais', r['name'], r)
-    for phi in (0.0, 0.5, 1.0):                  # DISORDERED -- its own family, frozen connectivity
-        for psi in (0.8, 1.0, 1.4):
+    # DISORDERED: the FULL (phi, psi) grid crossed with eta, not the coarser 3x3 subset it used to
+    # be. A disordered crystal is a different material from its parent, so it earns the same
+    # geometric resolution as the ordered family rather than a sparser one.
+    for phi in BRAVAIS_PHI:
+        for psi in BRAVAIS_PSI:
             for diag in S.BRAVAIS_DIAGONALS:
-                for eta in DISORDER_ETAS:
-                    for sd in DISORDER_SEEDS:
+                for eta in BRAVAIS_ETAS:
+                    for sd in DISORDER_SEEDS[:2]:
                         try:
                             r = S.bravais_lattice(phi, psi, reps=BRAVAIS_REPS, diagonal=diag,
                                                   eta=eta, seed=sd)
                         except (ValueError, AssertionError):
                             continue
                         yield ('disordered', r['name'], r)
+    # LONG-RANGE disorder on ORDERED lattices -- its own family, and a physically distinct
+    # regime: locally the environment is crystalline while the global response is strained. That is
+    # precisely the case a finite-hop GNN should find hardest, and until now the dataset contained
+    # none of it -- `displace` variants were applied to `cells` and `random` only.
+    #
+    # Applied through `bravais_lattice(disp_fn=...)` rather than `fields.displace`, because the
+    # latter wraps positions with `np.mod` and this mesh has FROZEN connectivity carrying integer
+    # image shifts from the ideal lattice (seeds.py documents the inverted-triangle failure).
+    def _corr_disp(kw):
+        def fn(pts, rng, Lx, Ly):
+            return np.stack([F.periodic_field(pts, Lx, Ly, rng, **kw),
+                             F.periodic_field(pts, Lx, Ly, rng, **kw)], 1)
+        return fn
+
+    for phi in BRAVAIS_PHI:
+        for psi in BRAVAIS_PSI:
+            for diag in S.BRAVAIS_DIAGONALS:
+                for amp, ckw in BRAVAIS_DISPLACE:
+                    try:
+                        r = S.bravais_lattice(phi, psi, reps=BRAVAIS_REPS, diagonal=diag,
+                                              eta=amp, seed=seed, disp_fn=_corr_disp(ckw),
+                                              disp_tag='_corrq%d' % ckw['q_max'])
+                    except (ValueError, AssertionError):
+                        continue
+                    yield ('longrange', r['name'], r)
+
     procs = ('uniform', 'poisson_disk', 'blue_noise', 'graded')
+    # PROCESS AND SIZE MUST NOT SHARE A PERIOD. They both used `i % 4` with len(RANDOM_SIZES) == 4,
+    # which ALIASED them completely: uniform was always n=60, graded always n=360, and only 4 of the
+    # 16 (process, size) combinations existed. That also silently confounded the size-generalisation
+    # holdout, whose ~500-node bin contains process/size pairs that appear nowhere in training.
+    # Stepping the process every len(RANDOM_SIZES) samples visits all 16.
     for i in range(n_random):                    # training bulk, cycling the size ladder
         nn = RANDOM_SIZES[i % len(RANDOM_SIZES)]
-        r = S.random_patch(nn, seed=seed + i, process=procs[i % 4])
+        r = S.random_patch(nn, seed=seed + i,
+                           process=procs[(i // len(RANDOM_SIZES)) % len(procs)])
         r['size_bin'] = 'train'
         yield ('random', r['name'], r)
     for j in range(N_LARGE):                     # HELD-OUT large bin -- size generalisation (3.1c)
@@ -350,12 +420,43 @@ def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
         yield ('auxetic', r['name'], r)
 
 
+#: Geometry families whose POSITIONS are ordered (a perfect lattice or an exact tiling).
+ORDERED_GEOM = ('bravais', 'cells', 'anchor', 'basis', 'tiling', 'auxetic')
+
+#: k patterns that leave every live bond at the same stiffness.
+UNIFORM_K = ('iid_uniform',)
+
+
+def disorder_class(family, geom_variant, k_pattern):
+    """Which KIND of disorder a sample carries: 'ordered', 'k', 'geom', or 'both'.
+
+    The family name alone is not an honest label. `bravais` is commented "ORDERED crystals", yet
+    every bravais topology is crossed with 14 k-fields and 4 dilution fractions -- so the great
+    majority of "ordered" samples are crystals with a DISORDERED STIFFNESS FIELD, which is disorder
+    in every sense that matters to the elasticity: it breaks the translational symmetry and makes
+    `W` nonzero. Recording the axes separately lets the holdout and the analysis be cut by what a
+    sample actually is, rather than by which generator produced it.
+
+    Positional disorder arrives two ways -- through the family (`disordered`, `longrange`,
+    `random`) and through a `geom_variant` displacement applied to an otherwise ordered mesh."""
+    geom = (family not in ORDERED_GEOM) or (geom_variant != 'base')
+    kdis = not (k_pattern in UNIFORM_K or k_pattern == 'native')
+    if geom and kdis:
+        return 'both'
+    if geom:
+        return 'geom'
+    if kdis:
+        return 'k'
+    return 'ordered'
+
+
 def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True):
     """Sample every topology x geometry variant x k-field, label with the solver, save one npz."""
     warnings.simplefilter('ignore')
     rng_master = np.random.default_rng(seed)
     commit, dirty = _commit()
     samples, skipped = [], {}
+    last_part = 0
     t0 = time.time()
 
     for family, topo_id, rec in topologies(smoke, n_random, n_nodes, seed):
@@ -385,7 +486,11 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
         for vname, geo in variants:
             k_specs = [('native', dict())] if fict is not None and fict.any() else []
             k_specs += [(f'{st}_{mg}', dict(structure=st, marginal=mg)) for st, mg in K_COMBOS]
-            if family in ('cells', 'bravais', 'disordered', 'random'):
+            # k-DISORDER AT A CONTROLLED CORRELATION LENGTH (see CORR_SPECS)
+            k_specs += [(f'correlated_{mg}_{cname}',
+                         dict(structure='correlated', marginal=mg, **ckw))
+                        for mg, cname, ckw in K_CORR_COMBOS]
+            if family in ('cells', 'bravais', 'disordered', 'longrange', 'random'):
                 k_specs += [(f'dilution_f{f}', dict(dilution=f)) for f in DILUTION_FRACS]
 
             for kname, spec in k_specs:
@@ -414,16 +519,31 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
                 samples.append(dict(**graph_of(geo, k, fict), **lab, **kmeta,
                                     family=family, topology_id=topo_id, geom_variant=vname,
                                     k_pattern=kname, seed=seed,
+                                    disorder_class=disorder_class(family, vname, kname),
                                     traj_id=f'{topo_id}|{vname}|{kname}', traj_step=0,
                                     size_bin=rec.get('size_bin', 'train'),
                                     tiling_method='fan', n_threads=N_THREADS,
                                     commit=commit, dirty=dirty))
         if verbose and len(samples) % 200 < len(k_specs):
             print(f'  {len(samples):6d} samples  ({time.time()-t0:6.1f}s)  last: {topo_id[:40]}')
+        # PARTIAL SAVE. The builder used to write only at the very end, so a power cut 2.1 h into a
+        # 2.4 h build produced NOTHING. Writing a `.part` every PART_EVERY samples caps the loss at
+        # that interval; the partial is a valid dataset in its own right and is removed once the
+        # real file lands.
+        if out and len(samples) - last_part >= PART_EVERY:
+            last_part = len(samples)
+            try:
+                save(samples, out + '.part')
+                if verbose:
+                    print(f'    [partial saved: {len(samples)} samples]')
+            except Exception as e:                                       # noqa: BLE001
+                print(f'    [partial save FAILED: {type(e).__name__}: {e}]')
 
     out = out or os.path.join(OUT_DIR, 'dataset_smoke.npz' if smoke else 'dataset.npz')
     os.makedirs(os.path.dirname(out), exist_ok=True)
     save(samples, out)
+    if os.path.exists(out + '.part'):
+        os.remove(out + '.part')                 # the real file supersedes it
     if verbose:
         checked = [x for x in samples if x.get('sim_status') == 'checked']
         if checked:
@@ -455,7 +575,8 @@ def save(samples, path):
         d[key] = np.array([s.get(key, np.nan) for s in samples], float)
     d['spd'] = np.array([s['spd'] for s in samples], bool)
     d['sim_ok'] = np.array([bool(s.get('sim_ok', True)) for s in samples], bool)
-    for key in ('family', 'topology_id', 'geom_variant', 'k_pattern', 'structure', 'marginal',
+    for key in ('family', 'topology_id', 'geom_variant', 'k_pattern', 'disorder_class',
+                'structure', 'marginal',
                 'label_source', 'traj_id', 'tiling_method', 'commit', 'k_source', 'size_bin',
                 'sim_status'):
         d[key] = np.array([str(s.get(key, '')) for s in samples])
