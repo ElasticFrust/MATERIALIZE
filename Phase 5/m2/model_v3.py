@@ -63,6 +63,13 @@ import torch.nn as nn
 
 from model_v2 import assemble, c6_to_sym3, edge_carriers, sym3_to_c6, vec3_rotation  # noqa: F401
 
+#: HEAD VERSION, and it belongs in every checkpoint name. The run tag used to encode only the
+#: configuration (holdout, filter, layers, width, epochs) and NOT the architecture, so the
+#: residual-head run produced a tag byte-identical to the free-head run before it -- and would
+#: have hit the no-overwrite guard and discarded ~24 h of training at the save step. Two
+#: architectures must never share a checkpoint name.
+HEAD_VERSION = 'res'          # 'res' = G = (I+X) G_an (I+X)^T ; pre-2026-08-31 was free SPD
+
 #: metric making <A, B> = tr(AB) on vec3 [xx, xy, yy] -- the ROTATION-INVARIANT inner product
 VEC3_METRIC = torch.tensor([1.0, 2.0, 1.0])
 
@@ -107,6 +114,78 @@ def triangle_adjacency(tri_bond, n_tri):
     return (torch.as_tensor(src), torch.as_tensor(dst), torch.as_tensor(bnd))
 
 
+def angle_gradient_vec(a, b):
+    """`d(theta)/d(g11, g12, g22)` for the angle between edge vectors `a` and `b`, as a vec3.
+
+    A LITERAL port of `Phase 2/forward_solver_torch._angle_gradient_vec`, vectorised over a leading
+    batch axis.  It is verified against that function elementwise by
+    `Phase 5/verifications/test_m2_constraints.py` -- this must not be an approximation of the
+    solver's convention, it must BE it, because the constraint it encodes is the one the solver
+    actually imposes.
+
+    Note the object type: the return value is a vec3 in the SAME representation as the edge carriers
+    `q_e`, so it transforms the same way under rotation and can be fed straight into a tensor
+    channel."""
+    a = np.asarray(a, float); b = np.asarray(b, float)
+    a2 = (a * a).sum(-1); b2 = (b * b).sum(-1); ab = (a * b).sum(-1)
+    la = np.sqrt(a2); lb = np.sqrt(b2)
+    cos_th = np.clip(ab / np.maximum(la * lb, 1e-300), -1.0 + 1e-10, 1.0 - 1e-10)
+    sin_th = np.sqrt(1.0 - cos_th ** 2)
+    d_ab = np.stack([a[..., 0] * b[..., 0],
+                     a[..., 0] * b[..., 1] + a[..., 1] * b[..., 0],
+                     a[..., 1] * b[..., 1]], -1)
+    d_a2 = np.stack([a[..., 0] ** 2, 2 * a[..., 0] * a[..., 1], a[..., 1] ** 2], -1)
+    d_b2 = np.stack([b[..., 0] ** 2, 2 * b[..., 0] * b[..., 1], b[..., 1] ** 2], -1)
+    d_cos = (d_ab / np.maximum(la * lb, 1e-300)[..., None]
+             - cos_th[..., None] * (d_a2 / (2 * a2)[..., None] + d_b2 / (2 * b2)[..., None]))
+    out = -d_cos / np.maximum(sin_th, 1e-300)[..., None]
+    return np.where((sin_th < 1e-10)[..., None], 0.0, out)     # degenerate corner -> zero row
+
+
+def vertex_stars(tri_verts, tri_bond, bond_u, bond_v, bond_R):
+    """The CURVATURE constraint's coupling, as a bipartite (triangle, vertex) incidence.
+
+    `C_curv` has one row per interior vertex: `sum_{s in star(v)} (dtheta_v^s/dg) . dg(s) = 0`, i.e.
+    it couples the ~6 triangles meeting at a vertex SIMULTANEOUSLY.  `triangle_adjacency` cannot
+    express that -- it is the EDGE-compatibility pairing (two triangles per shared bond), so
+    `J_edge`'s structure was already present in the model and `C_curv`'s was entirely absent.
+
+    Returns `(star_tri, star_vert, star_w, n_vert)`:
+        star_tri  (P,)    triangle index of each (triangle, corner) incidence
+        star_vert (P,)    vertex index      "
+        star_w    (P, 3)  the vec3 `dtheta/dg` weight for that corner
+    Sign convention copied verbatim from the solver: for edge (a, b), the vector taken at vertex `v`
+    is `-bond_R` if `v == a` and `+bond_R` if `v == b`."""
+    tri_verts = np.asarray(tri_verts, np.int64)
+    tri_bond = np.asarray(tri_bond, np.int64)
+    bu = np.asarray(bond_u, np.int64); bv = np.asarray(bond_v, np.int64)
+    bR = np.asarray(bond_R, float)
+    n_tri = len(tri_bond)
+
+    tri_idx, vert_idx, vecs_a, vecs_b = [], [], [], []
+    for s_ in range(n_tri):
+        for v in tri_verts[s_]:
+            got = []
+            for i in range(3):
+                e = tri_bond[s_, i]
+                if bu[e] == v:
+                    got.append(-bR[e])
+                elif bv[e] == v:
+                    got.append(bR[e])
+            if len(got) != 2:            # v is not a corner of two of this triangle's edges
+                continue
+            tri_idx.append(s_); vert_idx.append(int(v))
+            vecs_a.append(got[0]); vecs_b.append(got[1])
+    if not tri_idx:
+        z = np.zeros(0, np.int64)
+        return z, z, np.zeros((0, 3)), 0
+    w = angle_gradient_vec(np.array(vecs_a), np.array(vecs_b))
+    vert_idx = np.array(vert_idx, np.int64)
+    # compact the vertex ids so they index a dense per-sample vertex array
+    uniq, vert_compact = np.unique(vert_idx, return_inverse=True)
+    return (np.array(tri_idx, np.int64), vert_compact.astype(np.int64), w, len(uniq))
+
+
 class TensorMP(nn.Module):
     """One equivariant message-passing round over triangle adjacency.
 
@@ -149,13 +228,143 @@ class TensorMP(nn.Module):
         return s, T
 
 
+class StarMP(nn.Module):
+    """One round of triangle -> VERTEX -> triangle passing: the CURVATURE constraint's coupling.
+
+    `C_curv` couples the ~6 triangles meeting at a vertex SIMULTANEOUSLY, weighted by
+    `dtheta_v^s/dg`.  `TensorMP` cannot express that: it runs on `triangle_adjacency`, which is the
+    EDGE-compatibility pairing (two triangles per shared bond).  So `J_edge`'s structure was already
+    in the model by construction and `C_curv`'s was entirely absent -- this module is that missing
+    channel, and its weights are verified identical to the solver's operator
+    (`test_m2_constraints.py`).
+
+    The weight `w = dtheta/dg` is a vec3, the same representation as the edge carriers, so it is
+    split into a UNIT TENSOR `w/|w|` (equivariant, carries the direction) and its NORM `|w|`
+    (invariant, carries the magnitude).  Passing `w` raw would let its scale -- which varies over
+    orders of magnitude on sliver corners -- swamp the tensor channels."""
+
+    def __init__(self, ns, nt, hidden):
+        super().__init__()
+        self.ns, self.nt = ns, nt
+        # the two directions consume DIFFERENT invariants: up sees <T_tri, w_hat> only (nt),
+        # down sees both <T_vert, w_hat> and <T_tri, w_hat> (2nt); both carry |w|.
+        n_up, n_dn = nt + 1, 2 * nt + 1
+        self.up = nn.Sequential(nn.Linear(ns + n_up, hidden), nn.SiLU(),
+                                nn.Linear(hidden, hidden), nn.SiLU())
+        self.up_s = nn.Linear(hidden, ns)
+        self.up_t = nn.Linear(hidden, nt + 1)    # gates for T_tri and w_hat
+        self.down = nn.Sequential(nn.Linear(2 * ns + n_dn, hidden), nn.SiLU(),
+                                  nn.Linear(hidden, hidden), nn.SiLU())
+        self.down_s = nn.Linear(hidden, ns)
+        self.down_t = nn.Linear(hidden, nt + 1)
+        self.norm_s = nn.LayerNorm(ns)
+
+    def forward(self, s, T, star_tri, star_vert, star_w, n_vert):
+        if len(star_tri) == 0 or n_vert == 0:
+            return s, T
+        wn = torch.sqrt(torch.einsum('px,x,px->p', star_w,
+                                     VEC3_METRIC.to(star_w.dtype).to(star_w.device),
+                                     star_w).clamp_min(1e-30))
+        w_hat = (star_w / wn.unsqueeze(-1)).unsqueeze(1)                  # (P, 1, 3) unit vec3
+        St, Tt = s[star_tri], T[star_tri]
+
+        # --- triangles -> vertices -------------------------------------------------------------
+        inv_up = torch.cat([inner(Tt, w_hat), torch.log1p(wn).unsqueeze(-1)], -1)
+        h = self.up(torch.cat([St, inv_up], -1))
+        g = self.up_t(h)
+        mT = g[:, :self.nt].unsqueeze(-1) * Tt + g[:, self.nt:].unsqueeze(-1) * w_hat
+        cnt = torch.zeros(n_vert, 1, dtype=s.dtype, device=s.device).index_add(
+            0, star_vert, torch.ones(len(star_vert), 1, dtype=s.dtype, device=s.device)).clamp_min(1.0)
+        sv = torch.zeros(n_vert, self.ns, dtype=s.dtype, device=s.device).index_add(
+            0, star_vert, self.up_s(h)) / cnt
+        Tv = torch.zeros(n_vert, self.nt, 3, dtype=T.dtype, device=T.device).index_add(
+            0, star_vert, mT) / cnt.unsqueeze(-1)
+
+        # --- vertices -> triangles ---------------------------------------------------------------
+        Sv, Tvv = sv[star_vert], Tv[star_vert]
+        inv_dn = torch.cat([inner(Tvv, w_hat), inner(Tt, w_hat),
+                            torch.log1p(wn).unsqueeze(-1)], -1)[:, :2 * self.nt + 1]
+        h2 = self.down(torch.cat([St, Sv, inv_dn], -1))
+        g2 = self.down_t(h2)
+        bT = g2[:, :self.nt].unsqueeze(-1) * Tvv + g2[:, self.nt:].unsqueeze(-1) * w_hat
+        cnt_t = torch.zeros(len(s), 1, dtype=s.dtype, device=s.device).index_add(
+            0, star_tri, torch.ones(len(star_tri), 1, dtype=s.dtype, device=s.device)).clamp_min(1.0)
+        aggS = torch.zeros_like(s).index_add(0, star_tri, self.down_s(h2)) / cnt_t
+        aggT = torch.zeros_like(T).index_add(0, star_tri, bT) / cnt_t.unsqueeze(-1)
+        return self.norm_s(s + aggS), tensor_rms_norm(T + aggT)
+
+
+class GlobalMS(nn.Module):
+    """The AREA-WEIGHTED GLOBAL MEAN constraint `M_S`:  sum_s S_s dg(s) = 0.
+
+    Three rows -- one per vec3 component -- so it is global but only RANK 3, and its influence per
+    triangle falls off as 1/N. That makes it cheap to represent exactly: the quantity the constraint
+    sets to zero IS the area-weighted mean of the metric field, so handing the model that mean is
+    the whole content of the constraint, not a proxy for it.
+
+    Equivariance: a weighted mean of vec3 tensors is a vec3 tensor, and the weights (areas) are
+    rotation invariant, so `Tbar` transforms exactly as `T` does.
+
+    BATCHING: the mean must be taken PER GRAPH. Collate packs many graphs block-diagonally, so a
+    naive global mean would average across unrelated networks and leak between samples -- which is
+    why `tri_batch` exists rather than a plain `T.mean(0)`."""
+
+    def __init__(self, ns, nt, hidden):
+        super().__init__()
+        self.nt = nt
+        self.mix_s = nn.Sequential(nn.Linear(2 * ns + nt * nt, hidden), nn.SiLU(),
+                                   nn.Linear(hidden, ns))
+        self.gate_t = nn.Linear(ns, nt)
+        self.norm_s = nn.LayerNorm(ns)
+
+    def forward(self, s, T, tri_batch, area_w, n_graphs):
+        w = area_w.unsqueeze(-1)
+        wsum = torch.zeros(n_graphs, 1, dtype=s.dtype, device=s.device).index_add(
+            0, tri_batch, w).clamp_min(1e-30)
+        sbar = torch.zeros(n_graphs, s.shape[1], dtype=s.dtype, device=s.device).index_add(
+            0, tri_batch, w * s) / wsum
+        Tbar = torch.zeros(n_graphs, T.shape[1], 3, dtype=T.dtype, device=T.device).index_add(
+            0, tri_batch, w.unsqueeze(-1) * T) / wsum.unsqueeze(-1)
+        Sb, Tb = sbar[tri_batch], Tbar[tri_batch]
+        s = self.norm_s(s + self.mix_s(torch.cat([s, Sb, inner(T, Tb)], -1)))
+        return s, tensor_rms_norm(T + self.gate_t(s).unsqueeze(-1) * Tb)
+
+
 class ForwardGNNv3(nn.Module):
-    """Graph -> per-triangle G -> C(s) = Q G Q^T.  Tensor messages on triangle adjacency."""
+    """Graph -> per-triangle G -> C(s) = Q G Q^T.  Tensor messages on triangle adjacency.
+
+    RESIDUAL HEAD (2026-08-30).  `G` is not predicted from scratch; it is a CONGRUENCE of the
+    ANALYTIC per-triangle tensor:
+
+        G = (I + X) G_an (I + X)^T ,      G_an = diag(k_e / 16 l_e^2)
+
+    `G_an` is `A(s)` in the `Q` basis -- a closed form in the triangle's own three edges, which
+    `train_v3.oracle_check` verifies to machine precision wherever `W = 0`.  The network predicts
+    only the dimensionless `X`.
+
+    WHY, measured on the previous checkpoint.  The old head predicted `G` freely, so the model had to
+    rediscover a closed form it could have been handed -- and it did so IMPERFECTLY: on the 254
+    `W = 0` holdout networks, where the answer IS `A(s)`, it scored 0.0538 instead of 0.  Worse, `C`
+    is dominated by `A` (predicting `A` alone scores 1.1747 against the label sigma, while the trained
+    model scores 0.2000), so the loss is dominated by the easy term while 91 % of the error sits at
+    `max|W| >= 1` -- the correction that carries the actual physics.  This head makes the easy term
+    exact and leaves the network only the hard one.
+
+    Properties, all preserved:
+      * `X = 0` reproduces `A(s)` EXACTLY -- and the readout's last layer is zero-initialised, so
+        training STARTS there rather than at a random tensor of the wrong scale.
+      * SPD: a congruence of an SPD diagonal is PSD always, and SPD unless `det(I + X) = 0`
+        (measure zero; `test_m2_head_v3.py` gate [3] detects it).
+      * INVARIANCE: `G_an` is diagonal in the per-edge scalars `k`, `l`, which are rotation
+        invariant, and `X` is built from invariant features -- so `G` stays invariant and
+        `C = Q G Q^T` stays equivariant, unchanged from before.
+    """
 
     def __init__(self, ns=32, nt=8, hidden=64, n_layers=3, passive=True,
-                 n_tri_scalars=9, n_bond_feat=2):
+                 n_tri_scalars=9, n_bond_feat=2, use_star=True, use_global=True):
         super().__init__()
         self.ns, self.nt, self.passive = ns, nt, passive
+        self.use_star, self.use_global = use_star, use_global
         # initial tensor channels are the triangle's own three q_e, mixed up to `nt`
         self.t_in = nn.Linear(3, nt, bias=False)
         # initial scalars: the 9 invariants <q_i, q_j> of the triangle's own geometry,
@@ -166,9 +375,30 @@ class ForwardGNNv3(nn.Module):
         self.norm_in = nn.LayerNorm(ns)
         self.layers = nn.ModuleList(TensorMP(ns, nt, hidden, n_bond_feat)
                                     for _ in range(n_layers))
+        # the CURVATURE channel, one per layer, run alongside the bond channel. Flagged so it can be
+        # ablated as a single variable against the bond-only model.
+        self.stars = nn.ModuleList(StarMP(ns, nt, hidden) for _ in range(n_layers))             if use_star else None
+        self.globals = nn.ModuleList(GlobalMS(ns, nt, hidden) for _ in range(n_layers))             if use_global else None
         self.readout = nn.Sequential(nn.Linear(ns + nt * nt, hidden), nn.SiLU(),
                                      nn.Linear(hidden, hidden), nn.SiLU(),
-                                     nn.Linear(hidden, 6 if passive else 9))
+                                     nn.Linear(hidden, 9))          # X, a full invariant 3x3
+        # START AT THE ANALYTIC ANSWER: zeroing the last layer gives X = 0, hence G = G_an = A(s),
+        # which is EXACT wherever W = 0 and the right scale everywhere else. Without this the model
+        # begins at a random tensor and spends its first epochs recovering the closed form.
+        nn.init.zeros_(self.readout[-1].weight)
+        nn.init.zeros_(self.readout[-1].bias)
+
+    @staticmethod
+    def analytic_G(g):
+        """`G_an = diag(k_e / 16 l_e^2)` -- `A(s)` in the `Q` basis, from inputs already passed.
+
+        `l_e^2` is the trace of each edge carrier: for `q_e = vec3(dx dx^T) = [xx, xy, yy]`,
+        `xx + yy = l_e^2`, i.e. rows 0 and 2 of `Q`.  `k` is the first block of `tri_scalars`
+        (`kk = k / mean(k)`; the `mean(k)` factor is carried separately in `assemble`'s
+        `physical_factor`, so using the NORMALISED k here is what keeps the two consistent)."""
+        l2 = g['Q'][:, 0, :] + g['Q'][:, 2, :]                         # (n_tri, 3) squared lengths
+        k = g['tri_scalars'][:, :3]                                    # (n_tri, 3) k/kbar per edge
+        return torch.diag_embed(k / (16.0 * l2))
 
     def forward(self, g):
         Q = g['Q']                                                     # (n_tri, 3, 3) carriers
@@ -177,19 +407,21 @@ class ForwardGNNv3(nn.Module):
         gram = inner(Qc, Qc)                                           # 9 invariants of the geometry
         s = self.norm_in(self.s_in(torch.cat([gram, g['tri_scalars']], -1)))
 
-        for lay in self.layers:
+        for i, lay in enumerate(self.layers):
             s, T = lay(s, T, g['tri_src'], g['tri_dst'], g['bond_q'], g['bond_feat'])
+            if self.stars is not None and 'star_tri' in g:
+                s, T = self.stars[i](s, T, g['star_tri'], g['star_vert'], g['star_w'],
+                                     int(g['n_vert']))
+            if self.globals is not None and 'tri_batch' in g:
+                s, T = self.globals[i](s, T, g['tri_batch'], g['area_w'], int(g['n_graphs']))
 
         raw = self.readout(torch.cat([s, inner(T, T)], -1))
-        return self._to_G(raw)
+        return self._to_G(raw, self.analytic_G(g))
 
-    def _to_G(self, raw):
+    def _to_G(self, raw, G_an):
+        """`G = (I + X) G_an (I + X)^T` -- a congruence of the analytic tensor, so SPD is inherited
+        from `G_an` and `X = 0` returns `A(s)` exactly."""
         n = raw.shape[0]
-        if not self.passive:
-            return raw.reshape(n, 3, 3)
-        M = torch.zeros(n, 3, 3, dtype=raw.dtype, device=raw.device)
-        idx = torch.tril_indices(3, 3)
-        M[:, idx[0], idx[1]] = raw
-        d = torch.arange(3)
-        M[:, d, d] = nn.functional.softplus(M[:, d, d])
-        return M @ M.transpose(-1, -2)
+        X = raw.reshape(n, 3, 3)
+        L = torch.eye(3, dtype=raw.dtype, device=raw.device) + X
+        return L @ G_an @ L.transpose(-1, -2)

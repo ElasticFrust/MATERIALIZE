@@ -230,6 +230,39 @@ first training step saw a loss of **2e33**. Fixed by rescaling tensor channels b
 their own invariants, equivariant **by construction** (a scalar commutes with `T → 𝒮 T`);
 equivariance re-verified at 2.2e-16 afterwards.
 
+### 2.5 Head and CONSTRAINT channels  *(2026-08-31 — the user's, "add constraints to code")*
+
+**Residual head.** `G = (I + X) G_an (I + X)ᵀ` with `G_an = diag(k_e/16ℓ_e²)` computed inside
+`forward()`; the network predicts only the dimensionless invariant 3×3 `X`, and the readout's last
+layer is zero-initialised so training STARTS at `X = 0`, i.e. exactly at `A(s)`.
+Measured motivation: `A(s)` alone scores **1.1747** against the label σ (worse than the global mean,
+0.9866) while the model scores 0.2000 — so `C` is dominated by `A`, the loss was dominated by the
+easy term, and 91 % of the error sat in the correction. Result: **0.2023 @ ep 104 against the free
+head's 0.2040 @ ep 130**, with 4 LR cuts instead of 5.
+
+**The constraint operators, and their status in the model.** All three are geometry-only
+(`forward_solver_torch.py:613`):
+
+| operator | structure | in the model? |
+|---|---|---|
+| `J_edge` | per SHARED BOND, `q_e·δg(s1) = q_e·δg(s2)` | **yes, by accident** — `triangle_adjacency` IS this pairing. Now VERIFIED: pairing exact (354/354), and weights exact once contracted with `diag(1,2,1)` (**0.000e+00**) — the model stores `q_e` in the STATE convention and the metric supplies the constraint side's factor 2 |
+| `C_curv` | per INTERIOR VERTEX, over the ~6-triangle star | **was entirely absent.** New `StarMP` channel; `angle_gradient_vec` is a literal port of the solver's, matching at **0.000e+00**, and the assembled operator matches at 0.0 / 4.4e-16 / 8.3e-16 |
+| `M_S` | area-weighted global mean, rank 3 | new `GlobalMS`, pooled PER GRAPH |
+
+**Dimension check** — the constrained metric space equals the node-displacement space exactly
+(`3N − rank` vs `2·nodes − 2`): 116/116, 230/230, 30/30. The stacked operator is rank-deficient by
+one, which is the B-1 redundancy appearing independently.
+
+**⚠ `M_S` makes the model GLOBALLY COUPLED** — one perturbation reaches every triangle in a single
+layer (gated: 112/112). Faithful, since the constraint is global, but it compounds the global
+normalisers in `prepare()` that are the prime suspect for the size-transfer degradation.
+`--no_star` / `--no_global` exist so each channel is a single variable.
+
+**Reach, corrected:** a layer is `TensorMP` (bond hop) THEN `StarMP` (star hop), so it advances
+**two** union hops, not one.
+
+Full record with all gate numbers: `Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md`.
+
 ---
 
 ## 3. Dataset

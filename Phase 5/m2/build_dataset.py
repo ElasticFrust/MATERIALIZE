@@ -125,8 +125,17 @@ K_CORR_COMBOS = [(mg, cname, ckw) for mg in ('lognormal', 'bimodal')
 #: live z = 6 exactly). Safe because `k_soft` stays inside the S0b bound; `fields.dilute` enforces it.
 DILUTION_FRACS = (0.10, 0.20, 0.30, 0.40)
 
-#: Write a `<out>.part` snapshot every this many samples (see the partial-save note in `build`).
+#: Write a partial snapshot every this many samples (see the partial-save note in `build`).
 PART_EVERY = 2000
+
+
+def PART_SUFFIX(out):
+    """Path of the partial snapshot for `out`.
+
+    It must END IN `.npz`: `np.savez_compressed` appends `.npz` when the name lacks it, so writing
+    to `out + '.part'` silently produced `out + '.part.npz'` while the cleanup deleted `out.part`,
+    which never existed -- leaving a 526 MB orphan beside every finished build."""
+    return out[:-4] + '.part.npz' if out.endswith('.npz') else out + '.part.npz'
 DILUTION_K_SOFT = 1e-6                      # 100x inside the measured 1e-8 boundary
 
 #: Relative tensor gap above which a label is marked untrusted (`sim_ok=False`).  Samples are
@@ -533,7 +542,7 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
         if out and len(samples) - last_part >= PART_EVERY:
             last_part = len(samples)
             try:
-                save(samples, out + '.part')
+                save(samples, PART_SUFFIX(out))
                 if verbose:
                     print(f'    [partial saved: {len(samples)} samples]')
             except Exception as e:                                       # noqa: BLE001
@@ -542,8 +551,8 @@ def build(smoke=False, out=None, seed=0, n_random=24, n_nodes=120, verbose=True)
     out = out or os.path.join(OUT_DIR, 'dataset_smoke.npz' if smoke else 'dataset.npz')
     os.makedirs(os.path.dirname(out), exist_ok=True)
     save(samples, out)
-    if os.path.exists(out + '.part'):
-        os.remove(out + '.part')                 # the real file supersedes it
+    if os.path.exists(PART_SUFFIX(out)):
+        os.remove(PART_SUFFIX(out))              # the real file supersedes it
     if verbose:
         checked = [x for x in samples if x.get('sim_status') == 'checked']
         if checked:

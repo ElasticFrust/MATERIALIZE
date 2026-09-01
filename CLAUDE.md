@@ -550,6 +550,43 @@ this policy. It is pure-render (numpy + matplotlib; callers pass already-loaded 
 - **Always save the designed network once** (`save_network`: k + C6_per + meta incl. target, gap,
   `is_fictional` mask); figures LOAD it, never re-optimise (cf. plotting/env).
 
+### Learned-model choices: NO UNJUSTIFIED DEFAULTS  *(settled 2026-08-28)*
+
+**Every optimiser, LR schedule, loss, regulariser, normalisation and stopping rule is a SCIENTIFIC
+CHOICE and must be justified when it is made — in the code comment and in the results doc — the same
+way a physical approximation is.** Reaching for a framework default and moving on is the failure this
+subsection exists to prevent. It is not a style rule: two such defaults in two days each produced a
+wrong claim.
+
+- **State, for each choice: what it does, why it suits THIS target, and what it would fake.** The
+  last clause is the one that bites — every training knob has a failure mode that looks like success.
+- **`CosineAnnealingLR` was used with no justification, and it MANUFACTURED "convergence".** The LR
+  reaches ~0 at `T_max`, so the loss curve flattens *by construction*: at epoch 200/220 the rate was
+  2 % of initial, at 219 it was 0.005 %. The flat tail 0.3900/0.3920/0.3900/0.3902 that was reported
+  as "converged, no further spikes" is what a vanishing step size produces whether or not the model
+  had stopped learning. **A clock-driven schedule cannot distinguish "found the bottom" from "no
+  longer allowed to walk."** *(The user caught this; the runs before 2026-08-28 all carry it.)*
+- **CONVERGENCE MUST BE MEASURED, NOT SCHEDULED.** Default is `ReduceLROnPlateau` + early stopping on
+  a patience criterion (`train_v3.py --schedule plateau`), so the LR falls only *after* the
+  validation score demonstrably stalls and the run ends when further decay buys nothing. Cosine is
+  retained ONLY so the pre-2026-08-28 runs stay reproducible.
+- **The decisive test is an LR-RESTART PROBE**, not the shape of a curve: take the best checkpoint,
+  restore the initial LR, train on. If the score improves, the flat tail was the schedule.
+- **Adam vs AdamW is the question "should we use weight decay"** — they are IDENTICAL at `wd = 0`.
+  And with `LayerNorm`/`tensor_rms_norm` downstream, weight decay largely acts as an **effective-LR
+  modifier rather than regularisation**, because scaling a pre-normalisation weight down leaves the
+  output unchanged. So a gain from weight decay here must be separated from a disguised LR change
+  before it is called regularisation.
+- **Match the regulariser to the measured regime, and re-measure it — the regime MOVES.** Weight
+  decay/dropout on an UNDERFIT model makes it worse: at train 0.3921 vs val 0.3906 there was no gap
+  to close, and after the data scale-up the same model showed a 21 % gap. The right answer changed;
+  the diagnostic, not the intuition, is what says which regime you are in.
+- **A heavy-tailed target wants a ROBUST LOSS, which is not regularisation.** Huber on the normalised
+  residual bounds the influence of the tail; it does not fight a capacity shortfall.
+- **Cite the diagnostic that motivated the choice**, not the intuition — e.g. the train-vs-val
+  split-score in `Phase 5/verifications/m2_v3_report.py`, which exists because a plateau is
+  ambiguous between capacity and generalisation until it is measured on the SAME metric.
+
 ### Project coding conventions  *(settled 2026-08-13)*
 
 Complements the global charter's coding style; only the project-specific bits here.

@@ -20,10 +20,21 @@ def build(geo, k, rot=0.0):
     kk = np.asarray(k) / np.mean(k)
     src, dst, bnd = M3.triangle_adjacency(tb, len(tb))
     bq = M2.edge_carriers((bR / lbar)[:, None, :])[:, :, 0]        # (n_bond, 3) vec3 carriers
+    # the CONSTRAINT channels must be built here too, or the gates silently skip them:
+    # `forward` guards on `'star_tri' in g` / `'tri_batch' in g`, so a build() that omits them
+    # would test the bond-only model while reporting on the constrained one.
+    st_t, st_v, st_w, n_vert = M3.vertex_stars(geo['simplices'] if 'simplices' in geo
+                                               else geo['tri_verts'],
+                                               tb, geo['bond_u'], geo['bond_v'], bR / lbar)
+    areas = np.asarray(geo['areas'], float)
     return dict(Q=Q,
                 tri_scalars=torch.as_tensor(np.concatenate([kk[tb], l0[tb], np.log(kk[tb])], 1)),
                 tri_src=src, tri_dst=dst, bond_q=bq[bnd],
-                bond_feat=torch.as_tensor(np.stack([kk[bnd], l0[bnd]], 1)))
+                bond_feat=torch.as_tensor(np.stack([kk[bnd], l0[bnd]], 1)),
+                star_tri=torch.as_tensor(st_t), star_vert=torch.as_tensor(st_v),
+                star_w=torch.as_tensor(st_w), n_vert=int(n_vert),
+                area_w=torch.as_tensor(areas / max(areas.sum(), 1e-30)),
+                tri_batch=torch.zeros(len(tb), dtype=torch.long), n_graphs=1)
 
 
 geo = S.random_patch(60, seed=0)['geo']
@@ -55,6 +66,26 @@ with torch.no_grad():
     g = build(geo, k, 0.0)
     print('[4] n_layers=0 runs (no message passing): %s' % (tuple(net2(g).shape),))
 
+# [6] THE RESIDUAL HEAD'S DEFINING PROPERTY. `G = (I+X) G_an (I+X)^T` with the readout
+# zero-initialised means X = 0 at step 0, so an UNTRAINED net must return the ANALYTIC tensor
+# EXACTLY -- not approximately. This promotes `train_v3.oracle_check`'s property (which needs W=0
+# data to test) into an architectural invariant testable on any mesh. If it fails, the model is no
+# longer starting from the closed form and the whole point of the head is lost.
+with torch.no_grad():
+    fresh = M3.ForwardGNNv3(ns=16, nt=6, hidden=32, n_layers=2)
+    g = build(geo, k, 0.0)
+    G_pred = fresh(g)
+    G_an = M3.ForwardGNNv3.analytic_G(g)
+    rel = float((G_pred - G_an).abs().max() / G_an.abs().max())
+    print('[6] untrained head == analytic A(s): rel %.2e  (X=0 by zero-init)' % rel)
+    assert rel < 1e-14, 'residual head does not start at the analytic tensor (rel %.3e)' % rel
+    # and it must MOVE once X is nonzero -- otherwise the correction is unreachable
+    for p in fresh.readout[-1].parameters():
+        p.add_(torch.randn_like(p) * 0.05)
+    moved = float((fresh(g) - G_an).abs().max() / G_an.abs().max())
+    print('    nonzero X moves it: rel %.2e  (must be >> 0)' % moved)
+    assert moved > 1e-6, 'X has no effect on G -- the correction channel is dead'
+
 # [5] RECEPTIVE FIELD. Perturb the PREPARED tensors, not the geometry: `build` normalises lengths by
 # `lbar` and k by `mean(k)`, both GLOBAL, so perturbing an input moves every triangle through the
 # normaliser and says nothing about message passing. (An earlier version of this test did exactly
@@ -83,8 +114,32 @@ src_np, dst_np = np.asarray(g0['tri_src']), np.asarray(g0['tri_dst'])
 # message slots whose SHARED bond is BOND: both endpoints own it
 slots = np.where(owns[src_np] & owns[dst_np])[0]
 
+# The reach is now the UNION of two couplings: bond adjacency (J_edge) and the vertex star
+# (C_curv), because a StarMP round reaches every triangle sharing a VERTEX, not just an edge.
+simp = np.asarray(geo['simplices'] if 'simplices' in geo else geo['tri_verts'], np.int64)
+_vs, _vd = [], []
+for _v in np.unique(simp):
+    _ts = np.where((simp == _v).any(1))[0]
+    for _i in _ts:
+        for _j in _ts:
+            if _i != _j:
+                _vs.append(_i); _vd.append(_j)
+UNION_SRC = np.concatenate([np.asarray(g0['tri_src']), np.array(_vs, np.int64)])
+UNION_DST = np.concatenate([np.asarray(g0['tri_dst']), np.array(_vd, np.int64)])
+
 for L in (1, 2):
-    netL = M3.ForwardGNNv3(ns=16, nt=6, hidden=32, n_layers=L)
+    # use_global=False: M_S is a GLOBAL rank-3 constraint, so with it on every triangle is reachable
+    # in one layer BY DESIGN and a finite-reach test is meaningless. Its own signature is checked
+    # separately below.
+    netL = M3.ForwardGNNv3(ns=16, nt=6, hidden=32, n_layers=L, use_global=False)
+    # THE READOUT MUST BE UN-ZEROED FIRST. The residual head zero-initialises the last layer so
+    # training starts at X = 0 -- but then X is identically zero, G = G_an depends only on each
+    # triangle's OWN edges, and this test measures nothing about message passing. (Caught exactly
+    # that way: the counts fell to 2/6 and 2/13, i.e. only the two triangles owning the perturbed
+    # bond.) Randomising the readout puts the message path back in the output.
+    with torch.no_grad():
+        for _p in netL.readout[-1].parameters():
+            _p.add_(torch.randn_like(_p) * 0.05)
     with torch.no_grad():
         base = netL(g0)
         gp = dict(g0)
@@ -97,9 +152,28 @@ for L in (1, 2):
             col = int(np.where(tri_bond[t] == BOND)[0][0])
             gp['tri_scalars'][t, col] *= 1.5               # k/kbar block occupies columns 0..2
         moved = (netL(gp) - base).abs().amax(-1).amax(-1).numpy()
-    d = hop_distance(g0['tri_src'], g0['tri_dst'], np.where(owns)[0], len(base))
-    inside = (d >= 0) & (d <= L)
+    d = hop_distance(UNION_SRC, UNION_DST, np.where(owns)[0], len(base))
+    # each LAYER is TensorMP (one BOND hop) followed by StarMP (one STAR hop), so a layer
+    # advances up to TWO hops on the union graph -- not one. The bound being gated is that reach
+    # stays finite and equals the composition, not that it equals L.
+    inside = (d >= 0) & (d <= 2 * L)
     beyond = int(((moved > 1e-12) & ~inside).sum())
-    print('[5] L=%d: %d/%d triangles within %d hops moved; %d beyond the receptive field '
-          '(MUST be 0)' % (L, int(((moved > 1e-12) & inside).sum()), int(inside.sum()), L, beyond))
+    print('[5] L=%d (bond+star, no M_S): %d/%d within %d union hops moved; %d beyond (MUST be 0)'
+          % (L, int(((moved > 1e-12) & inside).sum()), int(inside.sum()), 2 * L, beyond))
     assert beyond == 0, 'influence leaked past the %d-hop receptive field' % L
+
+# [7] M_S IS GLOBAL BY CONSTRUCTION -- and that is a property to state, not to discover. With the
+# channel on, one bond's perturbation must reach essentially every triangle in a single layer,
+# because the area-weighted mean it computes is a global quantity. Worth gating BOTH ways: it
+# confirms the channel is live, and it records that the model is no longer finite-reach.
+with torch.no_grad():
+    netG = M3.ForwardGNNv3(ns=16, nt=6, hidden=32, n_layers=1, use_global=True)
+    for _p in netG.readout[-1].parameters():
+        _p.add_(torch.randn_like(_p) * 0.05)
+    b = netG(g0)
+    gq = dict(g0)
+    gq['bond_feat'] = g0['bond_feat'].clone(); gq['bond_feat'][slots, 0] *= 1.5
+    reach = int(((netG(gq) - b).abs().amax(-1).amax(-1) > 1e-12).sum())
+    print('[7] with M_S on, L=1 reaches %d/%d triangles (global by construction)'
+          % (reach, len(b)))
+    assert reach > len(b) // 2, 'M_S channel is not actually coupling globally'
