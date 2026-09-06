@@ -16,6 +16,9 @@
 >
 > **Entry points:** to run a design, `Phase 5/designer.py` → `design(nu_target, E_target, tag)`;
 > reusable API in `Phase 5/PLAN.md §1` and `MATERIALIZE.md §11`. M2 (GNN **surrogate → edit-policy**): `Phase 5/m2/M2.md`, plan `Phase 5/m2/M2_V2_PLAN.md`.
+> **Before modifying the network itself, read `documentation/GNN_GUIDE.md`** — the instructional doc:
+> what every element of the surrogate means, why it is there, and the recipe for writing a new
+> channel. (Results and status live in `Phase 5/results/m2_s1/`; the guide is the *how and why*.)
 >
 > Precedence (from the charter): live instruction > this file > global charter > memory.
 

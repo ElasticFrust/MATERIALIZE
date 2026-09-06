@@ -162,11 +162,47 @@ section used to pose are answered:
 |---|---|---|
 | **S0** | `CLAUDE.md` wording; **pin `OMP/MKL_NUM_THREADS` + the tiling method in the builder** | wording ✅ (swept across *all* docs 2026-08-25); **thread + method pinning NOT DONE — the one S0 item still open** |
 | **S0b** | dilution validity sweep, 266 cases | ✅ **`k_soft ≥ 1e-8` is safe at every `f ≤ 0.40`**, including sub-isostatic `z = 3.6`; below 1e-12 unusable. `results/dilution_validity/DILUTION_VALIDITY.md` |
-| **S1 — MEASURED; VERDICT PENDING A DEEPER RUN** | head `C(s) = Q·MMᵀ·Qᵀ`; body is now **v3 = TENSOR messages on TRIANGLE adjacency** (v2's scalar/node body is SUPERSEDED, plan §2.4) | **v3 beats the own-bulk oracle where v2 was beaten BY it**: 0.3906 vs oracle 0.4114 vs v2 0.5111 (per-triangle MAE/σ, `bravais` holdout); SPD 0 violations; r = 0.912 / 0.842. **BUT the §1 KILL criterion is TRIGGERED** — MAE(ν) vs the INDEPENDENT sim = **0.1619** against a 0.05 line, MAE(E)/E = 17.43 % against 5 %. **The verdict does NOT yet stand as "representation inadequate": train 0.3921 ≈ val 0.3906, i.e. UNDERFIT**, at depth 3 against `M2_LOCALITY.md`'s measured 4–5. Deeper run (depth 5, `max|W|≤10` filter, Huber, 220 ep, ~12 h) IN FLIGHT. `results/m2_s1/V3_TENSOR_MESSAGES.md` |
+| **S1 — MEASURED; VERDICT STILL PENDING (two runs in flight, 2026-09-06)** | head `C(s) = Q·MMᵀ·Qᵀ`; body is **v3 = TENSOR messages on TRIANGLE adjacency**, now with the **residual head** and the solver's **CONSTRAINT channels** (plan §2.4–2.5; the how-and-why is `documentation/GNN_GUIDE.md`) | see the block below |
 | S2 | scaled, balanced dataset (~10 k), trajectories + provenance | after S1 — see §3 |
 | S3 | 5-fold leave-one-family-out training | **must**: MAE(ν) ≤ 0.02 and MAE(E)/E ≤ 5 % **against the independent sim**; **kill criterion** MAE(ν) > 0.05 ⇒ stop and report, which is a legitimate result |
 | S4 | wire in as an M1 pre-filter | solver calls per design reduced at unchanged design quality |
 | S5 | **the edit-policy** — the actual endpoint of this arc | separate plan; trains on the trajectories S2 stores |
+
+> ### S1 as of 2026-09-06 — the curvature constraint is the largest single gain; the kill criterion still fires
+>
+> Full record: **`Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md`** (§6 is the trained result).
+> Instructional companion: **`documentation/GNN_GUIDE.md`**.
+>
+> | architecture | per-triangle MAE/σ, `bravais` holdout |
+> |---|---|
+> | v2 scalar messages | 0.5111 *(own-bulk oracle 0.4114 — v2 was beaten BY it)* |
+> | v3 tensor messages, free SPD head | 0.2040 |
+> | + residual head `G = (I+X)G_an(I+X)ᵀ` | 0.2023 |
+> | **+ `C_curv` vertex-star channel** | **0.1209** — **−40 %**, better in EVERY k-contrast bin |
+>
+> **Against the independent sim (400 networks): MAE(ν) 0.0572 mean / 0.0204 median, MAE(E)/E 6.57 %
+> / 2.28 %. MUST tier NOT met, KILL criterion STILL TRIGGERED.** `SOLVER vs SIM = 3.6e-08`, so the
+> floor is not the problem.
+>
+> **Read it with the domain split** (`Phase 5/verifications/m2_error_strata.py`): `--w_max_cut 10`
+> removes near-mechanism networks from **training** and the holdout deliberately keeps them.
+> In-domain (1190 networks) MAE(ν) **0.0452**; outside it (110, never trained on) **0.2190** — those
+> 8.5 % carry 22 % of the tensor error and **31 %** of MAE(ν). *(An earlier reading said "roughly two
+> thirds"; measured, 31 %.)*
+>
+> **A cheap, well-posed next change, found by that script:** the residual head is **not** exact where
+> `W = 0` after training. Those 254 networks have the lowest tensor error of any bin (0.0405) and
+> MAE(ν) **0.0528** — above the kill line, on the samples whose answer is a closed form the
+> architecture already contains. `X = 0` is an *initialisation* property; nothing pins it there.
+> Add a loss term or a hard mask forcing `X → 0` where `w_max = 0`.
+>
+> **In flight (launched 2026-09-06, ~4–5 days each, running concurrently at 2 threads):**
+> 1. `..._L5_ns48_h64_e400_star_ms` — adds the **`M_S` area-weighted constraint** to the star model
+>    (the "area constraint"; single variable against 0.1209);
+> 2. `..._L8_ns48_h64_e400_star` — **depth 8**, star only (single variable against the same 0.1209;
+>    the direct test of the reach hypothesis, since the contrast trend was NOT flattened by `C_curv`).
+>
+> Both `--resume`-capable, snapshotting every evaluation; log `Phase 5/results/m2_s1/v3_{ms,d8}_bravais.log`.
 
 > ### ⚠ 2026-08-26 — TWO BUGS OF ONE CLASS, and the guard that now catches them
 >

@@ -6,7 +6,16 @@ solver actually imposes, instead of making it infer their effect from examples.
 
 **Producer.** `Phase 5/m2/model_v3.py`, `Phase 5/m2/train_v3.py`.
 Gates: `Phase 5/verifications/test_m2_head_v3.py`, `Phase 5/verifications/test_m2_constraints.py`.
+Scoring: `Phase 5/m2/evaluate_v2.py` (vs the independent sim),
+`Phase 5/verifications/m2_error_strata.py` (the stratifications of §6).
 float64, `OMP_NUM_THREADS=4`, seed 0, `data/dataset_v2_s0.npz` (41 431 samples).
+
+> **Headline (2026-09-06).** The curvature channel is the largest single architectural gain of the
+> project: per-triangle MAE/σ **0.2023 → 0.1209, −40 %**, improving in **every** k-contrast bin.
+> The kill criterion is nonetheless **still triggered**: MAE(ν) vs the sim **0.0572** mean against a
+> 0.05 line — but it is triggered by 110 of 1300 holdout networks that `--w_max_cut 10` deliberately
+> **removes from training** and the holdout deliberately keeps. Inside the trained domain MAE(ν) is
+> **0.0452** mean / **0.0195** median. Full reading in §6.
 
 ---
 
@@ -167,14 +176,90 @@ the triangles owning the perturbed bond. The gate now randomises the readout fir
 hop), so a layer advances **2** union hops, not 1. The first gate versions asserted the wrong bound
 and failed the model for the test's error.
 
+## 6. The trained result — the star channel is the project's largest single gain
+
+Run `res_bravais_w10_h1_L5_ns48_h64_e400_star`: `StarMP` **on**, `M_S` **off** (single variable
+against the residual head), everything else identical to the run that produced 0.2023. 315 758
+parameters, 101 epochs, stopped on the **LR floor** (2.19e-06 < 1e-3 of initial) at 50.2 h.
+`--w_max_cut 10` kept 25 812 / 39 475 training samples; the 1 300-network holdout is unfiltered.
+
+| head | per-triangle MAE/σ | best epoch |
+|---|---|---|
+| free SPD | 0.2040 | 130 |
+| residual | 0.2023 | 104 |
+| **residual + `C_curv`** | **0.1209** | 100 |
+
+**−40 %, and it is not an average moving on one bin.** Scored over the whole 1 300-network holdout
+(`m2_error_strata.py`), it improves everywhere:
+
+| k-contrast | n | free head | **star** | change | MAE(ν) | median ν |
+|---|---|---|---|---|---|---|
+| 0 – 3 | 73 | 0.0240 | **0.0193** | −20 % | 0.0368 | 0.0108 |
+| 3 – 10 | 275 | 0.0716 | **0.0414** | −42 % | 0.0368 | 0.0142 |
+| 10 – 10² | 736 | 0.2106 | **0.1111** | −47 % | 0.0493 | 0.0208 |
+| 10² – 10⁴ | 16 | 0.2250 | **0.1190** | −47 % | 0.0559 | 0.0316 |
+| 10⁴ – 10⁹ | 200 | 0.3994 | **0.2880** | −28 % | 0.1391 | 0.0890 |
+| **ALL** | 1300 | 0.2000 | **0.1185** | **−41 %** | 0.0599 | — |
+
+The contrast trend is **not** flattened: still ~15× end to end. Coupling structure and reach are
+different deficits, and the constraint channel did not remove the reach one.
+
+### The verdict, and where it actually comes from
+
+400 networks scored against the **independent sim** (`evaluate_v2.py`):
+
+| | mean | median |
+|---|---|---|
+| MAE(ν) | **0.0572** | 0.0204 |
+| MAE(E)/E | 6.57 % | 2.28 % |
+| **SOLVER vs SIM (the floor)** | **3.6e-08** | — |
+
+**Must tier NOT met; kill criterion (MAE(ν) > 0.05) STILL TRIGGERED** — and the tensor error fell
+41 % while MAE(ν) moved 0.0550 → 0.0572, i.e. *slightly worse*. Those two facts are not in conflict:
+ν is a ratio of contractions of `C_eff`, so it is dominated by a handful of networks where the
+denominator is small, while the per-triangle MAE is an average over 88 560 triangles.
+
+Splitting on the **training-domain boundary** says where the mean lives:
+
+| domain | n | MAE/σ | MAE(ν) | median ν |
+|---|---|---|---|---|
+| `max‖W‖ ≤ 10` — **trained on** | 1190 | 0.1007 | **0.0452** | 0.0195 |
+| `max‖W‖ > 10` — **filtered out of training, kept in the holdout** | 110 | 0.3111 | **0.2190** | 0.1742 |
+
+Those 110 networks (8.5 %) carry **22 % of the total per-triangle error and 31 % of MAE(ν)**.
+*(An earlier reading of this split put it at "roughly two thirds"; measured, it is 31 %. The
+in-domain figure was right, the attribution was not.)* So the headline is a mixture of a model
+inside its domain at 0.0452 and pure extrapolation at 0.2190 — the domain restriction is a
+deliberate, documented choice, and it has to be read with the number, not around it.
+
+### A finding this measurement produced: the head is NOT exact where `W = 0`
+
+| max‖W‖ | n | MAE/σ | MAE(ν) |
+|---|---|---|---|
+| **exactly 0** | **254** | **0.0405** | **0.0528** |
+| 0 – 1 | 86 | 0.0546 | 0.0100 |
+| 1 – 3 | 585 | 0.0909 | 0.0269 |
+| 3 – 10 | 265 | 0.1953 | 0.0894 |
+| > 10 | 110 | 0.3111 | 0.2190 |
+
+The `W = 0` bin has the **lowest per-triangle tensor error of any bin and the second-highest
+MAE(ν)** — 0.0528, itself above the kill line. This is §2's caveat, measured: `X = 0` reproduces
+`A(s)` exactly and the model *starts* there, but nothing during training forces `X → 0` on `W = 0`
+samples, and it drifts. These are the samples whose answer is a closed form the architecture already
+contains. **A loss term (or a hard mask) pinning `X → 0` where `w_max = 0` is a cheap, well-posed
+next change** — it is the one part of the target that needs no learning at all.
+
 ## 7. Limitations
 
 - **`M_S` destroys the finite receptive field** — one perturbation reaches every triangle in one
   layer. Faithful (the constraint *is* global), but it compounds the global normalisers already in
   `prepare()` (mean bond length, mean `k`), which are the prime suspect for the measured
   size-transfer degradation. `--no_global` exists so it can be ablated as a single variable.
-- **The constrained model is untrained.** Everything here is architecture and gates; no training run
-  has been done with the star or `M_S` channels.
-- **Two variables at once** if star and `M_S` are enabled together — recommend `--no_star` /
-  `--no_global` to keep runs single-variable.
+- **`M_S` is trained but not yet scored** — the run with star + `M_S` (`..._star_ms`) and the
+  depth-8 star run were launched 2026-09-06 and are the next two single-variable measurements.
+- **The constraints are REPRESENTED, not IMPOSED.** The channels carry the operators' structure and
+  their exact weights; nothing in the model solves the KKT system or projects onto its null space.
+  Whether representation suffices is what these runs measure.
 - **`ℓ₀ = ℓ` throughout**, so that input channel still carries no information.
+- **Only one holdout family (`bravais`) has been scored** at this architecture; the leave-one-out
+  result is not yet known to transfer to the other families.

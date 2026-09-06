@@ -177,3 +177,29 @@ with torch.no_grad():
     print('[7] with M_S on, L=1 reaches %d/%d triangles (global by construction)'
           % (reach, len(b)))
     assert reach > len(b) // 2, 'M_S channel is not actually coupling globally'
+
+# [8] CHECKPOINT -> ARCHITECTURE ROUND TRIP. `use_star`/`use_global` are optional, so a scorer that
+# builds the model from this module's DEFAULTS silently loads a DIFFERENT network than was trained
+# -- which happened: `evaluate_v2.py` scored a `--no_global` checkpoint against a default-built
+# model. `M3.from_checkpoint` is the single place that rule now lives, so it is gated here: every
+# flag combination must round-trip, and the reloaded net must reproduce the original's output
+# EXACTLY (not approximately -- same weights, same graph, so any difference is a wrong architecture).
+with torch.no_grad():
+    for _star, _glob in ((True, True), (True, False), (False, True), (False, False)):
+        src_net = M3.ForwardGNNv3(ns=16, nt=6, hidden=32, n_layers=2,
+                                  use_star=_star, use_global=_glob)
+        for _p in src_net.readout[-1].parameters():          # un-zero, else every model agrees
+            _p.add_(torch.randn_like(_p) * 0.05)
+        ck = dict(state=src_net.state_dict(), ns=16, nt=6, hidden=32, layers=2,
+                  use_star=_star, use_global=_glob)
+        back = M3.from_checkpoint(ck)
+        assert back.use_star == _star and back.use_global == _glob, 'flags lost in round trip'
+        d = float((back(g0) - src_net(g0)).abs().max())
+        # and the LEGACY path: a checkpoint predating the flags must infer them from the keys alone
+        inferred = M3.from_checkpoint({k: v for k, v in ck.items()
+                                       if k not in ('use_star', 'use_global')})
+        assert (inferred.use_star, inferred.use_global) == (_star, _glob), \
+            'architecture not recoverable from the state dict for star=%s global=%s' % (_star, _glob)
+        print('[8] from_checkpoint star=%-5s global=%-5s: exact %.1e, flags inferred OK'
+              % (_star, _glob, d))
+        assert d == 0.0, 'reloaded model does not reproduce the original bit-for-bit'

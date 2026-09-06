@@ -64,10 +64,8 @@ def _score_v2(ck_path, va):
 
 
 def _score_v3(ck_path, va):
-    ck = torch.load(ck_path, weights_only=False)
-    net = M3.ForwardGNNv3(ns=ck['ns'], nt=ck['nt'], hidden=ck['hidden'], n_layers=ck['layers'])
-    net.load_state_dict(ck['state'])
-    net.eval()
+    # architecture from the checkpoint, never from this script's defaults (see `M3.from_checkpoint`)
+    net = M3.from_checkpoint(torch.load(ck_path, weights_only=False))
     pred = []
     with torch.no_grad():
         for g in va:

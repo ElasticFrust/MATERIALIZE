@@ -20,7 +20,12 @@ Phase 5/elements/
 # loose top-level galleries (scratch; the kept figures live in results/)
 Phase 5/*.png
 
-# Runtime logs
+# Runtime logs (and the stderr side-channel of detached background runs)
 *.log
+*.err
 # M2 datasets: multi-hundred-MB generated artifacts, rebuildable from build_dataset.py + seed
 Phase 5/m2/data/*.npz
+# M2 per-evaluation RESUME snapshots (train_v3.py --resume): 10-16 MB intermediates written every
+# evaluation so a multi-day run survives a power cut. The final checkpoint_*.pt supersedes them and
+# IS tracked; the snapshot is only useful while its own run is still in flight.
+Phase 5/m2/*.pt.resume

@@ -93,9 +93,10 @@ def main():
     # rather than a flag means a v2/v3 mix-up cannot be made silently on the command line.
     kind = 'v3' if 'ns' in ck else 'v2'
     if kind == 'v3':
-        net = M3.ForwardGNNv3(ns=ck['ns'], nt=ck['nt'], hidden=ck['hidden'], n_layers=ck['layers'])
-        net.load_state_dict(ck['state'])
-        net.eval()
+        # ARCHITECTURE COMES FROM THE CHECKPOINT, never from this script's defaults -- the star and
+        # M_S channels are optional, and a default-built model silently mismatches a run trained
+        # with --no_star/--no_global. One shared builder, so the rule cannot drift between scripts.
+        net = M3.from_checkpoint(ck)
 
         def predict_bulk(g):
             """C_eff = the UNWEIGHTED mean of the per-triangle C(s) -- the project's homogenisation

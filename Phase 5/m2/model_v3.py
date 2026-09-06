@@ -425,3 +425,25 @@ class ForwardGNNv3(nn.Module):
         X = raw.reshape(n, 3, 3)
         L = torch.eye(3, dtype=raw.dtype, device=raw.device) + X
         return L @ G_an @ L.transpose(-1, -2)
+
+
+def from_checkpoint(ck, eval_mode=True):
+    """Rebuild the EXACT architecture a checkpoint was trained with, and load its weights.
+
+    The star (`C_curv`) and `M_S` channels are optional, so a model built from this module's
+    DEFAULTS silently mismatches any run trained with `--no_star` / `--no_global` -- and that is not
+    hypothetical: `evaluate_v2.py` scored a `--no_global` checkpoint against a default-built model
+    before this existed.  Three scripts now load checkpoints (`evaluate_v2`, `m2_v3_report`,
+    `m2_error_strata`), so the rule lives in ONE place.
+
+    Checkpoints written before the flags existed carry no `use_star`/`use_global` key; for those the
+    architecture is inferred from the state dict's own parameter names, which is the only honest
+    source left."""
+    ks = ck['state'].keys()
+    net = ForwardGNNv3(ns=ck['ns'], nt=ck['nt'], hidden=ck['hidden'], n_layers=ck['layers'],
+                       use_star=ck.get('use_star', any(k.startswith('stars.') for k in ks)),
+                       use_global=ck.get('use_global', any(k.startswith('globals.') for k in ks)))
+    net.load_state_dict(ck['state'])
+    if eval_mode:
+        net.eval()
+    return net
