@@ -66,6 +66,14 @@ def load(path):
         Lx, Ly = d['Lx'], d['Ly']            # the periodic box; needed to rebuild a geo
         family, traj = d['family'], d['traj_id']
         kpat = d['k_pattern'] if 'k_pattern' in d else np.array([''] * len(C6))
+        # the MESH id. NOTE the field is called `topology_id` but does NOT mean topology in
+        # the project's sense (connectivity): it is the SEED RECORD's name, i.e. a specific
+        # (positions, connectivity) pair, and `geom_variant` re-Delaunays
+        # (`build_dataset.py:488`) so a variant is a DIFFERENT connectivity too. Nothing in
+        # this dataset identifies connectivity alone. Surfaced so a MESH-DISJOINT split is
+        # possible -- a random sample split cannot be one, since each mesh carries ~26
+        # samples differing only in the k-field.
+        topo = d['topology_id'] if 'topology_id' in d else np.array(['?'] * len(C6))
         # `w_max` is what `oracle_check` selects on: W == 0 means C(s) = A(s) is a closed form
         wmax = d['w_max'] if 'w_max' in d else np.full(len(C6), np.inf)
         sim_ok = d['sim_ok'] if 'sim_ok' in d else np.ones(len(C6), bool)
@@ -76,7 +84,7 @@ def load(path):
         g = {k: arrs[k][ptrs[k][i]:ptrs[k][i + 1]] for k in VAR_KEYS}
         g.update(n_nodes=len(g['pts']), C6=C6[i], family=str(family[i]), traj_id=str(traj[i]),
                  sim_ok=bool(sim_ok[i]), size_bin=str(size_bin[i]),
-                 k_pattern=str(kpat[i]), w_max=float(wmax[i]),
+                 k_pattern=str(kpat[i]), w_max=float(wmax[i]), mesh_id=str(topo[i]),
                  Lx=float(Lx[i]), Ly=float(Ly[i]))
         out.append(g)
     return out

@@ -152,6 +152,8 @@ def run_tag(a):
         tag += '_ms'
     if a.opt != 'adam' or a.wd:
         tag += '_%s%g' % (a.opt, a.wd)                        # optimiser is part of the identity
+    if a.holdout == 'random' and getattr(a, 'mesh_frac', 0):
+        tag += '_m%g' % a.mesh_frac            # a second holdout changes the TRAIN set: part of id
     if a.limit:
         tag += '_lim%d' % a.limit                             # probes can never look like real runs
     return tag
@@ -229,6 +231,13 @@ def main():
                          'run continues its trajectory instead of restarting.')
     ap.add_argument('--force', action='store_true',
                     help='allow overwriting an existing checkpoint of the same tag')
+    ap.add_argument('--mesh_frac', type=float, default=0.10,
+                    help='fraction of MESHES reserved as a SECOND, mesh-disjoint holdout when '
+                         "--holdout random. A random sample split cannot answer \"a new mesh\": "
+                         'each mesh carries ~26 samples differing only in the k-field, so ~21 land '
+                         'in train and ~5 in val. Reserving whole meshes costs one extra evaluation '
+                         'per cycle and measures the gap between "new k, known mesh" and "new mesh". '
+                         'Never used for selection or stopping -- that would fit it too. 0 disables.')
     ap.add_argument('--limit', type=int, default=0)
     ap.add_argument('--w_max_cut', type=float, default=0.0,
                     help='drop TRAINING samples with max|W| above this (0 = keep all). Near-mechanism '
@@ -255,14 +264,44 @@ def main():
     if a.holdout != 'random':
         tr = [g for g in raw if g['family'] != a.holdout]
         va = [g for g in raw if g['family'] == a.holdout]
+        va_mesh = []          # no second holdout: the family IS mesh-disjoint
         split = 'LEAVE-ONE-FAMILY-OUT: %s' % a.holdout
     else:
-        trajs = sorted({g['traj_id'] for g in raw})
-        rng = np.random.default_rng(a.seed); rng.shuffle(trajs)
-        val = set(trajs[:max(1, len(trajs) // 5)])
-        tr = [g for g in raw if g['traj_id'] not in val]
-        va = [g for g in raw if g['traj_id'] in val]
-        split = 'within-family (trajectory split) -- MEMORISATION BASELINE'
+        # TWO HOLDOUTS FROM ONE RUN, because they answer DIFFERENT questions and the gap
+        # between them is itself the measurement (user, 2026-09-11).
+        #
+        #   (a) MESH-DISJOINT  -- whole meshes reserved, so no k-field of that mesh is ever seen.
+        #       Question: "a new MESH". This is the deployment number.
+        #   (b) RANDOM SAMPLE  -- a seeded fraction of what remains. Each mesh carries ~26 samples
+        #       differing only in the k-field, so ~21 of a mesh's samples land in train and ~5 in
+        #       val: essentially every val sample sits on a mesh seen in training.
+        #       Question: "a new k-FIELD on a KNOWN mesh" -- exactly Phase 3's inner loop, where
+        #       `optimize` designs k on a fixed mesh.
+        #
+        # (b) is NOT merely memorisation: the mesh is an INPUT (q_e, areas, star weights are passed
+        # every time), so there is no hidden lookup. But it IS mildly optimistic vs (a), and the
+        # (a)-(b) gap is the first measurement of by how much.
+        #
+        # SELECTION AND STOPPING KEY ON (b) ONLY. (a) is therefore never used to choose weights or
+        # to stop, which is what keeps it a clean holdout rather than a second thing being fitted.
+        #
+        # (b) is keyed on `traj_id`, intended as a trajectory grouping -- but MEASURED 2026-09-11,
+        # every traj_id holds EXACTLY ONE sample (40775 / 40775), so the grouping currently does
+        # nothing and this is a plain random sample split. Left keyed on it so it becomes a real
+        # group split the moment multi-step trajectories are stored.
+        rng = np.random.default_rng(a.seed)
+        meshes = sorted({g['mesh_id'] for g in raw})
+        n_mesh = int(round(a.mesh_frac * len(meshes)))
+        held = set(np.asarray(meshes)[rng.permutation(len(meshes))[:n_mesh]].tolist()) if n_mesh else set()
+        va_mesh = [g for g in raw if g['mesh_id'] in held]
+        rest = [g for g in raw if g['mesh_id'] not in held]
+        trajs = np.asarray(sorted({g['traj_id'] for g in rest}))
+        val = set(trajs[rng.permutation(len(trajs))[:max(1, len(trajs) // 5)]].tolist())
+        tr = [g for g in rest if g['traj_id'] not in val]
+        va = [g for g in rest if g['traj_id'] in val]
+        split = ('RANDOM 20 %% sample split (seed %d) -- new k on a KNOWN mesh; '
+                 'plus %d/%d MESHES (%d samples) held out entirely'
+                 % (a.seed, len(held), len(meshes), len(va_mesh)))
     if a.w_max_cut:
         n0 = len(tr)
         tr = [g for g in tr if float(g['w_max']) <= a.w_max_cut]
@@ -275,6 +314,11 @@ def main():
 
     train = [prepare(g) for g in tr]
     valid = [prepare(g) for g in va]
+    # the SECOND holdout, scored every cycle but NEVER used for selection or stopping
+    valid_mesh = [prepare(g) for g in va_mesh]
+    if valid_mesh:
+        print('  + mesh-disjoint holdout: %d samples on %d unseen meshes'
+              % (len(valid_mesh), len({g['mesh_id'] for g in va_mesh})))
     print('oracle check: %d W=0 samples exact' % oracle_check(train + valid, tr + va))
     sd = torch.cat([t['target'] for t in train]).std(0).clamp_min(1e-12)
 
@@ -342,6 +386,9 @@ def main():
         if ep % max(1, a.eval_every) == 0 or ep == a.epochs - 1:
             per, bad = evaluate(net, valid, sd)
             vnorm = float((per / sd).mean())
+            # mesh-disjoint score: REPORTED, never acted on (see the split comment)
+            vmesh = (float((evaluate(net, valid_mesh, sd)[0] / sd).mean())
+                     if valid_mesh else float('nan'))
             if vnorm < best['val']:
                 best = dict(val=vnorm, epoch=ep,
                             state={k: v.detach().clone() for k, v in net.state_dict().items()})
@@ -352,9 +399,11 @@ def main():
             if vnorm < last_sig['val'] * (1.0 - a.min_delta):
                 last_sig = dict(val=vnorm, epoch=ep)
             lr_now = opt.param_groups[0]['lr']
-            hist.append(dict(epoch=ep, train=tot / max(nb, 1), val=vnorm, spd=bad, lr=lr_now))
-            print('  ep %4d  train %.4f   val MAE/std %.4f   SPD viol %.4f   lr %.2e  (%.0fs)'
-                  % (ep, tot / max(nb, 1), vnorm, bad, lr_now, time.time() - t0))
+            hist.append(dict(epoch=ep, train=tot / max(nb, 1), val=vnorm, val_mesh=vmesh,
+                             spd=bad, lr=lr_now))
+            print('  ep %4d  train %.4f   val MAE/std %.4f   val(new MESH) %.4f   '
+                  'SPD viol %.4f   lr %.2e  (%.0fs)'
+                  % (ep, tot / max(nb, 1), vnorm, vmesh, bad, lr_now, time.time() - t0))
             # SNAPSHOT at every evaluation. Cheap next to an epoch, and it makes the run
             # restartable from here instead of from zero.
             torch.save(dict(state=net.state_dict(), opt=opt.state_dict(), sch=sch.state_dict(),
@@ -430,6 +479,9 @@ def main():
                        per_triangle_mae=[float(x) for x in per],
                        label_std=[float(x) for x in sd],
                        mae_over_std=float((per / sd).mean()), spd_violation=float(bad),
+                       n_val_mesh=len(valid_mesh), mesh_frac=a.mesh_frac,
+                       mae_over_std_new_mesh=(float((evaluate(net, valid_mesh, sd)[0] / sd).mean())
+                                             if valid_mesh else None),
                        final_epoch_mae_over_std=final_val, best_epoch=int(best['epoch']),
                        saved=('best' if best['val'] < final_val else 'final'),
                        history=hist, wall_seconds=round(time.time() - t0, 1)), fh, indent=2)
