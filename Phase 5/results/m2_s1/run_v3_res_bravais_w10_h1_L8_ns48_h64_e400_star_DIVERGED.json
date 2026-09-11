@@ -1,0 +1,108 @@
+{
+  "model": "v3",
+  "split": "LEAVE-ONE-FAMILY-OUT: bravais",
+  "outcome": "DIVERGED",
+  "ns": 48,
+  "nt": 10,
+  "hidden": 64,
+  "layers": 8,
+  "use_star": true,
+  "use_global": false,
+  "w_max_cut": 10.0,
+  "huber": 1.0,
+  "batch": 64,
+  "lr": 0.003,
+  "opt": "adam",
+  "schedule": "plateau",
+  "seed": 0,
+  "best_epoch": 12,
+  "best_mae_over_std": 0.18794244554162653,
+  "killed_at_epoch": 22,
+  "note": "training DIVERGED between ep 18 and 20 (train 0.0479 -> 0.4560, val 0.1884 -> 1.0081, worse than the global-mean baseline 1.0707) and did not recover. These are the BEST weights (ep 12), not a converged model. The depth-8 question is CONFOUNDED by the divergence and needs a clean re-run.",
+  "history": [
+    {
+      "epoch": 0,
+      "train": 0.24349542260231033,
+      "val": 0.4665311480268643,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 2,
+      "train": 0.10432882989174497,
+      "val": 0.30492803366598964,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 4,
+      "train": 0.07659709111086924,
+      "val": 0.33518331731776213,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 6,
+      "train": 0.06495706478755402,
+      "val": 0.23566072417711625,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 8,
+      "train": 0.061203227711220595,
+      "val": 0.20210884854287428,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 10,
+      "train": 0.053325001039696174,
+      "val": 0.20475764355287918,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 12,
+      "train": 0.05550459377580035,
+      "val": 0.18794244554162653,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 14,
+      "train": 0.047257980005799255,
+      "val": 0.19956584539358135,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 16,
+      "train": 0.043240844616057275,
+      "val": 0.18996226330829638,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 18,
+      "train": 0.04794700342068017,
+      "val": 0.1884254158263273,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 20,
+      "train": 0.45604528262751964,
+      "val": 1.0080591911308014,
+      "spd": 0.0,
+      "lr": 0.003
+    },
+    {
+      "epoch": 22,
+      "train": 0.4542972775500626,
+      "val": 1.0049043993454967,
+      "spd": 0.0,
+      "lr": 0.003
+    }
+  ]
+}

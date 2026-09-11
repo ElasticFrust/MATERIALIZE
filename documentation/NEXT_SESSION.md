@@ -168,41 +168,55 @@ section used to pose are answered:
 | S4 | wire in as an M1 pre-filter | solver calls per design reduced at unchanged design quality |
 | S5 | **the edit-policy** — the actual endpoint of this arc | separate plan; trains on the trajectories S2 stores |
 
-> ### S1 as of 2026-09-06 — the curvature constraint is the largest single gain; the kill criterion still fires
+> ### S1 as of 2026-09-10 — **the KILL CRITERION IS CLEARED**; the must-tier on nu is not
 >
-> Full record: **`Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md`** (§6 is the trained result).
-> Instructional companion: **`documentation/GNN_GUIDE.md`**.
+> Full record: **`Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md`** (SS7/7b are the trained
+> results). Instructional companion: **`documentation/GNN_GUIDE.md`**.
 >
-> | architecture | per-triangle MAE/σ, `bravais` holdout |
-> |---|---|
-> | v2 scalar messages | 0.5111 *(own-bulk oracle 0.4114 — v2 was beaten BY it)* |
-> | v3 tensor messages, free SPD head | 0.2040 |
-> | + residual head `G = (I+X)G_an(I+X)ᵀ` | 0.2023 |
-> | **+ `C_curv` vertex-star channel** | **0.1209** — **−40 %**, better in EVERY k-contrast bin |
+> | architecture | per-triangle MAE/sigma, `bravais` holdout | MAE(nu) vs SIM |
+> |---|---|---|
+> | v2 scalar messages | 0.5111 *(own-bulk oracle 0.4740 -- v2 was beaten BY it)* | -- |
+> | v3 tensor messages, free SPD head | 0.2040 | 0.0550 |
+> | + residual head `G = (I+X)G_an(I+X)^T` | 0.2023 | -- |
+> | + `C_curv` vertex-star channel | 0.1209 | 0.0572 |
+> | **+ `M_S` area-weighted channel** | **0.0925** | **0.0329** |
 >
-> **Against the independent sim (400 networks): MAE(ν) 0.0572 mean / 0.0204 median, MAE(E)/E 6.57 %
-> / 2.28 %. MUST tier NOT met, KILL criterion STILL TRIGGERED.** `SOLVER vs SIM = 3.6e-08`, so the
-> floor is not the problem.
+> **MAE(nu) 0.0329 vs a kill line of 0.05 -- CLEARED, first time in S1.
+> MAE(E)/E 3.85 % vs a must-tier of 5 % -- MET.** Must-tier on nu (<= 0.02) NOT met: in-domain
+> **0.0231**, median **0.0109** (over half the holdout is already inside it; the mean is tail-driven).
 >
-> **Read it with the domain split** (`Phase 5/verifications/m2_error_strata.py`): `--w_max_cut 10`
-> removes near-mechanism networks from **training** and the holdout deliberately keeps them.
-> In-domain (1190 networks) MAE(ν) **0.0452**; outside it (110, never trained on) **0.2190** — those
-> 8.5 % carry 22 % of the tensor error and **31 %** of MAE(ν). *(An earlier reading said "roughly two
-> thirds"; measured, 31 %.)*
+> **Always read it with the domain split** (`Phase 5/verifications/m2_error_strata.py`):
+> `--w_max_cut 10` removes near-mechanism networks from **training**, the holdout keeps them.
+> In-domain (1190) MAE(nu) **0.0231**; outside (110, never trained on) **0.1899** -- those 8.5 %
+> carry 25 % of the tensor error and **43 %** of MAE(nu).
 >
-> **A cheap, well-posed next change, found by that script:** the residual head is **not** exact where
-> `W = 0` after training. Those 254 networks have the lowest tensor error of any bin (0.0405) and
-> MAE(ν) **0.0528** — above the kill line, on the samples whose answer is a closed form the
-> architecture already contains. `X = 0` is an *initialisation* property; nothing pins it there.
-> Add a loss term or a hard mask forcing `X → 0` where `w_max = 0`.
+> ### The three things that decide what happens next
 >
-> **In flight (launched 2026-09-06, ~4–5 days each, running concurrently at 2 threads):**
-> 1. `..._L5_ns48_h64_e400_star_ms` — adds the **`M_S` area-weighted constraint** to the star model
->    (the "area constraint"; single variable against 0.1209);
-> 2. `..._L8_ns48_h64_e400_star` — **depth 8**, star only (single variable against the same 0.1209;
->    the direct test of the reach hypothesis, since the contrast trend was NOT flattened by `C_curv`).
+> 1. **The model is UNDERFIT -- measured, not assumed.** `m2_v3_report`'s train score is computed on
+>    the UNFILTERED train split, so it includes the 34.6 % of samples `--w_max_cut` removed and the
+>    model never saw; **that number (0.1771) is contaminated -- do not quote it.** On what it actually
+>    fitted (same filter, same sigma): **TRAIN 0.1214 vs VAL 0.0708**, i.e. train 71 % WORSE. No
+>    generalisation gap. ⇒ **capacity, not data.** (Bounded by: leave-one-family-out makes train and
+>    val different distributions, so part of the 71 % is family difficulty.)
+> 2. **DEPTH IS UNANSWERED.** The depth-8 arm **DIVERGED** at ep 20 (train 0.0479 -> 0.4560, val
+>    0.1884 -> 1.0081) and was killed at ep 22. Best weights rescued in
+>    `checkpoint_..._L8_..._star_rescued.pt` (`diverged=True`), history in
+>    `run_..._star_DIVERGED.json`. **Its 0.1879 is a floor, not a measurement of depth.** Re-run at a
+>    LOWER LR -- diverging at 3e-3 with 8 layers is evidence the rate is too hot for that depth.
+> 3. **`--w_max_cut`'s premise is REFUTED.** Its help text says near-mechanism networks are "where
+>    the solver is least trustworthy"; that was never measured (what was measured, 7x worse, is the
+>    MODEL's error). On the 6 020 samples where `sim_gap` is actually computed
+>    (`structure == 'dilution'`), the solver-sim gap does NOT degrade with |W| -- it improves
+>    (max gap 4.97e-02 at |W| 1-3 down to 7.04e-03 above 100; **zero** samples > 0.05 in any bin).
+>    The tail is learnable. **But do not act on that alone** -- the model is capacity-limited, so
+>    adding a large unseen harder regime without capacity risks degrading the in-domain result.
+>    *(`sim_gap` is 0.0/`not_checked` for every NON-dilution sample, `build_dataset.py:527`; a first
+>    pass read those placeholders as measurements. Restrict to the checked subset.)*
 >
-> Both `--resume`-capable, snapshotting every evaluation; log `Phase 5/results/m2_s1/v3_{ms,d8}_bravais.log`.
+> **RECOMMENDED ORDER: (a) depth 8 at a lower LR** (capacity is the measured deficit, and the
+> contrast spread WIDENED 15x -> 26x under `M_S`, so reach is untouched); **(b) then filter-off**,
+> with the capacity to absorb it. **NOT next:** more data (underfit), and the `X -> 0` pin -- `M_S`
+> repaired that bin on its own (MAE(nu) 0.0528 -> **0.0205**), leaving it worth ~11 % of the headline.
 
 > ### ⚠ 2026-08-26 — TWO BUGS OF ONE CLASS, and the guard that now catches them
 >

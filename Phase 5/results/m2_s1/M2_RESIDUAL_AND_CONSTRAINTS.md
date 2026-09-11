@@ -7,15 +7,25 @@ solver actually imposes, instead of making it infer their effect from examples.
 **Producer.** `Phase 5/m2/model_v3.py`, `Phase 5/m2/train_v3.py`.
 Gates: `Phase 5/verifications/test_m2_head_v3.py`, `Phase 5/verifications/test_m2_constraints.py`.
 Scoring: `Phase 5/m2/evaluate_v2.py` (vs the independent sim),
-`Phase 5/verifications/m2_error_strata.py` (the stratifications of §6).
+`Phase 5/verifications/m2_error_strata.py` (the stratifications of §7).
 float64, `OMP_NUM_THREADS=4`, seed 0, `data/dataset_v2_s0.npz` (41 431 samples).
 
-> **Headline (2026-09-06).** The curvature channel is the largest single architectural gain of the
-> project: per-triangle MAE/σ **0.2023 → 0.1209, −40 %**, improving in **every** k-contrast bin.
-> The kill criterion is nonetheless **still triggered**: MAE(ν) vs the sim **0.0572** mean against a
-> 0.05 line — but it is triggered by 110 of 1300 holdout networks that `--w_max_cut 10` deliberately
-> **removes from training** and the holdout deliberately keeps. Inside the trained domain MAE(ν) is
-> **0.0452** mean / **0.0195** median. Full reading in §6.
+> ## Headline (2026-09-10) — **the KILL CRITERION IS CLEARED**
+>
+> Both constraint channels pay, and the second one carried S1 over the line:
+>
+> | architecture | per-triangle MAE/σ | MAE(ν) vs the sim |
+> |---|---|---|
+> | v2 scalar messages | 0.5111 | — |
+> | v3 tensor messages, free head | 0.2040 | 0.0550 |
+> | + residual head | 0.2023 | — |
+> | + `C_curv` (star) | 0.1209 | 0.0572 |
+> | **+ `M_S` (area)** | **0.0925** | **0.0329** |
+>
+> **MAE(ν) 0.0329 against a kill line of 0.05 — cleared for the first time in S1.**
+> **MAE(E)/E 3.85 % against a must-tier of 5 % — met.** The must-tier on ν (≤ 0.02) is **not** met;
+> in-domain it is **0.0231**, i.e. ~15 % away. Median MAE(ν) is **0.0109**, so over half the holdout
+> is already inside the must-tier and the mean is tail-driven. Full reading in §7.
 
 ---
 
@@ -176,7 +186,7 @@ the triangles owning the perturbed bond. The gate now randomises the readout fir
 hop), so a layer advances **2** union hops, not 1. The first gate versions asserted the wrong bound
 and failed the model for the test's error.
 
-## 6. The trained result — the star channel is the project's largest single gain
+## 7. The trained result — both constraint channels pay
 
 Run `res_bravais_w10_h1_L5_ns48_h64_e400_star`: `StarMP` **on**, `M_S` **off** (single variable
 against the residual head), everything else identical to the run that produced 0.2023. 315 758
@@ -246,17 +256,115 @@ The `W = 0` bin has the **lowest per-triangle tensor error of any bin and the se
 MAE(ν)** — 0.0528, itself above the kill line. This is §2's caveat, measured: `X = 0` reproduces
 `A(s)` exactly and the model *starts* there, but nothing during training forces `X → 0` on `W = 0`
 samples, and it drifts. These are the samples whose answer is a closed form the architecture already
-contains. **A loss term (or a hard mask) pinning `X → 0` where `w_max = 0` is a cheap, well-posed
-next change** — it is the one part of the target that needs no learning at all.
+contains.
 
-## 7. Limitations
+*(Follow-up, §7b: `M_S` repaired most of this on its own — that bin fell to MAE(ν) **0.0205** — so
+the `X → 0` penalty dropped from "the obvious next change" to a second-order lever worth ~11 % of
+the headline. Recorded because the re-ranking only happened when the stratification was re-run; the
+conclusion above was carried forward one round too long.)*
+
+## 7b. Adding `M_S` — the AREA constraint, and the kill criterion clears
+
+Run `res_bravais_w10_h1_L5_ns48_h64_e400_star_ms`: `StarMP` **and** `GlobalMS` on, everything else
+identical to the star run. 397 328 parameters (+26 %), stopped on the **LR floor** at epoch 104,
+best **0.0925 @ ep 94**; the last five evaluations sit at 0.0925/0.0927/0.0926/0.0928/0.0926 with
+train loss pinned at 0.0159, so it is converged rather than merely slowed.
+
+**Per-triangle MAE/σ 0.1209 → 0.0925, −23 %**, and it converged at a *lower level at every schedule
+position*, not merely lower at the end: its epoch-82 score is one the star run never reached at any
+epoch.
+
+| k-contrast | n | star | **star + `M_S`** | MAE(ν) star | **MAE(ν) + `M_S`** |
+|---|---|---|---|---|---|
+| 0 – 3 | 73 | 0.0193 | **0.0094** | 0.0368 | **0.0107** |
+| 3 – 10 | 275 | 0.0414 | **0.0257** | 0.0368 | **0.0145** |
+| 10 – 10² | 736 | 0.1111 | **0.0801** | 0.0493 | **0.0246** |
+| 10² – 10⁴ | 16 | 0.1190 | **0.0899** | 0.0559 | **0.0163** |
+| 10⁴ – 10⁹ | 200 | 0.2880 | **0.2493** | 0.1391 | **0.1260** |
+| **ALL** | 1300 | 0.1185 | **0.0908** | 0.0599 | **0.0372** |
+
+**Against the independent sim** (400 networks, `evaluate_v2.py`):
+
+| | mean | median | tier |
+|---|---|---|---|
+| MAE(ν) | **0.0329** | **0.0109** | kill line 0.05 — **CLEARED** |
+| MAE(E)/E | **3.85 %** | **1.01 %** | must-tier 5 % — **MET** |
+| baseline (dataset-mean ν) | 0.2795 | 0.2316 | — |
+
+The must-tier on ν (≤ 0.02) is **not** met. In-domain it is **0.0231** (was 0.0452), i.e. ~15 %
+away; the median 0.0109 is well inside it, so the shortfall is entirely in the tail.
+
+| domain | n | MAE/σ | MAE(ν) |
+|---|---|---|---|
+| `max‖W‖ ≤ 10` — trained on | 1190 | 0.0742 | **0.0231** |
+| `max‖W‖ > 10` — never trained on | 110 | 0.2706 | **0.1899** |
+
+Those 110 now carry **25 % of the tensor error and 43 % of MAE(ν)** — up from 31 %, not because
+they got worse (0.2190 → 0.1899, they improved) but because everything else improved faster.
+
+**Two things that did NOT improve, and they matter more than the headline:**
+
+- **The contrast spread WIDENED, ~15× → 26×.** Every bin improved, but the easy end improved roughly
+  twice as much as the hard end. `M_S` is a rank-3 global coupling; it does nothing for the
+  contrast-dependent **screening length** of §1. Reach is still an open, untouched deficit.
+- **The model is still UNDERFIT** — and measured properly this time. `m2_v3_report`'s train score is
+  computed on the **unfiltered** train split, so it includes the 34.6 % of near-mechanism samples
+  `--w_max_cut` removed and the model never saw; that number (0.1771) is contaminated and must not
+  be quoted. Measured on what it actually fitted (same filter, same σ, 500 networks each):
+
+  | | per-triangle MAE/σ |
+  |---|---|
+  | **TRAIN** (fitted, `‖W‖ ≤ 10`) | **0.1214** |
+  | **VAL** (`bravais`, `‖W‖ ≤ 10`) | **0.0708** |
+
+  Train is **71 % worse** than validation — the opposite of overfitting; there is no generalisation
+  gap to close. Caveat that bounds the strength: leave-one-family-out makes train and val different
+  *distributions* (`bravais` is the easiest family), so part of that 71 % is family difficulty. A
+  within-family split would separate them. But the direction is unambiguous and consistent with
+  every earlier measurement: **capacity, not data.**
+
+### `--w_max_cut`'s stated premise is REFUTED
+
+The flag's help text says near-mechanism networks are "where the solver is least trustworthy". That
+was never measured; what *was* measured (7× worse at high ‖W‖) is the **model's** error, a different
+claim that got conflated with label quality. Measured now, on the 6 020 samples where
+`build_dataset` actually computes `sim_gap` (`structure == 'dilution'`, chosen *because* the solver
+was expected to be fragile there — so a worst case):
+
+| max‖W‖ | n | median gap | mean gap | max gap | frac > 0.05 |
+|---|---|---|---|---|---|
+| 1 – 3 | 300 | 8.1e-11 | 2.9e-03 | 4.97e-02 | **0.000** |
+| 3 – 10 | 1498 | 1.3e-10 | 9.2e-05 | 4.56e-02 | **0.000** |
+| 10 – 30 | 1418 | 2.8e-10 | 2.1e-05 | 2.57e-02 | **0.000** |
+| 30 – 100 | 1332 | 6.7e-10 | 1.3e-05 | 1.77e-02 | **0.000** |
+| 100+ | 1472 | 7.1e-09 | 8.6e-06 | **7.04e-03** | **0.000** |
+
+**The solver–sim gap does not degrade with ‖W‖ — it improves.** Not one sample in any bin exceeds
+the 0.05 flag. So the tail's labels are sound and the regime is learnable in principle; the filter
+excludes 34.6 % of the training data on a premise that does not hold for this dataset.
+
+**⚠ Do not act on that alone.** The model is capacity-limited (above), so adding a large, unseen,
+harder regime without adding capacity risks spreading the same capacity thinner and degrading the
+in-domain result. Coverage and capacity are separate problems and capacity is the measured one.
+
+*(`sim_gap` is `0.0` with status `not_checked` for every non-dilution sample — `build_dataset.py:527`.
+A first pass at this analysis read those placeholder zeros as measurements and concluded the solver
+was perfect everywhere. Restrict to the checked subset before reading that column.)*
+
+## 8. Limitations
 
 - **`M_S` destroys the finite receptive field** — one perturbation reaches every triangle in one
   layer. Faithful (the constraint *is* global), but it compounds the global normalisers already in
   `prepare()` (mean bond length, mean `k`), which are the prime suspect for the measured
   size-transfer degradation. `--no_global` exists so it can be ablated as a single variable.
-- **`M_S` is trained but not yet scored** — the run with star + `M_S` (`..._star_ms`) and the
-  depth-8 star run were launched 2026-09-06 and are the next two single-variable measurements.
+- **DEPTH IS STILL UNANSWERED.** The depth-8 arm (`..._L8_..._star`) **diverged** at epoch 20
+  (train 0.0479 → 0.4560, val 0.1884 → 1.0081, worse than the global-mean baseline) and never
+  recovered; it was killed at epoch 22. Its best weights (ep 12, 0.1879) are rescued in
+  `checkpoint_..._L8_..._star_rescued.pt` with `diverged=True` in the metadata, and its history in
+  `run_..._star_DIVERGED.json`. **That 0.1879 is a floor, not a measurement of depth** — the arm is
+  confounded and needs a clean re-run at a lower LR (diverging at 3e-3 with 8 layers is itself
+  evidence the rate is too hot for that depth). This matters more now that the model is measured
+  capacity-limited and the contrast spread has widened.
 - **The constraints are REPRESENTED, not IMPOSED.** The channels carry the operators' structure and
   their exact weights; nothing in the model solves the KKT system or projects onto its null space.
   Whether representation suffices is what these runs measure.
