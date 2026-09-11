@@ -192,12 +192,17 @@ section used to pose are answered:
 >
 > ### The three things that decide what happens next
 >
-> 1. **The model is UNDERFIT -- measured, not assumed.** `m2_v3_report`'s train score is computed on
->    the UNFILTERED train split, so it includes the 34.6 % of samples `--w_max_cut` removed and the
->    model never saw; **that number (0.1771) is contaminated -- do not quote it.** On what it actually
->    fitted (same filter, same sigma): **TRAIN 0.1214 vs VAL 0.0708**, i.e. train 71 % WORSE. No
->    generalisation gap. ⇒ **capacity, not data.** (Bounded by: leave-one-family-out makes train and
->    val different distributions, so part of the 71 % is family difficulty.)
+> 1. **OVERFITTING IS RULED OUT; UNDERFITTING IS NOT ESTABLISHED.** `m2_v3_report`'s train score is
+>    computed on the UNFILTERED train split, so it includes the 34.6 % of samples `--w_max_cut`
+>    removed and the model never saw; **that number (0.1771) is contaminated -- do not quote it.** On
+>    what it actually fitted: **TRAIN 0.1214 vs VAL 0.0708**, train 71 % WORSE.
+>    **train > val is NOT the underfit signature** (that is train ~ val, both high) -- it says the two
+>    sets are different DISTRIBUTIONS, which leave-one-family-out guarantees (`bravais` is the easiest
+>    family). It establishes exactly one thing: the model is **not memorising**, so **more data is not
+>    indicated**. It does NOT establish that capacity binds.
+>    **RUN THE OVERFIT PROBE FIRST (hours, not days):** train the same architecture to convergence on
+>    ~200 training networks only. Error near zero -> capacity is fine, the limit is optimisation or
+>    target ambiguity. Error stuck -> capacity binds and depth/width is the lever.
 > 2. **DEPTH IS UNANSWERED.** The depth-8 arm **DIVERGED** at ep 20 (train 0.0479 -> 0.4560, val
 >    0.1884 -> 1.0081) and was killed at ep 22. Best weights rescued in
 >    `checkpoint_..._L8_..._star_rescued.pt` (`diverged=True`), history in
@@ -213,10 +218,13 @@ section used to pose are answered:
 >    *(`sim_gap` is 0.0/`not_checked` for every NON-dilution sample, `build_dataset.py:527`; a first
 >    pass read those placeholders as measurements. Restrict to the checked subset.)*
 >
-> **RECOMMENDED ORDER: (a) depth 8 at a lower LR** (capacity is the measured deficit, and the
-> contrast spread WIDENED 15x -> 26x under `M_S`, so reach is untouched); **(b) then filter-off**,
-> with the capacity to absorb it. **NOT next:** more data (underfit), and the `X -> 0` pin -- `M_S`
-> repaired that bin on its own (MAE(nu) 0.0528 -> **0.0205**), leaving it worth ~11 % of the headline.
+> **RECOMMENDED ORDER: (a) the OVERFIT PROBE** -- hours, and it decides whether capacity is the
+> binding constraint before anything expensive is launched; **(b) IF capacity binds**, more of it --
+> and prefer WIDER (`--hidden 96` / `--ns 64` at depth 5) over deeper as the first probe, since depth
+> 8 already diverged once at lr 3e-3 and costs ~4800 s/epoch against ~2050; **(c) then filter-off**,
+> converting the 110 networks that carry 43 % of MAE(nu) from extrapolation to interpolation.
+> **NOT next:** more data (no generalisation gap, so it is not indicated), and the `X -> 0` pin --
+> `M_S` repaired that bin on its own (MAE(nu) 0.0528 -> **0.0205**), worth ~11 % of the headline.
 
 > ### ⚠ 2026-08-26 — TWO BUGS OF ONE CLASS, and the guard that now catches them
 >

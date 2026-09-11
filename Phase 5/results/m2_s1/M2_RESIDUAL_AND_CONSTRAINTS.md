@@ -307,7 +307,8 @@ they got worse (0.2190 → 0.1899, they improved) but because everything else im
 - **The contrast spread WIDENED, ~15× → 26×.** Every bin improved, but the easy end improved roughly
   twice as much as the hard end. `M_S` is a rank-3 global coupling; it does nothing for the
   contrast-dependent **screening length** of §1. Reach is still an open, untouched deficit.
-- **The model is still UNDERFIT** — and measured properly this time. `m2_v3_report`'s train score is
+- **OVERFITTING IS RULED OUT. UNDERFITTING IS NOT ESTABLISHED** — and the difference is load-bearing,
+  because it decides whether the next run should buy capacity. `m2_v3_report`'s train score is
   computed on the **unfiltered** train split, so it includes the 34.6 % of near-mechanism samples
   `--w_max_cut` removed and the model never saw; that number (0.1771) is contaminated and must not
   be quoted. Measured on what it actually fitted (same filter, same σ, 500 networks each):
@@ -317,11 +318,27 @@ they got worse (0.2190 → 0.1899, they improved) but because everything else im
   | **TRAIN** (fitted, `‖W‖ ≤ 10`) | **0.1214** |
   | **VAL** (`bravais`, `‖W‖ ≤ 10`) | **0.0708** |
 
-  Train is **71 % worse** than validation — the opposite of overfitting; there is no generalisation
-  gap to close. Caveat that bounds the strength: leave-one-family-out makes train and val different
-  *distributions* (`bravais` is the easiest family), so part of that 71 % is family difficulty. A
-  within-family split would separate them. But the direction is unambiguous and consistent with
-  every earlier measurement: **capacity, not data.**
+  **Read this carefully — train > val is NOT the signature of underfitting.** The textbook signatures
+  are *underfit* = train ≈ val, both high; *overfit* = train ≪ val. Train **worse** than val is
+  neither: it says the two sets are **different distributions**, which under leave-one-family-out
+  they are by construction — `bravais` (regular lattices) is the easiest family, the training set is
+  everything else.
+
+  So what it establishes is exactly one thing: **the model is not memorising** — you cannot overfit a
+  set you do worse on than on held-out data. There is no generalisation gap to close, so *more data
+  is not indicated*.
+
+  **It does NOT establish that capacity is the binding constraint.** That rests on weaker,
+  circumstantial evidence: train error sits at 0.1214 rather than being driven toward zero; every
+  earlier checkpoint showed train ≈ val; the run stopped on the LR floor with train loss pinned at
+  0.0159. Suggestive, not decisive. *(An earlier version of this section asserted "capacity, not
+  data" as settled, and a 5-day depth run was recommended on it. The user caught the inference.)*
+
+  **THE DECISIVE TEST IS CHEAP — run it before buying capacity.** An **overfit probe**: train the
+  same architecture to convergence on ~200 training networks only. If it can drive their error near
+  zero, capacity is fine and the limit is optimisation or genuine ambiguity in the target; if it
+  cannot, capacity is genuinely binding and depth/width is the right lever. Hours, not days — and it
+  answers directly what a depth run would answer expensively and ambiguously.
 
 ### `--w_max_cut`'s stated premise is REFUTED
 
