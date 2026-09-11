@@ -58,6 +58,8 @@ import sys                                                               # noqa:
 import time                                                              # noqa: E402
 import warnings                                                          # noqa: E402
 
+from fractions import Fraction
+
 import numpy as np                                                       # noqa: E402
 import torch                                                             # noqa: E402
 
@@ -356,8 +358,41 @@ def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
     for r in S.seed_cells(n_basis_range=range(S.N_BASIS_MIN, 13), n_cfg=CELL_N_CFG, seed=seed):
         yield ('cells', r['name'], r)
     yield from (('anchor', r['name'], r) for r in S.seed_cells_anchors() if r.get('geo') is not None)
-    for phi in BRAVAIS_PHI:                      # ORDERED crystals -- family 'bravais'
-        for psi in BRAVAIS_PSI:
+    # ---- SEED PLUMBING, fixed 2026-09-11 ----------------------------------------------------
+    # `--seed` reached `cells`, `longrange` and `random` but NOT the three crystal-derived loops
+    # below, so a rebuild with a NEW seed regenerated them IDENTICALLY: measured, 389 of 603 meshes
+    # in a fresh build were duplicates of the training set, and `disordered` contributed none of the
+    # new realisations it is supposed to. Two different causes, and only ONE was a bug:
+    #
+    #   * `bravais` is DETERMINISTIC BY CONSTRUCTION and that is CORRECT -- a Bravais lattice is
+    #     fixed by (phi, psi, diagonal, reps). What was missing is that the 5x5 (phi, psi) grid is
+    #     an arbitrary sampling of the family, so a new seed should visit DIFFERENT crystals.
+    #   * `disordered` WAS a bug: its eta-disorder realisations were pinned to `DISORDER_SEEDS[:2]`,
+    #     a module constant, so the family held exactly two realisations per (phi, psi, diag, eta)
+    #     whatever seed was asked for -- an ensemble no rebuild could widen.
+    #
+    # **phi MUST BE RATIONAL** and this is physics, not a coding detail: under PBC a rectangular
+    # supercell exists only for rational phi, and its size is the denominator. A continuous draw
+    # fails outright -- `phi=0.808 gives no rectangular supercell at Ny=52` -- which is exactly how
+    # the first version of this fix silently produced ZERO bravais, disordered and longrange meshes
+    # at seed != 0. So a new seed samples other SMALL-DENOMINATOR rationals (q <= 8, all 17 of which
+    # are verified to build), never a continuum. `psi` is an aspect ratio with no such constraint
+    # and is drawn continuously.
+    #
+    # BOTH paths are IDENTITY AT seed == 0, so `dataset_v2_s0` stays reproducible from this commit.
+    # Gated by `Phase 5/verifications/test_m2_dataset_seeding.py`.
+    brng = np.random.default_rng(seed)
+    if seed:
+        pool = sorted({float(Fraction(q_p, q_q)) for q_q in (2, 3, 4, 5, 6, 8)
+                       for q_p in range(q_q + 1)})
+        phis = tuple(np.asarray(pool)[brng.permutation(len(pool))[:len(BRAVAIS_PHI)]])
+        psis = tuple(np.round(brng.uniform(min(BRAVAIS_PSI), max(BRAVAIS_PSI),
+                                           len(BRAVAIS_PSI)), 3))
+    else:
+        phis, psis = BRAVAIS_PHI, BRAVAIS_PSI
+
+    for phi in phis:                             # ORDERED crystals -- family 'bravais'
+        for psi in psis:
             for diag in S.BRAVAIS_DIAGONALS:
                 try:
                     r = S.bravais_lattice(phi, psi, reps=BRAVAIS_REPS, diagonal=diag)
@@ -367,11 +402,13 @@ def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
     # DISORDERED: the FULL (phi, psi) grid crossed with eta, not the coarser 3x3 subset it used to
     # be. A disordered crystal is a different material from its parent, so it earns the same
     # geometric resolution as the ordered family rather than a sparser one.
-    for phi in BRAVAIS_PHI:
-        for psi in BRAVAIS_PSI:
+    for phi in phis:
+        for psi in psis:
             for diag in S.BRAVAIS_DIAGONALS:
                 for eta in BRAVAIS_ETAS:
-                    for sd in DISORDER_SEEDS[:2]:
+                    for rep, sd0 in enumerate(DISORDER_SEEDS[:2]):
+                        # the realisation seed now DEPENDS on --seed (identity at seed 0)
+                        sd = sd0 if not seed else int(seed) * 10007 + rep
                         try:
                             r = S.bravais_lattice(phi, psi, reps=BRAVAIS_REPS, diagonal=diag,
                                                   eta=eta, seed=sd)
@@ -392,8 +429,8 @@ def topologies(smoke=False, n_random=24, n_nodes=120, seed=0):
                              F.periodic_field(pts, Lx, Ly, rng, **kw)], 1)
         return fn
 
-    for phi in BRAVAIS_PHI:
-        for psi in BRAVAIS_PSI:
+    for phi in phis:
+        for psi in psis:
             for diag in S.BRAVAIS_DIAGONALS:
                 for amp, ckw in BRAVAIS_DISPLACE:
                     try:
