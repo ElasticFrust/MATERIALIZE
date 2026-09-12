@@ -10,22 +10,44 @@ Scoring: `Phase 5/m2/evaluate_v2.py` (vs the independent sim),
 `Phase 5/verifications/m2_error_strata.py` (the stratifications of §7).
 float64, `OMP_NUM_THREADS=4`, seed 0, `data/dataset_v2_s0.npz` (41 431 samples).
 
-> ## Headline (2026-09-10) — **the KILL CRITERION IS CLEARED**
+> ## Headline (2026-09-11) -- READ THE MEDIAN, NOT THE MEAN
 >
-> Both constraint channels pay, and the second one carried S1 over the line:
+> The architecture work is real and replicated. **The tier verdict is not decidable from the mean**,
+> because the mean is not reproducible at the sample size the criterion has always been evaluated at.
 >
-> | architecture | per-triangle MAE/σ | MAE(ν) vs the sim |
-> |---|---|---|
-> | v2 scalar messages | 0.5111 | — |
-> | v3 tensor messages, free head | 0.2040 | 0.0550 |
-> | + residual head | 0.2023 | — |
-> | + `C_curv` (star) | 0.1209 | 0.0572 |
-> | **+ `M_S` (area)** | **0.0925** | **0.0329** |
+> | architecture | per-triangle MAE/sigma (`bravais` holdout) |
+> |---|---|
+> | v2 scalar messages | 0.5111 *(own-bulk oracle 0.4740 -- v2 was beaten BY it)* |
+> | v3 tensor messages, free head | 0.2040 |
+> | + residual head | 0.2023 |
+> | + `C_curv` (star) | 0.1209 |
+> | **+ `M_S` (area)** | **0.0925** |
 >
-> **MAE(ν) 0.0329 against a kill line of 0.05 — cleared for the first time in S1.**
-> **MAE(E)/E 3.85 % against a must-tier of 5 % — met.** The must-tier on ν (≤ 0.02) is **not** met;
-> in-domain it is **0.0231**, i.e. ~15 % away. Median MAE(ν) is **0.0109**, so over half the holdout
-> is already inside the must-tier and the mean is tail-driven. Full reading in §7.
+> **Against the INDEPENDENT SIM on FRESHLY GENERATED, UNSEEN meshes** -- two independent builds
+> (seeds 4321 and 777), 400 networks per family each:
+>
+> | family | MAE(nu) s4321 | MAE(nu) s777 | **median s4321** | **median s777** | verdict |
+> |---|---|---|---|---|---|
+> | `random` | 0.0256 | 0.0260 | 0.0099 | 0.0099 | passes both |
+> | `bravais` | 0.0329 | 0.0396 | 0.0109 | 0.0105 | passes both |
+> | `disordered` | 0.0583 | 0.0442 | 0.0142 | 0.0137 | **STRADDLES the line** |
+> | `longrange` | 0.0750 | 0.1040 | 0.0121 | 0.0151 | fails both |
+> | `cells` | 0.1613 | **0.2548** | 0.0466 | 0.0458 | fails both, worst |
+>
+> **The medians replicate to within 0.0004-0.003. The means swing by up to 58 %.** Same model, same
+> protocol, two independent draws. That is the signature of a heavy tail: the mean is set by a
+> handful of extreme networks and carries enormous sampling variance.
+>
+> **Consequences, and the first one is a spec problem, not a model problem:**
+> - **the kill criterion is defined on the MEAN, and the mean is not reproducible at n = 400** -- so
+>   a mean-based pass/fail at that sample size mostly measures how many outliers landed in the draw;
+> - **every family's median is inside the kill line** (0.0099-0.0466), and `random`'s median 0.0099
+>   is inside the MUST tier (0.02). More than half of every family is accurate; the failure is
+>   entirely in the tail;
+> - `cells` is the problem family -- worst mean, worst E (16.7 %/23.3 %), worst tail -- and its
+>   cause is now measured (SS9).
+>
+> Full reading in SS7/7b; the generalisation and error-structure measurements in SS9.
 
 ---
 
@@ -263,7 +285,7 @@ the `X → 0` penalty dropped from "the obvious next change" to a second-order l
 the headline. Recorded because the re-ranking only happened when the stratification was re-run; the
 conclusion above was carried forward one round too long.)*
 
-## 7b. Adding `M_S` — the AREA constraint, and the kill criterion clears
+## 7b. Adding `M_S` — the AREA constraint
 
 Run `res_bravais_w10_h1_L5_ns48_h64_e400_star_ms`: `StarMP` **and** `GlobalMS` on, everything else
 identical to the star run. 397 328 parameters (+26 %), stopped on the **LR floor** at epoch 104,
@@ -287,7 +309,7 @@ epoch.
 
 | | mean | median | tier |
 |---|---|---|---|
-| MAE(ν) | **0.0329** | **0.0109** | kill line 0.05 — **CLEARED** |
+| MAE(ν) | **0.0329** | **0.0109** | kill line 0.05 — cleared **on this family** (see §9) |
 | MAE(E)/E | **3.85 %** | **1.01 %** | must-tier 5 % — **MET** |
 | baseline (dataset-mean ν) | 0.2795 | 0.2316 | — |
 
@@ -368,7 +390,141 @@ in-domain result. Coverage and capacity are separate problems and capacity is th
 A first pass at this analysis read those placeholder zeros as measurements and concluded the solver
 was perfect everywhere. Restrict to the checked subset before reading that column.)*
 
-## 8. Limitations
+
+## 9. Generalisation, and the STRUCTURE of the error  *(2026-09-11)*
+
+Producers: `Phase 5/verifications/m2_fresh_holdout.py`, `m2_error_cancellation.py`,
+`m2_validation_plots.py`. Figures: `m2_learning_curves.png`, `m2_parity_{nu,E}.png`,
+`m2_by_family.png`, `m2_by_wmax.png`, `m2_error_cancellation.png`.
+
+### 9a. A frozen model plus a seeded generator = honest test data on demand
+
+Every number before this section came from ONE holdout family, `bravais`, because the hard families
+were all trained on. The way out is not a re-split and a retrain (~2.4 days) but **generating fresh
+data and scoring the frozen model on it (~25 min)** — the split has to be fixed before training, the
+*measurement* does not. That capability is permanent: any future checkpoint can be scored on new
+data without retraining anything.
+
+### 9b. Generalisation to unseen meshes is GOOD
+
+Matched comparison, both sides filtered at `‖W‖ ≤ 10` exactly as training was, same σ:
+
+| | per-triangle MAE/σ |
+|---|---|
+| TRAIN (what it actually fitted) | 0.1197 |
+| FRESH, unseen meshes | **0.1313** |
+
+**+9.7 %.** The model transfers to meshes it has never seen at a ~10 % cost.
+
+### 9c. The error CANCELS as √N — there is no systematic bias
+
+`R = mean_s|err_s| / |mean_s err_s|` is the cancellation actually achieved; `R ~ √N` means
+independent errors, `R ~ 1` means a systematic per-network bias.
+
+| family | median n_tri | R | √N | **R/√N** |
+|---|---|---|---|---|
+| `cells` | 16 | 1.93 | 4.00 | 0.484 |
+| `bravais` | 84 | 3.98 | 9.14 | 0.435 |
+| `disordered` | 96 | 4.31 | 9.80 | 0.440 |
+| `random` | 240 | 6.97 | 15.49 | 0.450 |
+| **ALL** | 72 | 3.69 | 8.49 | **0.435** |
+
+**`R` tracks √N with a CONSTANT prefactor across every family**, so there is **no large systematic
+bias** — the errors behave as independent over blocks of `n_corr = 1/0.435² ≈ 5.3` triangles.
+
+Two consequences:
+- **the `cells` failure is just weak √N averaging on a small mesh**, exactly as the user argued it
+  should be. `ν` is a contraction of the MEAN `C(s)`; with 16 triangles there is almost nothing to
+  average. The measured MAE(ν) ratio `cells`/`random` = 6.3 against √(240/16) = 3.9, same order.
+- **a bulk loss term is therefore NOT suppressing a bias** (there is none to suppress). It helps
+  only through its *other* effect — per-graph weighting — which `--graph_balance` achieves directly
+  and without the per-triangle/bulk trade (measured 0.6841 → 0.7326 at `--bulk_weight 1.0`).
+  *(An earlier draft of this section explained the bulk term by the "null direction" argument —
+  that a per-triangle loss cannot see correlated errors. True in principle, refuted here in fact.)*
+
+**`n_corr ≈ 5.3 triangles` is close to `THEORY_NOTES`' independently measured cluster radius of 4–6
+at high contrast** — the physics' own screening length. The model's errors appear correlated over
+exactly the scale on which the physics couples. First quantitative handle on the reach deficit.
+
+### 9d. The tier test is NOT REPRODUCIBLE at n = 400 — read the median
+
+Two independent fresh builds (seeds 4321, 777), same frozen model, MAE(ν) vs the independent sim,
+at **two sample sizes** — because the first question is whether the number is reproducible at all:
+
+| family | s4321 n=400 | s777 n=400 | **s4321 n=2000** | **s777 n=2000** | median (all four) |
+|---|---|---|---|---|---|
+| `random` | 0.0256 | 0.0260 | 0.0280 | 0.0317 | 0.0099–0.0107 |
+| `bravais` | 0.0329 | 0.0396 | 0.0331 | 0.0383 | 0.0101–0.0109 |
+| `disordered` | 0.0583 | 0.0442 | 0.0568 | *(killed mid-run)* | 0.0133–0.0142 |
+| `longrange` | 0.0750 | 0.1040 | 0.0820 | 0.1014 | 0.0121–0.0151 |
+| `cells` | 0.1613 | **0.2548** | 0.2042 | 0.1578 | 0.0451–0.0466 |
+
+**Five times the sample only halved the swing** — 58 % at n=400 → ~24 % at n=2000, about the √5 ≈ 2.2×
+a finite-variance estimator would give, but nowhere near tight enough to decide a pass/fail at 0.05.
+**The medians replicate to 0.0001–0.0014.**
+
+The kill criterion is defined on the MEAN, so a pass/fail largely reports how many tail networks
+landed in the draw — `disordered` straddles the line between two draws of the same model.
+
+**Every family's median is inside the kill line**, and `random`'s (0.0099) is inside the MUST tier.
+More than half of every family is accurate; the failure is entirely in the tail. **`cells` and
+`longrange` fail on both draws; `random` and `bravais` pass on both.**
+
+⚠ `cells` is also the only family with a NON-ZERO solver-vs-sim floor (MAE(ν) ≈ 0.014,
+MAE(E)/E ≈ 1.3 %) — on small cells the labels themselves disagree with the sim, so ~9 % of the
+model's error there is chasing a target the oracle disputes.
+
+
+### 9e. `--bulk_weight` is REFUTED (preliminary); `--graph_balance` is untested
+
+Identical config, seed and architecture; `--limit 5000`, L5, 15 epochs (NOT converged):
+
+| variant | per-triangle val | bulk val |
+|---|---|---|
+| baseline | **0.3772** | **0.1016** |
+| `--bulk_weight 1.0` | 0.4305 (+14 %) | 0.1018 (identical) |
+| `--graph_balance` | *(one epoch only -- run killed)* | -- |
+
+**The bulk term costs 14 % on the per-triangle metric and buys NOTHING on the bulk metric it exists
+to improve.** Which is what §9c predicts: with no systematic bias to suppress, explicitly optimising
+the mean cannot beat what the per-triangle field already delivers. Treat `--bulk_weight` as refuted
+unless a converged run says otherwise; the flag stays (default 0) so the negative result is
+reproducible.
+
+`--graph_balance` remains the live hypothesis and is UNTESTED: it addresses the other effect, the
+per-graph re-weighting (a 700-triangle mesh currently outweighs a 16-triangle one ~44:1), which is
+the mechanism §9c actually identifies for the `cells` failure. Its single epoch-0 point was 0.6522
+against baseline's 0.7423.
+
+
+### 9f. Overfit probe — PARTIAL: depth 10 STALLS, depth 5 was still improving at the cap
+
+`--overfit_probe 200 --contrast_min 10000`, train == val, L5 vs L10, otherwise identical.
+Stopped by the user before either arm finished; **neither result is a converged capacity verdict.**
+
+| | epochs reached | MAE/σ (on data seen every epoch) | train loss | lr at stop |
+|---|---|---|---|---|
+| **L5** | 399 *(hit the 400 cap)* | **0.2272**, still falling (0.4353 @ ep 125) | 0.0644 | 2.70e-04 |
+| **L10** | 200 | **0.5258**, stalled | 0.2322 | **2.43e-05** |
+
+**What can be said:**
+- **Depth 10 STALLED.** Its LR had collapsed four cuts to 2.43e-05 while sitting at 0.53 — the
+  plateau scheduler fired repeatedly, i.e. it stopped improving. Together with the depth-8 arm
+  diverging outright at lr 3e-3, that is two independent signs that **depth past 5 is an
+  OPTIMISATION problem in this architecture**, not a free lever.
+- **Depth 5 had NOT converged** — 0.4353 → 0.2272 between ep 125 and ep 399, still halving when the
+  epoch cap hit. So it cannot be said that the architecture *cannot* fit these samples.
+
+**What CANNOT be concluded:** the reach-vs-expressivity question. The probe needed more gradient
+steps than it got — 200 samples at batch 32 is only **7 steps/epoch**, so 400 epochs is ~2 800 steps
+against the real run's ~42 000. Sizing the probe by SAMPLE COUNT was the error; a capacity probe has
+to be sized by GRADIENT STEPS, and at ~0.1–0.3 s/sample for this model that is hours whatever the
+sample size (fewer samples give fewer steps per epoch, more samples give longer epochs).
+
+**To finish it:** raise `--epochs` well past 400 (the cap, not the stopping rule, ended L5) and run
+ONE arm at a time on all four threads. L5 alone is the cheaper and better-conditioned arm.
+
+## 10. Limitations
 
 - **`M_S` destroys the finite receptive field** — one perturbation reaches every triangle in one
   layer. Faithful (the constraint *is* global), but it compounds the global normalisers already in

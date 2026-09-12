@@ -97,6 +97,19 @@ def collate(ts):
                 target=torch.cat(tg), scale=torch.cat(sc).reshape(-1, 1, 1))
 
 
+def bulk_mean(x, tri_batch, n_graphs):
+    """UNWEIGHTED per-graph mean of a per-triangle quantity -- the project's homogenisation.
+
+    `C_eff = (1/N) sum_s C(s)` (CLAUDE.md section 3); area weighting is used ONLY in the M_S
+    constraint and would bias nu on unequal-area meshes. Pooled per graph via `tri_batch`, never
+    across the batch, for the same reason `GlobalMS` is: collate packs graphs block-diagonally."""
+    cnt = torch.zeros(n_graphs, 1, dtype=x.dtype, device=x.device).index_add(
+        0, tri_batch, torch.ones(len(tri_batch), 1, dtype=x.dtype, device=x.device))
+    tot = torch.zeros(n_graphs, x.shape[1], dtype=x.dtype, device=x.device).index_add(
+        0, tri_batch, x)
+    return tot / cnt.clamp_min(1.0)
+
+
 def predict(net, t):
     G = net(t)
     scale = t['scale'] if 'scale' in t else t['phys'] * t['kbar']
@@ -150,6 +163,12 @@ def run_tag(a):
         tag += '_star'                                        # architecture, so part of the identity
     if not getattr(a, 'no_global', False):
         tag += '_ms'
+    if getattr(a, 'overfit_probe', 0):
+        tag += '_probe%d_c%g' % (a.overfit_probe, a.contrast_min)
+    if getattr(a, 'graph_balance', False):
+        tag += '_gb'                           # a different objective is a different run
+    if getattr(a, 'bulk_weight', 0):
+        tag += '_b%g' % a.bulk_weight           # a different objective is a different run
     if a.opt != 'adam' or a.wd:
         tag += '_%s%g' % (a.opt, a.wd)                        # optimiser is part of the identity
     if a.holdout == 'random' and getattr(a, 'mesh_frac', 0):
@@ -160,16 +179,27 @@ def run_tag(a):
 
 
 def evaluate(net, samples, sd):
+    """-> (per-triangle MAE per component, SPD violation rate, BULK MAE per component).
+
+    The bulk figure is reported because `--bulk_weight` trades the two against each other: diverting
+    gradient to `C_eff` makes the per-triangle metric WORSE (measured, 0.6841 -> 0.7326 after one
+    epoch at weight 1.0). Reporting only the per-triangle number would make that read as a
+    regression, when it is the intended exchange -- and `nu`/`E`, the quantities the tiers are
+    defined on, are read off the BULK."""
     net.eval()
-    ae, spd_bad, n_tri = [], 0, 0
+    ae, be, spd_bad, n_tri = [], [], 0, 0
     with torch.no_grad():
         for t in samples:
             p = predict(net, t)
             ae.append((p - t['target']).abs().mean(0))
+            be.append((p.mean(0) - t['target'].mean(0)).abs())
             eig = torch.linalg.eigvalsh(M2.c6_to_sym3(p))
             spd_bad += int((eig.min(-1).values < -1e-10).sum())
             n_tri += len(p)
-    return torch.stack(ae).mean(0), spd_bad / max(n_tri, 1)
+    if not ae:
+        z = torch.zeros(6, dtype=sd.dtype)
+        return z, 0.0, z
+    return torch.stack(ae).mean(0), spd_bad / max(n_tri, 1), torch.stack(be).mean(0)
 
 
 def main():
@@ -231,6 +261,39 @@ def main():
                          'run continues its trajectory instead of restarting.')
     ap.add_argument('--force', action='store_true',
                     help='allow overwriting an existing checkpoint of the same tag')
+    ap.add_argument('--overfit_probe', type=int, default=0,
+                    help='CAPACITY TEST, not a training run. Train on this many samples and '
+                         'VALIDATE ON THE SAME ONES, so the reported score is the error on data the '
+                         'model may see unlimited times. The labels are a DETERMINISTIC function of '
+                         'the inputs (the solver computes C(s) from exactly the geometry and k the '
+                         'model receives), so there is no label noise and no irreducible floor: any '
+                         'residual error is the architecture. Error -> 0 means the architecture CAN '
+                         'represent the target and the shortfall is data or optimisation; error '
+                         'stuck means it cannot, and running it at two DEPTHS separates reach from '
+                         'expressivity.')
+    ap.add_argument('--contrast_min', type=float, default=0.0,
+                    help='keep only samples with k-contrast (max k / min k) at or above this. The '
+                         'error rises 26x with contrast, so a capacity test on an unselected sample '
+                         'would be dominated by the easy end and answer the wrong question.')
+    ap.add_argument('--graph_balance', action='store_true',
+                    help='average the per-triangle loss PER GRAPH before averaging over the '
+                         'batch, so every mesh contributes equally regardless of triangle '
+                         'count (default: average over triangles, which weights a '
+                         '700-triangle mesh ~44x a 16-triangle one). The cheaper alternative '
+                         'to --bulk_weight for the same problem; they can be combined but '
+                         'then the effect of neither is attributable.')
+    ap.add_argument('--bulk_weight', type=float, default=0.0,
+                    help='weight on a BULK loss term -- the per-graph mean C6 (i.e. C_eff, what nu '
+                         'and E are read from) against its own sigma, added to the per-triangle '
+                         'term. DEFAULT 0, which reproduces every run before 2026-09-11 exactly; '
+                         'it is NOT a claim that 0 is right. The per-triangle loss averages over '
+                         'TRIANGLES, so a 700-triangle mesh contributes ~60x the gradient of a '
+                         '12-triangle one, and small meshes also have the fewest triangles for '
+                         'errors to cancel over -- measured, `cells` reaches MAE(nu) 0.1613 against '
+                         '`random` 0.0256 at near-identical per-triangle error. The right value '
+                         'must be SWEPT: too large and the model fits C_eff while the per-triangle '
+                         'field (which the edit-policy needs) degrades, which would look like a win '
+                         'on every number currently reported.')
     ap.add_argument('--mesh_frac', type=float, default=0.10,
                     help='fraction of MESHES reserved as a SECOND, mesh-disjoint holdout when '
                          "--holdout random. A random sample split cannot answer \"a new mesh\": "
@@ -261,7 +324,23 @@ def main():
         # and the same trap produced a 10x benchmark misestimate earlier in this project.
         sel = np.random.default_rng(a.seed).choice(len(raw), min(a.limit, len(raw)), replace=False)
         raw = [raw[i] for i in sorted(sel)]
-    if a.holdout != 'random':
+    if a.contrast_min:
+        n0 = len(raw)
+        raw = [g for g in raw if float(g.get('contrast', 0.0)) >= a.contrast_min]
+        print('contrast filter: >= %g keeps %d/%d samples' % (a.contrast_min, len(raw), n0))
+        if not raw:
+            raise SystemExit('no samples at or above contrast %g' % a.contrast_min)
+    if a.overfit_probe:
+        # TRAIN AND VALIDATE ON THE SAME SAMPLES. Deliberate, and the whole point of the mode:
+        # the question is not "does it generalise" but "can this architecture represent the target
+        # at all", and the labels carry no noise for it to hide behind.
+        sel = np.random.default_rng(a.seed).choice(len(raw), min(a.overfit_probe, len(raw)),
+                                                   replace=False)
+        tr = va = [raw[i] for i in sorted(sel)]
+        va_mesh = []
+        split = ('OVERFIT PROBE: %d samples, train == val (CAPACITY test, not a generalisation '
+                 'measurement)' % len(tr))
+    elif a.holdout != 'random':
         tr = [g for g in raw if g['family'] != a.holdout]
         va = [g for g in raw if g['family'] == a.holdout]
         va_mesh = []          # no second holdout: the family IS mesh-disjoint
@@ -302,7 +381,7 @@ def main():
         split = ('RANDOM 20 %% sample split (seed %d) -- new k on a KNOWN mesh; '
                  'plus %d/%d MESHES (%d samples) held out entirely'
                  % (a.seed, len(held), len(meshes), len(va_mesh)))
-    if a.w_max_cut:
+    if a.w_max_cut and not a.overfit_probe:
         n0 = len(tr)
         tr = [g for g in tr if float(g['w_max']) <= a.w_max_cut]
         print('near-mechanism filter: max|W| <= %g keeps %d/%d training samples (%.1f %% dropped); '
@@ -321,6 +400,10 @@ def main():
               % (len(valid_mesh), len({g['mesh_id'] for g in va_mesh})))
     print('oracle check: %d W=0 samples exact' % oracle_check(train + valid, tr + va))
     sd = torch.cat([t['target'] for t in train]).std(0).clamp_min(1e-12)
+    # separate sigma for the BULK term: the per-graph mean C6 is a much narrower
+    # distribution than the per-triangle one, and normalising it by `sd` would make the
+    # term negligible by construction rather than by choice.
+    sd_bulk = torch.stack([t['target'].mean(0) for t in train]).std(0).clamp_min(1e-12)
 
     net = M3.ForwardGNNv3(ns=a.ns, nt=a.nt, hidden=a.hidden, n_layers=a.layers,
                           use_star=not a.no_star, use_global=not a.no_global)
@@ -372,20 +455,57 @@ def main():
         tot = nb = 0.0
         for b0 in range(0, len(order), a.batch):
             t = collate([train[j] for j in order[b0:b0 + a.batch]])
-            resid = (predict(net, t) - t['target']) / sd
-            if a.huber:
-                loss = torch.nn.functional.huber_loss(resid, torch.zeros_like(resid),
-                                                      delta=a.huber)
+            pred = predict(net, t)
+            resid = (pred - t['target']) / sd
+
+            def _el(r):
+                """ELEMENTWISE loss, so the reduction can be chosen by the caller."""
+                return (torch.nn.functional.huber_loss(r, torch.zeros_like(r), delta=a.huber,
+                                                       reduction='none')
+                        if a.huber else r ** 2)
+
+            def _obj(r):
+                return _el(r).mean()
+
+            # GRAPH BALANCE. The plain per-triangle loss averages over TRIANGLES, so a 700-triangle
+            # mesh contributes ~44x the gradient of a 16-triangle one. This averages per GRAPH
+            # first, giving every mesh an equal say -- the same re-weighting `--bulk_weight` applies
+            # as a side effect, but WITHOUT adding a second objective and without the per-triangle/
+            # bulk trade it forces (measured 0.6841 -> 0.7326 at weight 1.0).
+            #
+            # It is the cheaper hypothesis, and the cancellation measurement is why it is tried
+            # first: `m2_error_cancellation.py` found R = mean|err|/|mean err| tracking sqrt(N) with
+            # a CONSTANT prefactor 0.435 across every family, i.e. errors that behave as independent
+            # over blocks of ~5 triangles and carry NO large systematic per-network bias. So the
+            # bulk term is not suppressing a bias (there is none to suppress); the `cells` failure
+            # is just weak sqrt(N) averaging on a small mesh, and re-weighting is the direct fix.
+            if a.graph_balance and 'tri_batch' in t:
+                loss = bulk_mean(_el(resid), t['tri_batch'], int(t['n_graphs'])).mean()
             else:
-                loss = (resid ** 2).mean()
+                loss = _obj(resid)
+            # BULK TERM. The per-triangle loss is an average over TRIANGLES, so it implicitly
+            # weights big meshes: a 700-triangle `random` network contributes 60x the gradient of a
+            # 12-triangle `cells` one. But nu and E are contractions of the per-graph MEAN C(s), so
+            # what a designer actually reads off is a quantity the loss never looks at directly --
+            # and small meshes have the fewest triangles to average over. Measured consequence
+            # (2026-09-11, fresh unseen meshes vs the independent sim): `cells` and `random` have
+            # near-identical per-triangle error (0.211 vs 0.206) and MAE(nu) 0.1613 vs 0.0256, a
+            # 6x spread that the training objective is blind to. This term puts C_eff in the loss.
+            # Normalised by its OWN sigma: bulk C6 is much narrower than per-triangle C6 (errors
+            # cancel in the mean), so reusing `sd` here would silently down-weight it to noise.
+            if a.bulk_weight and 'tri_batch' in t:
+                bp = bulk_mean(pred, t['tri_batch'], int(t['n_graphs']))
+                bt = bulk_mean(t['target'], t['tri_batch'], int(t['n_graphs']))
+                loss = loss + a.bulk_weight * _obj((bp - bt) / sd_bulk)
             opt.zero_grad(); loss.backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), 5.0)
             opt.step(); tot += float(loss.detach()); nb += 1
         if a.schedule == 'cosine':
             sch.step()
         if ep % max(1, a.eval_every) == 0 or ep == a.epochs - 1:
-            per, bad = evaluate(net, valid, sd)
+            per, bad, blk = evaluate(net, valid, sd)
             vnorm = float((per / sd).mean())
+            vbulk = float((blk / sd).mean())
             # mesh-disjoint score: REPORTED, never acted on (see the split comment)
             vmesh = (float((evaluate(net, valid_mesh, sd)[0] / sd).mean())
                      if valid_mesh else float('nan'))
@@ -400,10 +520,10 @@ def main():
                 last_sig = dict(val=vnorm, epoch=ep)
             lr_now = opt.param_groups[0]['lr']
             hist.append(dict(epoch=ep, train=tot / max(nb, 1), val=vnorm, val_mesh=vmesh,
-                             spd=bad, lr=lr_now))
-            print('  ep %4d  train %.4f   val MAE/std %.4f   val(new MESH) %.4f   '
+                             val_bulk=vbulk, spd=bad, lr=lr_now))
+            print('  ep %4d  train %.4f   val MAE/std %.4f   bulk %.4f   val(new MESH) %.4f   '
                   'SPD viol %.4f   lr %.2e  (%.0fs)'
-                  % (ep, tot / max(nb, 1), vnorm, vmesh, bad, lr_now, time.time() - t0))
+                  % (ep, tot / max(nb, 1), vnorm, vbulk, vmesh, bad, lr_now, time.time() - t0))
             # SNAPSHOT at every evaluation. Cheap next to an epoch, and it makes the run
             # restartable from here instead of from zero.
             torch.save(dict(state=net.state_dict(), opt=opt.state_dict(), sch=sch.state_dict(),
@@ -449,7 +569,7 @@ def main():
              'BEST' if best['val'] < final_val else 'FINAL'))
     if best['state'] is not None and best['val'] < final_val:
         net.load_state_dict(best['state'])
-        per, bad = evaluate(net, valid, sd)
+        per, bad, blk = evaluate(net, valid, sd)
 
     os.makedirs(RESULTS, exist_ok=True)
     # The tag must identify the RUN, not just its data flags. It previously encoded only
@@ -471,6 +591,7 @@ def main():
     with open(os.path.join(RESULTS, 'run_v3_%s.json' % tag), 'w', encoding='utf-8') as fh:
         json.dump(dict(model='v3', split=split, epochs=a.epochs, ns=a.ns, nt=a.nt,
                        w_max_cut=a.w_max_cut, huber=a.huber, batch=a.batch, lr=a.lr,
+                       bulk_weight=a.bulk_weight, graph_balance=bool(a.graph_balance),
                        opt=a.opt, wd=a.wd,
                        schedule=a.schedule, patience=a.patience, stop_patience=a.stop_patience,
                        min_delta=a.min_delta, eval_every=a.eval_every,
@@ -479,6 +600,7 @@ def main():
                        per_triangle_mae=[float(x) for x in per],
                        label_std=[float(x) for x in sd],
                        mae_over_std=float((per / sd).mean()), spd_violation=float(bad),
+                       bulk_mae_over_std=float((blk / sd).mean()),
                        n_val_mesh=len(valid_mesh), mesh_frac=a.mesh_frac,
                        mae_over_std_new_mesh=(float((evaluate(net, valid_mesh, sd)[0] / sd).mean())
                                              if valid_mesh else None),

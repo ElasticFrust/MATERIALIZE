@@ -168,63 +168,85 @@ section used to pose are answered:
 | S4 | wire in as an M1 pre-filter | solver calls per design reduced at unchanged design quality |
 | S5 | **the edit-policy** — the actual endpoint of this arc | separate plan; trains on the trajectories S2 stores |
 
-> ### S1 as of 2026-09-10 — **the KILL CRITERION IS CLEARED**; the must-tier on nu is not
+> ### S1 as of 2026-09-11 -- READ THE MEDIAN, NOT THE MEAN
 >
-> Full record: **`Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md`** (SS7/7b are the trained
-> results). Instructional companion: **`documentation/GNN_GUIDE.md`**.
+> Full record: **`Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md`** (SS7/7b the trained
+> results, **SS9 generalisation + error structure**). How the network works:
+> **`documentation/GNN_GUIDE.md`**. Figures: `m2_{learning_curves,parity_nu,parity_E,by_family,
+> by_wmax,error_cancellation}.png` in `Phase 5/results/m2_s1/`.
 >
-> | architecture | per-triangle MAE/sigma, `bravais` holdout | MAE(nu) vs SIM |
-> |---|---|---|
-> | v2 scalar messages | 0.5111 *(own-bulk oracle 0.4740 -- v2 was beaten BY it)* | -- |
-> | v3 tensor messages, free SPD head | 0.2040 | 0.0550 |
-> | + residual head `G = (I+X)G_an(I+X)^T` | 0.2023 | -- |
-> | + `C_curv` vertex-star channel | 0.1209 | 0.0572 |
-> | **+ `M_S` area-weighted channel** | **0.0925** | **0.0329** |
+> **The architecture ladder is real and replicated** (`bravais` holdout, per-triangle MAE/sigma):
+> v2 scalar 0.5111 (own-bulk oracle 0.4740 beat it) -> v3 tensor msgs 0.2040 -> residual head 0.2023
+> -> **+`C_curv` 0.1209** -> **+`M_S` 0.0925**. Both constraint channels paid.
 >
-> **MAE(nu) 0.0329 vs a kill line of 0.05 -- CLEARED, first time in S1.
-> MAE(E)/E 3.85 % vs a must-tier of 5 % -- MET.** Must-tier on nu (<= 0.02) NOT met: in-domain
-> **0.0231**, median **0.0109** (over half the holdout is already inside it; the mean is tail-driven).
+> **The TIER VERDICT is not decidable from the mean.** Two independent FRESH builds (seeds 4321,
+> 777), frozen model, MAE(nu) vs the INDEPENDENT SIM, 400/family:
 >
-> **Always read it with the domain split** (`Phase 5/verifications/m2_error_strata.py`):
-> `--w_max_cut 10` removes near-mechanism networks from **training**, the holdout keeps them.
-> In-domain (1190) MAE(nu) **0.0231**; outside (110, never trained on) **0.1899** -- those 8.5 %
-> carry 25 % of the tensor error and **43 %** of MAE(nu).
+> | family | s4321 n=400 | s777 n=400 | **s4321 n=2000** | **s777 n=2000** | median (all 4) | verdict |
+> |---|---|---|---|---|---|---|
+> | `random` | 0.0256 | 0.0260 | 0.0280 | 0.0317 | 0.0099-0.0107 | passes all |
+> | `bravais` | 0.0329 | 0.0396 | 0.0331 | 0.0383 | 0.0101-0.0109 | passes all |
+> | `disordered` | 0.0583 | 0.0442 | 0.0568 | -- | 0.0133-0.0142 | **STRADDLES** |
+> | `longrange` | 0.0750 | 0.1040 | 0.0820 | 0.1014 | 0.0121-0.0151 | fails all |
+> | `cells` | 0.1613 | 0.2548 | 0.2042 | 0.1578 | 0.0451-0.0466 | fails all, worst |
+> 
+> **5x the sample only HALVED the swing** (58 % at n=400 -> ~24 % at n=2000), while the MEDIANS replicate to 0.0001-0.0014. The ranking is robust across two sample sizes and two seeds; the VALUES are not. A mean-based pass/fail at 0.05 is not a usable instrument here.
+> 
+> Heavy tail. **Every family's median
+> is inside the kill line**; random's is inside the MUST tier. More than half of every family is
+> accurate and the failure is ALL tail. **SPEC QUESTION FOR THE USER: should a mean-based kill
+> criterion at n=400 remain the instrument?** Tuning architecture against it is tuning against noise.
 >
-> ### The three things that decide what happens next
+> **Generalisation is FINE:** train 0.1197 vs fresh unseen meshes 0.1313 = **+9.7 %**.
 >
-> 1. **OVERFITTING IS RULED OUT; UNDERFITTING IS NOT ESTABLISHED.** `m2_v3_report`'s train score is
->    computed on the UNFILTERED train split, so it includes the 34.6 % of samples `--w_max_cut`
->    removed and the model never saw; **that number (0.1771) is contaminated -- do not quote it.** On
->    what it actually fitted: **TRAIN 0.1214 vs VAL 0.0708**, train 71 % WORSE.
->    **train > val is NOT the underfit signature** (that is train ~ val, both high) -- it says the two
->    sets are different DISTRIBUTIONS, which leave-one-family-out guarantees (`bravais` is the easiest
->    family). It establishes exactly one thing: the model is **not memorising**, so **more data is not
->    indicated**. It does NOT establish that capacity binds.
->    **RUN THE OVERFIT PROBE FIRST (hours, not days):** train the same architecture to convergence on
->    ~200 training networks only. Error near zero -> capacity is fine, the limit is optimisation or
->    target ambiguity. Error stuck -> capacity binds and depth/width is the lever.
-> 2. **DEPTH IS UNANSWERED.** The depth-8 arm **DIVERGED** at ep 20 (train 0.0479 -> 0.4560, val
->    0.1884 -> 1.0081) and was killed at ep 22. Best weights rescued in
->    `checkpoint_..._L8_..._star_rescued.pt` (`diverged=True`), history in
->    `run_..._star_DIVERGED.json`. **Its 0.1879 is a floor, not a measurement of depth.** Re-run at a
->    LOWER LR -- diverging at 3e-3 with 8 layers is evidence the rate is too hot for that depth.
-> 3. **`--w_max_cut`'s premise is REFUTED.** Its help text says near-mechanism networks are "where
->    the solver is least trustworthy"; that was never measured (what was measured, 7x worse, is the
->    MODEL's error). On the 6 020 samples where `sim_gap` is actually computed
->    (`structure == 'dilution'`), the solver-sim gap does NOT degrade with |W| -- it improves
->    (max gap 4.97e-02 at |W| 1-3 down to 7.04e-03 above 100; **zero** samples > 0.05 in any bin).
->    The tail is learnable. **But do not act on that alone** -- the model is capacity-limited, so
->    adding a large unseen harder regime without capacity risks degrading the in-domain result.
->    *(`sim_gap` is 0.0/`not_checked` for every NON-dilution sample, `build_dataset.py:527`; a first
->    pass read those placeholders as measurements. Restrict to the checked subset.)*
+> **Error structure:** `R = mean|err|/|mean err|` tracks **sqrt(N) at a constant 0.435** in every
+> family => independent over blocks of ~5.3 TRIANGLES, **no systematic bias**. So `cells` fails
+> simply because a 16-triangle mesh has almost no sqrt(N) averaging. A bulk loss term therefore
+> suppresses no bias; it acts only by per-graph re-weighting, which `--graph_balance` does directly.
 >
-> **RECOMMENDED ORDER: (a) the OVERFIT PROBE** -- hours, and it decides whether capacity is the
-> binding constraint before anything expensive is launched; **(b) IF capacity binds**, more of it --
-> and prefer WIDER (`--hidden 96` / `--ns 64` at depth 5) over deeper as the first probe, since depth
-> 8 already diverged once at lr 3e-3 and costs ~4800 s/epoch against ~2050; **(c) then filter-off**,
-> converting the 110 networks that carry 43 % of MAE(nu) from extrapolation to interpolation.
-> **NOT next:** more data (no generalisation gap, so it is not indicated), and the `X -> 0` pin --
-> `M_S` repaired that bin on its own (MAE(nu) 0.0528 -> **0.0205**), worth ~11 % of the headline.
+> **TWO CLAIMS WITHDRAWN -- do not re-derive:** (1) "n_corr ~ 5.3 matches the cluster radius 4-6" is
+> a UNITS ERROR (count vs radius; 5.3 triangles ~ radius 1.3) and THEORY_NOTES may be stale;
+> (2) "reach is the deficit, build multi-scale" is WITHDRAWN -- depth 5 gives 10 hops on
+> 72-240-triangle meshes and the errors are correlated over ~1 hop, so the contrast trend does NOT
+> distinguish reach from expressivity. Also `W=0` needs ORDERED geometry AND uniform k.
+>
+> ### NEXT STEPS, in order
+>
+> 1. **FINISH THE OVERFIT PROBE -- it ran but was STOPPED, and was MIS-SIZED.**
+>    `train_v3.py --overfit_probe 200 --contrast_min 10000`, train == val, L5 vs L10.
+>    Reached: **L5 ep 399 (the CAP, not the stopping rule) at MAE/sigma 0.2272 and STILL FALLING**
+>    (0.4353 @ ep 125); **L10 ep 200 at 0.5258, STALLED** (lr collapsed to 2.43e-05).
+>    - **Depth 10 stalls.** With the depth-8 arm having DIVERGED at lr 3e-3, that is two independent
+>      signs that **depth past 5 is an OPTIMISATION problem here**, not a free lever.
+>    - **Nothing can yet be concluded about reach vs expressivity** -- L5 had not converged.
+>    - **THE SIZING ERROR, do not repeat it:** 200 samples at batch 32 is **7 steps/epoch**, so 400
+>      epochs ~ 2 800 gradient steps against the real run's ~42 000. Size a capacity probe by
+>      GRADIENT STEPS, not sample count. At ~0.1-0.3 s/sample this costs hours whatever the sample
+>      size (fewer samples = fewer steps/epoch; more samples = longer epochs).
+>    - **To finish:** raise `--epochs` far past 400 and run ONE arm at a time on all four threads;
+>      L5 alone is cheaper and better-conditioned. Logs `Phase 5/results/m2_s1/probe_L{5,10}.log`.
+> 2. **`--graph_balance` vs baseline -- UNTESTED and now the live hypothesis.** `--bulk_weight`
+>    is **REFUTED** (preliminary, 15 ep, not converged): it cost 14 % on the per-triangle
+>    metric and buys NOTHING on bulk (0.1018 vs baseline 0.1016) -- exactly as the
+>    no-systematic-bias result predicts. `--graph_balance` attacks the OTHER effect, the
+>    per-graph re-weighting (700-triangle meshes currently outweigh 16-triangle ones ~44:1),
+>    which is the mechanism actually identified for the `cells` failure. Judge on per-family
+>    MAE(nu) on FRESH meshes, `cells` in particular -- NOT on aggregate val, which the
+>    variants deliberately re-weight.
+> 3. **The `--w_max_cut` question.** All the failure is in the tail, and those networks are excluded
+>    from TRAINING on a premise now measured FALSE (solver labels are sound at every |W|: max gap
+>    4.97e-02 at |W| 1-3 falling to 7.04e-03 above 100, zero samples over 0.05). Training on them may
+>    be the largest available gain and costs nothing architectural.
+> 4. **Then the differentiable designer** -- gradient descent on (positions, k) through the frozen
+>    GNN inside a solver-verified trust region. The GNN has no position-gradient asymmetry (positions
+>    enter via `bond_R` -> `q_e`, all in torch), so it unlocks joint k+position design the exact
+>    solver structurally cannot do (CLAUDE.md SS3 records positions need SPSA; FD #13). Topology stays
+>    discrete and outside. **The user's framing: it is also another way to COMPARE solver vs GNN** --
+>    descent actively hunts the surrogate's blind spots, a harder test than random-sample scoring.
+>
+> **NOT next:** more data (+9.7 % gap, nothing to buy); component-weighted loss (dropped -- fixed
+> per-component weights cannot track per-network anisotropy; use an auxiliary loss on E itself if the
+> bulk/balance work leaves E failing).
 
 > ### ⚠ 2026-08-26 — TWO BUGS OF ONE CLASS, and the guard that now catches them
 >

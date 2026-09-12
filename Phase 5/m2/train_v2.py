@@ -74,6 +74,8 @@ def load(path):
         # possible -- a random sample split cannot be one, since each mesh carries ~26
         # samples differing only in the k-field.
         topo = d['topology_id'] if 'topology_id' in d else np.array(['?'] * len(C6))
+        # k-CONTRAST = max(k)/min(k), stored by the builder; needed to SELECT on it
+        con = d['contrast'] if 'contrast' in d else np.full(len(C6), np.nan)
         # `w_max` is what `oracle_check` selects on: W == 0 means C(s) = A(s) is a closed form
         wmax = d['w_max'] if 'w_max' in d else np.full(len(C6), np.inf)
         sim_ok = d['sim_ok'] if 'sim_ok' in d else np.ones(len(C6), bool)
@@ -85,6 +87,7 @@ def load(path):
         g.update(n_nodes=len(g['pts']), C6=C6[i], family=str(family[i]), traj_id=str(traj[i]),
                  sim_ok=bool(sim_ok[i]), size_bin=str(size_bin[i]),
                  k_pattern=str(kpat[i]), w_max=float(wmax[i]), mesh_id=str(topo[i]),
+                 contrast=float(con[i]),
                  Lx=float(Lx[i]), Ly=float(Ly[i]))
         out.append(g)
     return out

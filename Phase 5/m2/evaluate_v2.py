@@ -158,7 +158,7 @@ def _run(a, ck, kind, predict_bulk):
     ntri = [len(g['C6_per']) for g in held]
     print('   n_tri  min %d  median %d  max %d' % (min(ntri), int(np.median(ntri)), max(ntri)))
 
-    rows, n_fail, t0 = [], 0, time.time()
+    rows, meta, n_fail, t0 = [], [], 0, time.time()
     for i, g in enumerate(held):
         nu_m, E_m = nuE(predict_bulk(g))
         nu_s, E_s = nuE(g['C6'])                       # solver label (what it trained on)
@@ -174,6 +174,13 @@ def _run(a, ck, kind, predict_bulk):
                                                        str(e)[:80]))
             continue
         rows.append((nu_m, E_m, nu_s, E_s, nu_p, E_p))
+        # per-network metadata, so the saved result can be STRATIFIED after the fact.
+        # Without it a |W|-coloured parity plot or a per-family split needs the whole sim
+        # sweep re-run, and the sim is the slow half of this script.
+        meta.append(dict(w_max=float(g.get('w_max', float('nan'))),
+                         family=str(g.get('family', '?')),
+                         n_tri=int(len(g['C6_per'])),
+                         mesh_id=str(g.get('mesh_id', '?'))))
         if (i + 1) % 50 == 0:
             print('   %d/%d  (%.0fs)' % (i + 1, len(held), time.time() - t0))
 
@@ -230,7 +237,11 @@ def _run(a, ck, kind, predict_bulk):
                            (E_m - E_p) / np.maximum(np.abs(E_p), 1e-30)))),
                        must_tier_met=bool(must), kill_triggered=bool(kill),
                        nu_model=nu_m.tolist(), nu_sim=nu_p.tolist(), nu_solver=nu_s.tolist(),
-                       E_model=E_m.tolist(), E_sim=E_p.tolist(), E_solver=E_s.tolist()), fh, indent=2)
+                       E_model=E_m.tolist(), E_sim=E_p.tolist(), E_solver=E_s.tolist(),
+                       w_max=[m['w_max'] for m in meta],
+                       family_per=[m['family'] for m in meta],
+                       n_tri=[m['n_tri'] for m in meta],
+                       mesh_id=[m['mesh_id'] for m in meta]), fh, indent=2)
     print('  ->', out)
 
 

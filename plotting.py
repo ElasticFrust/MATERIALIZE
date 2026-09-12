@@ -511,6 +511,78 @@ def plot_ranges(groups, xlabel='x', bounds=None, landmarks=None, title=None,
     return ax
 
 
+def parity_panel(ax, truth, series, xlabel='independent sim', ylabel='predicted',
+                 colour_by=None, colour_label=None, log_colour=True, lim_pct=(0.5, 99.5),
+                 title=None, cmap='viridis'):
+    """Predicted-vs-truth PARITY panel with the y = x reference, square by construction.
+
+    `series` = dict name -> values, all against the same `truth`. Two methods for the same quantity
+    SHARE a panel (CLAUDE.md section 3): plotting the model against the sim without the solver's own
+    scatter beside it hides whether the residual is the model's or the floor's.
+
+    `colour_by` switches to a SINGLE series coloured by a third quantity (e.g. `max|W|`), which is
+    how a trend against strain concentration becomes visible rather than asserted; `log_colour`
+    because that quantity spans decades here. Returns the mappable (or None) so the caller can add
+    one figure-level colorbar rather than one per panel.
+
+    Axis limits come from a PERCENTILE of the pooled values, never min/max: a single outlier
+    otherwise compresses every real point into a corner -- the same failure the bond-colour policy
+    documents for k."""
+    t = np.asarray(truth, float)
+    pooled = np.concatenate([t] + [np.asarray(v, float) for v in series.values()])
+    lo, hi = np.percentile(pooled[np.isfinite(pooled)], lim_pct)
+    pad = 0.04 * (hi - lo if hi > lo else 1.0)
+    lo, hi = lo - pad, hi + pad
+
+    sm = None
+    if colour_by is not None:
+        (nm, v), = series.items()
+        c = np.asarray(colour_by, float)
+        norm = (mcolors.LogNorm(vmin=max(np.nanmin(c[c > 0]), 1e-12), vmax=np.nanmax(c))
+                if log_colour and np.nanmax(c) > 0 else None)
+        sm = ax.scatter(t, np.asarray(v, float), c=np.clip(c, 1e-12, None), s=9, alpha=0.8,
+                        cmap=cmap, norm=norm, linewidths=0)
+    else:
+        cm = plt.get_cmap('tab10')
+        for i, (nm, v) in enumerate(series.items()):
+            ax.scatter(t, np.asarray(v, float), s=9, alpha=0.7, linewidths=0,
+                       color=cm(i), label=nm)
+        ax.legend(fontsize=7, loc='upper left', framealpha=0.9)
+    ax.plot([lo, hi], [lo, hi], 'k--', lw=1.2, zorder=0)
+    ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+    ax.set_xlabel(xlabel); ax.set_ylabel(ylabel)
+    ax.set_box_aspect(1)
+    ax.grid(alpha=0.2); ax.set_axisbelow(True)
+    if title:
+        ax.set_title(title, fontsize=9)
+    return sm
+
+
+def grouped_bars(ax, categories, series, ylabel='', xlabel='', rotation=20, logy=False,
+                 hline=None, hline_label=None):
+    """Grouped bar chart: `categories` on x, `series` = dict name -> values aligned to categories.
+
+    Used for the stratified error tables (by family, by max|W|), where the POINT is that a headline
+    average hides a spread of more than an order of magnitude. `hline` draws a tier/criterion level
+    as a line rather than leaving the reader to compare against a number in the caption."""
+    x, w = np.arange(len(categories)), 0.8 / max(len(series), 1)
+    cm = plt.get_cmap('tab10')
+    for i, (nm, vals) in enumerate(series.items()):
+        ax.bar(x + i * w - 0.4 + w / 2, [np.nan if v is None else v for v in vals], w,
+               label=nm, color=cm(i))
+    if hline is not None:
+        ax.axhline(hline, color='crimson', ls='--', lw=1.3, zorder=5,
+                   label=hline_label or ('%.3g' % hline))
+    ax.set_xticks(x); ax.set_xticklabels(categories, rotation=rotation, fontsize=8, ha='right')
+    ax.set_ylabel(ylabel)
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    if logy:
+        ax.set_yscale('log')
+    ax.grid(axis='y', alpha=0.25); ax.set_axisbelow(True)
+    ax.legend(fontsize=7)
+
+
 def save_fig(fig, path, dpi=STYLE.DPI_ELEMENT, close=True):
     """Save `fig` to `path` at `dpi` (default the ≥300 element DPI); make parent dirs."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
