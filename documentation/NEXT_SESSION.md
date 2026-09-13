@@ -305,27 +305,36 @@ section used to pose are answered:
 >    (threw 0.1936 to 0.73, never re-entered the basin, measures nothing) — so `CLAUDE.md` §3's
 >    "restore the initial lr" wording needs the qualifier **"a rate the run was still progressing
 >    at"**.
->    **⚠ THIS CONTAMINATES THE LEVELS OF EVERY TRAINED NUMBER IN S1.** ONE trajectory, beaten twice
->    by walking further: **0.1936 → 0.1636 → 0.1485**, each stage ended on the lr floor and each
->    "converged" by the plateau rule. *(The earlier 0.2213 → 0.1936 step is NOT part of this chain —
->    that was a different probe at a different capacity ratio, §9g.)* The whole ladder
->    (v2 0.5111 → … → **0.0925**) and the tier scores vs the sim used that same schedule. **Ranking
->    probably safe** (shared schedule), **levels pessimistic by an unknown margin** — and 15 % is
->    large next to the tier margins. **Do not quote them as converged without re-checking.**
+>    **⚠ THE "CONTAMINATES EVERY S1 LEVEL" CLAIM IS WITHDRAWN — see 1d below.** What stands is the
+>    PROBE result: ONE trajectory, beaten twice by walking further, **0.1936 → 0.1636 → 0.1485**, each
+>    stage ended on the lr floor. *(The earlier 0.2213 → 0.1936 step is NOT part of this chain — that
+>    was a different probe at a different capacity ratio, §9g.)* Generalising it to the full-data runs
+>    was an extrapolation, and **1d refutes it by direct measurement**: the ladder
+>    (v2 0.5111 → … → **0.0925**) and the tier scores vs the sim **stand as measured — quote them
+>    normally.**
 >    **Round 2 (`--run_suffix rs2`, same rate): 0.1636 → 0.1485, −9.2 %** — diminishing, not
 >    inexhaustible. Cumulative over two restarts **−23 %**; a two-point extrapolation (ratio 0.59)
 >    suggests an asymptote near **0.13**, ~30 % under the original "converged" value — **flagged as a
 >    guess at the form, not a measurement.**
->    **BOTH things are true, and this is the settled reading:**
->    (i) the schedule cost a real bounded amount, so **levels across S1 are pessimistic by plausibly
->    20–30 %** (ranking probably safe — shared schedule) and must not be quoted as converged; and
->    (ii) **restarts do NOT reach zero**, so ~0.13–0.15 on 8 memorisable samples at 39.7:1 is a
->    surviving **representational** deficit — structural work (new channel / different message space)
->    is back on the table, now measurable against a correct baseline.
->    **PROTOCOL:** repeated warm restarts until a round buys < ~2 %, and that is **the baseline any
->    architectural change is measured against** — otherwise a structural gain is confounded with
->    schedule headroom the baseline never collected.
->    **NEXT:** re-measure the ladder + tier scores under warm restarts before any structural work.
+>    **What stands, scoped to the PROBE:** (i) the schedule cost the probe a real bounded amount; and
+>    (ii) **restarts do NOT reach zero** — ~0.13–0.15 on 8 memorisable samples at 39.7:1 is a
+>    surviving **representational** deficit, so structural work stays justified.
+>    **(i) does NOT generalise: see 1d.**
+>
+> 1d. ❌ **THE REAL ARM DOES NOT IMPROVE UNDER WARM RESTART — 1c's 23 % DOES NOT TRANSFER** (§9i,
+>    measured 2026-09-13, 10 epochs / 8 060 gradient steps / ~8 h). Restarting the **0.0925** arm at
+>    **8.1e-5** (the lr at its last significant improvement — the prescribed rate) reached a best of
+>    **0.0938, 1.4 % WORSE**, and never crossed; the last six epochs are flat (mean 0.0948, sd 0.0008).
+>    Its decay to 2.19e-06 was **beneficial**, not stranding.
+>    **The two results reconcile — patience is counted in EPOCHS, so the stop window in GRADIENT STEPS
+>    scales with steps-per-epoch: 800 steps for the 8-sample probe, 19 344 for the real arm, a 24×
+>    gap.** The schedule strands a run whose epochs are tiny; it does not strand a full-data run.
+>    **CONSEQUENCES:** the ladder levels (v2 0.5111 → … → **0.0925**) and the tier scores vs the sim
+>    **stand as measured** — quote them normally. The "warm restarts as universal baseline" protocol is
+>    **narrowed** to small-steps-per-epoch regimes. **Before claiming any run stopped early, compute
+>    its stop window in STEPS.**
+>    **NOT established:** that 0.0925 is the floor — only that *this* restart does not beat it. A lower
+>    rate (2.4e-5, the next rung) or far more steps remain untested.
 > 2. **`--graph_balance` vs baseline -- UNTESTED and now the live hypothesis.** `--bulk_weight`
 >    is **REFUTED** (preliminary, 15 ep, not converged): it cost 14 % on the per-triangle
 >    metric and buys NOTHING on bulk (0.1018 vs baseline 0.1016) -- exactly as the

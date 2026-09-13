@@ -614,7 +614,11 @@ is what §9h then measured. `--restart_lr` was added for it.
 **What it does settle regardless:** neither more parameters nor more data is the lever, and
 `--graph_balance` (a per-graph re-weighting) does not address a per-triangle spatial deficit either.
 
-### 9h. LR-RESTART probes — the "floor" WAS PARTLY THE SCHEDULE (0.1936 → 0.1485 over two restarts), but restarts do NOT reach zero
+### 9h. LR-RESTART probes on the PROBE — the probe's "floor" was partly the schedule (0.1936 → 0.1485), but restarts do NOT reach zero
+
+> **SCOPE, added after §9i:** everything in this section is the **8-sample probe**. The 23 % does
+> **NOT** transfer to the real arm — §9i measured that directly and it does not improve. Read §9i
+> before quoting any number here as a general property of the architecture.
 
 `--restart_lr <rate>` added for this (`train_v3.py`), because `--resume` alone cannot do it:
 `opt.load_state_dict` restores the **decayed** lr (measured 2.19e-06), so even a fresh scheduler keeps
@@ -667,48 +671,70 @@ round 1's −15.5 %. Restarts are **diminishing, not inexhaustible**:
    representational** — so structural work (a new channel / a different message space) is back on the
    table, but measured against a *correct* baseline rather than a schedule-limited one.
 
-**⚠ THE CONSEQUENCE FOR EVERY TRAINED NUMBER IN THIS DOCUMENT.** Every one came off the same
-plateau-and-stop schedule — the ladder v2 0.5111 → 0.2040 → 0.2023 → 0.1209 → **0.0925**, and the tier
-scores against the sim. **The RANKING is probably safe** (all arms shared the schedule), **but the
-LEVELS are pessimistic, plausibly by ~20–30 %**, which is large next to the tier margins. **Do not
-quote any of them as converged without re-checking under warm restarts.**
+**⚠ THE CONSEQUENCE FOR EVERY TRAINED NUMBER IN THIS DOCUMENT — WITHDRAWN, see §9i.** This paragraph
+claimed the ladder levels (v2 0.5111 → … → **0.0925**) and the tier scores were "pessimistic, plausibly
+by ~20–30 %" and should not be quoted as converged. **§9i tested that directly on the real arm and it
+is FALSE:** a restart at the prescribed rate plateaus 1.4 % *worse* than 0.0925 over 8 060 gradient
+steps. **The ladder levels and tier scores stand as measured.**
 
-**PROTOCOL CHANGE THIS EARNS:** make **repeated warm restarts** (restart at a rate the run was still
-progressing at, until a round buys < ~2 %) the standard, not a single decay to exhaustion — and make
-it the **baseline any architectural change is measured against**, or a structural gain will be
-confounded with schedule headroom the baseline never collected.
+The reason the two results differ is not a conflict — **patience is counted in EPOCHS, so the stop
+window in gradient steps scales with steps-per-epoch: 800 steps for the probe, 19 344 for the real
+arm, a 24× gap** (§9i). The schedule genuinely strands a run whose epochs are tiny; it does not strand
+a full-data run.
 
-### 9i. The REAL arm under warm restart — ⏳ IN PROGRESS, round 1 INCONCLUSIVE (still descending at the cap)
+**PROTOCOL THIS EARNS, in its corrected form:** before concluding a run was stranded, **compute its
+stop window in GRADIENT STEPS, not epochs** — that is the number that decides whether a restart can
+pay. Restarts are worth trying where that window is small (probes, tiny-sample capacity tests) and
+were measured not to pay on the full arm. The "make warm restarts the universal baseline" prescription
+is **narrowed to that regime**, not adopted wholesale.
 
-§9h showed the *probe* was schedule-limited. **That does not automatically transfer to the real arm**,
-which trains on 25 812 samples rather than 8, so this measures it directly.
+### 9i. The REAL arm under warm restart — ❌ **IT DOES NOT IMPROVE. §9h's 23 % DOES NOT TRANSFER.**
+
+§9h showed the *probe* (8 samples) was schedule-limited by 23 %. **On the real arm it is not
+reproduced at all**, and this section exists because that extrapolation was made and had to be
+withdrawn.
 
 Setup: the `..._L5_..._star_ms` arm (the **0.0925** model), resumed from its own `.resume` at epoch 104
 and restarted at **8.1e-5 — the lr at its last significant improvement (ep 82)**, which is exactly what
-`CLAUDE.md` §3 now prescribes, and gentler than the 2.7e-4 that perturbed the probe 2.1×. `eval_every 1`.
-**806 gradient steps/epoch**, 48.3 min/epoch.
+`CLAUDE.md` §3 prescribes. `eval_every 1`, **806 gradient steps/epoch**, 48.3 min/epoch, ten epochs
+(105–114) = **8 060 gradient steps**.
 
-| epoch | 105 | 106 | 107 | 108 | 109 |
-|---|---|---|---|---|---|
-| val MAE/σ | 0.0971 | 0.1000 | **0.0949** | 0.0953 | **0.0941** |
+| ep | 105 | 106 | 107 | 108 | 109 | 110 | 111 | 112 | 113 | 114 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| val MAE/σ | 0.0971 | 0.1000 | 0.0949 | 0.0953 | 0.0941 | 0.0961 | 0.0953 | **0.0938** | 0.0950 | 0.0945 |
 
-**Round 1 is INCONCLUSIVE, and it ended on the EPOCH CAP — not the stopping rule.** The restart
-perturbed 0.0925 → ~0.10 (a gentle ~8 %, as intended), then descended ~2 %/epoch and was **still
-descending when the budget ran out**, at 0.0941 — **1.7 % above** the inherited best. So it has neither
-confirmed nor refuted that the real arm is schedule-limited.
+**Result: best 0.0938 at ep 112 — 1.4 % WORSE than the inherited 0.0925, never crossing it.** The last
+six epochs are **flat**: mean 0.0948, sd 0.0008, first half 0.0952 vs second half 0.0944, i.e. within
+noise. The round-1 "still descending at ~2 %/epoch" reading did **not** survive more epochs — it was
+the noisy start of a plateau, which is why §9i's first version refused to extrapolate from it.
 
-**One thing it does establish cleanly:** the lr **never decayed** (8.1e-5 throughout — the fresh
-scheduler's 8-evaluation patience never elapsed in 5 epochs), so this is a constant-rate descent with
-**no schedule artefact in it at all**. Whatever it converges to is not a decay artefact.
+So for the real arm the decayed schedule **found a better point than a constant 8.1e-5 restart can
+reach**, and the lr decay down to 2.19e-06 was *beneficial*, not stranding.
 
-**Continued to epoch 115** (`realarm_rlr8.1e-05_cont.log`). The continuation re-passes
-`--restart_lr 8.1e-5`, which is a **NO-OP on the lr** because the lr had never been cut; it is passed
-only to keep the run tag identical (the tag carries the restart rate) and it does reset the stop
-clock. *Recorded because it looks like a second restart in the log and is not one.*
+**WHY — and this reconciles both results instead of leaving them in conflict.** The plateau patience and
+the stopping rule are counted in **EPOCHS**, so their severity in *gradient steps* scales with
+steps-per-epoch:
 
-**Do not read the trend as the result.** Extrapolating ~2 %/epoch crosses 0.0925 in 1–3 epochs, but
-that is an extrapolation from a noisy five-point descent that went UP at ep 106 and wobbled at 108.
-The measurement is whether it actually crosses.
+| | steps/epoch | stop window |
+|---|---|---|
+| probe (8 samples) | 4 | 10 × 20 = 200 epochs = **800 steps** |
+| real arm (25 812 samples) | 806 | 2 × 12 = 24 epochs = **19 344 steps** |
+
+**A 24× difference in the stop window measured in the unit that matters.** The probe was stranded
+because its epochs were microscopic and the rule fired after 800 steps; the real arm's rule had 19 344
+steps of evidence before firing. **The schedule-limitation is a SMALL-SAMPLE artefact of counting
+patience in epochs — it is not a property of the architecture or of the full-data runs.**
+
+**⚠ WHAT THIS WITHDRAWS.** §9h's consequence paragraph, `CLAUDE.md` §3 and NEXT_SESSION all carried
+"every trained number in S1 is pessimistic by plausibly 20–30 %". **That is withdrawn for the full-data
+runs** — the direct test on the real arm refutes it at the prescribed restart rate. The ladder levels
+(v2 0.5111 → … → **0.0925**) and the tier scores against the sim stand as measured.
+
+**What is NOT established.** That 0.0925 is the arm's floor. Only that *this* restart — 8.1e-5, 8 060
+steps — does not beat it. A lower rate (2.4e-5, the next rung down) or far more steps might; and a
+run whose epochs are small relative to its patience *will* still be stranded, which is the regime the
+probes live in. The honest scope is: **restarts pay when steps-per-epoch is small; check the stop
+window in STEPS before assuming a run was stranded.**
 
 ## 10. Limitations
 

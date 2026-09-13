@@ -573,19 +573,23 @@ wrong claim.
   a patience criterion (`train_v3.py --schedule plateau`), so the LR falls only *after* the
   validation score demonstrably stalls. Cosine is retained ONLY so the pre-2026-08-28 runs stay
   reproducible.
-- **BUT PLATEAU + EARLY STOPPING IS NOT ITSELF SUFFICIENT — it strands runs short of their floor**
-  *(measured 2026-09-12)*. This bullet used to claim such a run "ends when further decay buys
-  nothing"; that is FALSE. One "converged" run was beaten TWICE by simply being allowed to walk
-  further — **0.1936 → 0.1636 → 0.1485** on the same trajectory, by LR restart alone (−15.5 %, then
-  −9.2 %; −23 % cumulative) — and each of those three stages had ended on the lr floor.
-  A decaying rate makes the metric flatten *before* the model is done, and the stopping rule then
-  certifies the flattening. **Consequences:** (i) **repeated WARM RESTARTS** — restart until a round
-  buys < ~2 % — not a single decay to exhaustion; (ii) that warm-restart result is **the baseline any
-  architectural change is measured against**, or a structural gain is confounded with schedule
-  headroom the baseline never collected; (iii) a level from a single decay run is a **lower bound on
-  the architecture**, so rankings across arms that shared a schedule survive but the LEVELS do not.
-  *(Every `Phase 5/results/m2_s1/` training number predates this and is pessimistic by plausibly
-  20–30 %; see `M2_RESIDUAL_AND_CONSTRAINTS.md` §9h.)*
+- **PLATEAU + EARLY STOPPING CAN STRAND A RUN — but only when its epochs are SMALL. MEASURE THE STOP
+  WINDOW IN GRADIENT STEPS, NOT EPOCHS** *(measured 2026-09-12/13; the first version of this bullet
+  overgeneralised and is corrected here)*. The patience and stopping rules count **evaluations and
+  epochs**, so the evidence they actually demand scales with **steps-per-epoch** — and that varies by
+  orders of magnitude between a probe and a full run:
+  - **8-sample probe, 4 steps/epoch → stop window 800 steps.** Genuinely stranded: one "converged"
+    trajectory was beaten TWICE by being allowed to walk further, **0.1936 → 0.1636 → 0.1485** by LR
+    restart alone (−23 % cumulative), each stage having ended on the lr floor.
+  - **Real arm, 25 812 samples, 806 steps/epoch → stop window 19 344 steps, a 24× larger one.** NOT
+    stranded: restarting the 0.0925 arm at the prescribed rate plateaued at **0.0938, i.e. 1.4 %
+    WORSE**, over 8 060 steps, and never crossed. Its decay to 2.19e-06 was *beneficial*.
+  **So:** before claiming a run stopped early, compute its stop window in steps. **Warm restarts pay
+  where that window is small (probes, tiny-sample capacity tests) and were measured NOT to pay on the
+  full arm.** *(An earlier version of this bullet asserted every `Phase 5/results/m2_s1/` training
+  number was "pessimistic by plausibly 20–30 %" and told you not to quote them as converged. That was
+  an extrapolation from the probe; the direct test REFUTES it — those levels stand as measured. See
+  `M2_RESIDUAL_AND_CONSTRAINTS.md` §9h for the probe and **§9i for the refutation**.)*
 - **The decisive test is an LR-RESTART PROBE**, not the shape of a curve: take the best checkpoint,
   **restore a rate at which the run was observably still making progress** (the LR at its last
   significant improvement), train on. If the score improves, the flat tail was the schedule.
