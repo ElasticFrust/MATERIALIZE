@@ -513,7 +513,9 @@ improvement, best **0.2213 @ ep 442**. L10 had already stopped itself at 200 epo
 `probe_vs_trained.json`): both checkpoints scored on the **same 200 samples**, with **one `sd`**
 computed on that population, because the two runs each normalised by their own train-set `sd` and
 their published numbers are therefore not on a common scale — the lesson of the "0.5144 was the train
-split" error (§ 2026-08-27).
+split" error (`documentation/NEXT_SESSION.md`, "THREE THINGS FROM S1 NOT TO RE-LEARN",
+2026-08-27 — which is also why `Phase 5/verifications/m2_v3_report.py` recomputes model and
+baselines in ONE pass on ONE split).
 
 | | per-triangle MAE/σ | bulk MAE/σ |
 |---|---|---|
