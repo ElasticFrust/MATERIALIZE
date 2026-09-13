@@ -194,6 +194,13 @@ def run_tag(a):
         tag += '_ms'
     if getattr(a, 'overfit_probe', 0):
         tag += '_probe%d_c%g' % (a.overfit_probe, a.contrast_min)
+    if getattr(a, 'init_from', ''):
+        # WEIGHTS-ONLY warm start: a different starting point is a different run. The tag carries a
+        # short digest of the source basename rather than the basename itself (which is ~70 chars);
+        # the full path goes in the checkpoint metadata and the run JSON, so it stays traceable.
+        import hashlib
+        tag += '_init%s' % hashlib.sha1(
+            os.path.basename(a.init_from).encode('utf-8')).hexdigest()[:6]
     if getattr(a, 'restart_lr', 0.0):
         # a restarted trajectory is a DIFFERENT run from its parent, and two restarts at different
         # RATES are different runs from each other
@@ -293,6 +300,18 @@ def main():
                          'edge-compatibility pairing -- but C_curv, which couples the ~6 triangles '
                          'of a vertex star simultaneously, had no channel at all. This flag exists '
                          'so its effect can be measured as a single variable.')
+    ap.add_argument('--init_from', default='',
+                    help='WEIGHTS-ONLY warm start from a FINAL checkpoint (.pt), with a fresh '
+                         'optimiser and scheduler. Distinct from --resume, which continues a '
+                         'trajectory and needs the optimiser state in a <tag>.resume whose name '
+                         'matches this run -- so --resume cannot cross a config change, and a change '
+                         'of --data or --w_max_cut is exactly such a change. Use this to fine-tune an '
+                         'existing arm on a different training set: the measured alternative is '
+                         'retraining from scratch, 129 h vs 18.5 h for the unfiltered set. The source '
+                         "checkpoint's architecture must match this run's exactly -- checked and "
+                         'FAIL-FAST, because load_state_dict would otherwise either raise deep in the '
+                         'stack or, on a compatible-but-wrong config, load silently. Mutually '
+                         'exclusive with --resume.')
     ap.add_argument('--run_suffix', default='',
                     help='appended to the run tag, for runs the other fields cannot tell apart -- '
                          'successive --restart_lr rounds at the SAME rate above all. Alphanumerics '
@@ -466,6 +485,30 @@ def main():
                           use_star=not a.no_star, use_global=not a.no_global)
     print('%d parameters  (ns=%d nt=%d hidden=%d layers=%d)'
           % (sum(p.numel() for p in net.parameters()), a.ns, a.nt, a.hidden, a.layers))
+    if a.init_from:
+        if a.resume:
+            raise SystemExit('--init_from and --resume are mutually exclusive: one starts a NEW '
+                             'trajectory from borrowed weights, the other continues an existing one.')
+        ck0 = torch.load(a.init_from, weights_only=False)
+        # FAIL FAST on any architecture difference. `load_state_dict` raises on a shape mismatch but
+        # is SILENT when the configs differ in a way that happens to keep shapes (use_star /
+        # use_global toggle whole sub-modules), and a silently half-loaded model would train and look
+        # plausible.
+        for k in ('ns', 'nt', 'hidden', 'layers'):
+            if int(ck0.get(k, -1)) != int(getattr(a, k)):
+                raise SystemExit('--init_from architecture mismatch: checkpoint %s=%s, this run %s=%s'
+                                 % (k, ck0.get(k), k, getattr(a, k)))
+        for k, want in (('use_star', not a.no_star), ('use_global', not a.no_global)):
+            if bool(ck0.get(k, True)) != bool(want):
+                raise SystemExit('--init_from channel mismatch: checkpoint %s=%s, this run %s=%s'
+                                 % (k, ck0.get(k), k, want))
+        if ck0.get('head') != M3.HEAD_VERSION:
+            raise SystemExit('--init_from head mismatch: checkpoint head=%s, this run %s'
+                             % (ck0.get('head'), M3.HEAD_VERSION))
+        net.load_state_dict(ck0['state'])
+        print('INIT FROM %s  (trained on %s, w_max_cut=%s, n_train=%s) -- WEIGHTS ONLY, fresh '
+              'optimiser and scheduler' % (os.path.basename(a.init_from), ck0.get('data'),
+                                           ck0.get('w_max_cut'), ck0.get('n_train')))
     opt = (torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=a.wd) if a.opt == 'adamw'
            else torch.optim.Adam(net.parameters(), lr=a.lr, weight_decay=a.wd))
     sch = _make_sched(a, opt)
@@ -650,13 +693,14 @@ def main():
                     use_star=not a.no_star, use_global=not a.no_global, head=M3.HEAD_VERSION,
                     holdout=a.holdout, w_max_cut=a.w_max_cut, huber=a.huber,
                     epochs=a.epochs, n_train=len(train), seed=a.seed,
-                    data=os.path.basename(a.data)),
+                    data=os.path.basename(a.data),
+                    init_from=os.path.basename(a.init_from) if a.init_from else None),
                ckpt_path)
     with open(os.path.join(RESULTS, 'run_v3_%s.json' % tag), 'w', encoding='utf-8') as fh:
         json.dump(dict(model='v3', split=split, epochs=a.epochs, ns=a.ns, nt=a.nt,
                        w_max_cut=a.w_max_cut, huber=a.huber, batch=a.batch, lr=a.lr,
                        bulk_weight=a.bulk_weight, graph_balance=bool(a.graph_balance),
-                       opt=a.opt, wd=a.wd,
+                       opt=a.opt, wd=a.wd, init_from=a.init_from or None,
                        schedule=a.schedule, patience=a.patience, stop_patience=a.stop_patience,
                        min_delta=a.min_delta, eval_every=a.eval_every,
                        hidden=a.hidden, layers=a.layers, n_train=len(train), n_val=len(valid),

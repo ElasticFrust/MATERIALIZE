@@ -736,6 +736,51 @@ run whose epochs are small relative to its patience *will* still be stranded, wh
 probes live in. The honest scope is: **restarts pay when steps-per-epoch is small; check the stop
 window in STEPS before assuming a run was stranded.**
 
+### 9j. `--w_max_cut 0` — training on the near-mechanism TAIL. ⏳ RUNNING; DECISION RULE PRE-REGISTERED BELOW
+
+**Written before the result exists, deliberately.** Every cheap lever is now closed — capacity (§9g),
+data volume (+9.7 %), the schedule on the full arm (§9i), `--bulk_weight`, and `--graph_balance` (which
+re-weights graphs while the deficit is *within* graphs). This is the last identified pool of
+recoverable error, and its exclusion rested on a premise **measured false**: the solver's labels are
+sound at every `|W|` (max gap 4.97e-02 at `|W|` 1–3, falling to 7.04e-03 above 100, zero samples over
+0.05). The 110 networks never trained on score MAE(ν) **0.2190 against 0.0452 in-domain** and carry
+**31 %** of the total.
+
+**The run.** Single variable: **the training-set composition.**
+```
+train_v3.py --data data/dataset_v2_s0.npz   --init_from checkpoint_v3_res_bravais_w10_h1_L5_ns48_h64_e400_star_ms.pt   --holdout bravais --w_max_cut 0 --huber 1 --layers 5 --ns 48 --nt 10 --hidden 64   --lr 8.1e-5 --epochs 15 --eval_every 1
+```
+`train 39475 / val 1300` — the full unfiltered set, up from 25 812, against **the same 1300 `bravais`
+holdout samples as the baseline** (the holdout is family-based and was already unfiltered in both), so
+**val is directly comparable to the baseline's 0.0925**. 1 233 steps/epoch, 73.9 min/epoch,
+15 epochs = **18 495 gradient steps ≈ 18.5 h**.
+
+**Why warm-started** (`--init_from`, new): from scratch on the unfiltered set is **129 h vs 18.5 h**.
+`--resume` cannot do it — it needs optimiser state in a `<tag>.resume` whose name matches, and changing
+`--w_max_cut` changes the tag. `lr 8.1e-5` is the baseline's last-significant-improvement rate, not
+3e-3 (§9h: the initial rate is the one measured to destroy a converged fit).
+
+**PRE-REGISTERED DECISION RULE.** Evaluated with the EXISTING tools — no new script, and
+`--w_max_cut 10` kept in the *evaluation* for **both** models so the in-domain/tail boundary is
+identical:
+`m2_error_strata.py --ckpt <each>` (the `|W|` strata) and `m2_fresh_holdout.py --ckpt <each>` (fresh
+meshes). Both models scored in ONE pass on ONE split.
+
+| outcome | criterion | what we then do |
+|---|---|---|
+| **SUCCESS** | tail (`|W|` > 10) MAE(ν) improves **and** in-domain (≤ 10) does not regress beyond noise | keep it; re-score the tier |
+| **PARTIAL** | tail improves, in-domain regresses | the tail is learnable but TRADES OFF ⇒ per-sample weighting or a two-head split, **not** more data |
+| **NEGATIVE** | neither improves | the `--w_max_cut` question is answered (bounded, below) and we stop |
+
+**CAVEAT, stated up front.** Warm-start ≠ from-scratch. Fine-tuning begins in a basin found on
+*filtered* data, so a NEGATIVE result bounds **the cheap route, not the question** — a 129 h
+from-scratch unfiltered run could still differ. Say so if it comes out negative; do not report it as
+"training on the tail does not help".
+
+**Expectation, recorded so it can be scored.** If it works, the gain should appear mostly in the
+**tail and in `longrange`/`cells`**, not in the headline mean — the bulk metric is already 0.031 and
+the mean is dominated by the accurate majority.
+
 ## 10. Limitations
 
 - **`M_S` destroys the finite receptive field** — one perturbation reaches every triangle in one
