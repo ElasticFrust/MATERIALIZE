@@ -768,7 +768,7 @@ meshes). Both models scored in ONE pass on ONE split.
 
 | outcome | criterion | what we then do |
 |---|---|---|
-| **SUCCESS** | tail (`|W|` > 10) MAE(ν) improves **and** in-domain (≤ 10) does not regress beyond noise | keep it; re-score the tier |
+| **SUCCESS** | tail (abs W > 10) MAE(ν) improves **and** in-domain (≤ 10) does not regress beyond noise | keep it; re-score the tier |
 | **PARTIAL** | tail improves, in-domain regresses | the tail is learnable but TRADES OFF ⇒ per-sample weighting or a two-head split, **not** more data |
 | **NEGATIVE** | neither improves | the `--w_max_cut` question is answered (bounded, below) and we stop |
 
