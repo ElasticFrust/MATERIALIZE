@@ -24,6 +24,35 @@ including "nothing".** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
 
 ---
 
+## ⚙ GATE STATUS — all 5 green as of 2026-09-13, after TWO were found broken
+
+Run them with `PYTHONIOENCODING=utf-8` on Windows, or pipe-safe now that the second bug below is fixed.
+
+| gate | result 2026-09-13 |
+|---|---|
+| `Phase 2/test_forward_solver.py` | ALL PASSED — [7] `C_eff` vs energy Hessian worst **1.65e-02**, [8] per-triangle `C(s)` worst **9.74e-03**, regional worst 1.67e-02 |
+| `Phase 3/test_inverse_design.py` | 16/16 — [15] regular lattice **nu=0.3333 / E=1.1547**, virial-vs-energy **1.1e-13**, solver-vs-physical tensor **1.6e-12** |
+| `Phase 5/verifications/test_designer_surface.py` | ALL PASSED — [5] 7 good meshes pass, 1 not-closed + 1 folded still fail |
+| `Phase 5/verifications/test_hex_closed_form.py` | ALL PASSED — max abs(dnu) **4.34e-06** over d in [0.05, 2] |
+
+**⚠ Two gates were broken and nobody knew. Neither was a physics regression, and that is the point —
+both failed for reasons that look like noise and get skipped over.**
+
+1. **`test_designer_surface` had been RED FOR 19 DAYS** (fixed, commit `0553c40`). It asserted that
+   `seeds._reentrant_honeycomb` FAILS the mesh preconditions as not-closed — and commit `5526e2b`
+   (2026-08-25) gave that seed the phantom-centre fan treatment the test's own comment called "the
+   obvious follow-up", so it now produces a closed mesh. **A test that encodes a TOMBSTONE rather than
+   a requirement fails exactly when the bug is fixed.** The assertion was inverted, not removed: the
+   gate still reports "1 not-closed + 1 folded fail", so strictness is intact.
+2. **`test_inverse_design [15]` crashed on a PRINT** whenever stdout is not UTF-8 (fixed, `db9f226`) —
+   the Greek `nu` in its final report line, under cp1252. Every computation and assertion had already
+   passed; it died reporting them, and surfaced as a hard FAIL in the suite summary. So **the suite was
+   un-runnable under redirection**, i.e. in exactly the conditions a CI or log capture uses.
+
+**The habit this earns: RUN THE GATES, and read a failure before believing it.** Memory and the docs
+both claimed "all 5 gates green"; one had been red for nineteen days and the other failed the moment
+its output was piped. A gate nobody runs is not a gate.
+
 ## THE TODO, in order
 
 ### 1. B-1 — ✅ **ROOT-CAUSED AND FIXED (2026-08-24).** No longer a blocker.
