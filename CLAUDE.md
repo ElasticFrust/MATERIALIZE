@@ -571,10 +571,34 @@ wrong claim.
   longer allowed to walk."** *(The user caught this; the runs before 2026-08-28 all carry it.)*
 - **CONVERGENCE MUST BE MEASURED, NOT SCHEDULED.** Default is `ReduceLROnPlateau` + early stopping on
   a patience criterion (`train_v3.py --schedule plateau`), so the LR falls only *after* the
-  validation score demonstrably stalls and the run ends when further decay buys nothing. Cosine is
-  retained ONLY so the pre-2026-08-28 runs stay reproducible.
+  validation score demonstrably stalls. Cosine is retained ONLY so the pre-2026-08-28 runs stay
+  reproducible.
+- **BUT PLATEAU + EARLY STOPPING IS NOT ITSELF SUFFICIENT — it strands runs short of their floor**
+  *(measured 2026-09-12)*. This bullet used to claim such a run "ends when further decay buys
+  nothing"; that is FALSE. One "converged" run was beaten TWICE by simply being allowed to walk
+  further — **0.1936 → 0.1636 → 0.1485** on the same trajectory, by LR restart alone (−15.5 %, then
+  −9.2 %; −23 % cumulative) — and each of those three stages had ended on the lr floor.
+  A decaying rate makes the metric flatten *before* the model is done, and the stopping rule then
+  certifies the flattening. **Consequences:** (i) **repeated WARM RESTARTS** — restart until a round
+  buys < ~2 % — not a single decay to exhaustion; (ii) that warm-restart result is **the baseline any
+  architectural change is measured against**, or a structural gain is confounded with schedule
+  headroom the baseline never collected; (iii) a level from a single decay run is a **lower bound on
+  the architecture**, so rankings across arms that shared a schedule survive but the LEVELS do not.
+  *(Every `Phase 5/results/m2_s1/` training number predates this and is pessimistic by plausibly
+  20–30 %; see `M2_RESIDUAL_AND_CONSTRAINTS.md` §9h.)*
 - **The decisive test is an LR-RESTART PROBE**, not the shape of a curve: take the best checkpoint,
-  restore the initial LR, train on. If the score improves, the flat tail was the schedule.
+  **restore a rate at which the run was observably still making progress** (the LR at its last
+  significant improvement), train on. If the score improves, the flat tail was the schedule.
+  **NOT the initial LR** *(corrected 2026-09-12 — the earlier wording said "restore the initial LR",
+  and that is the one rate measured to FAIL here)*: the initial 3e-3 threw a converged 0.1936 up to
+  0.73 and it never re-entered the basin, while 2.7e-4 — a rate that run spent a thousand epochs
+  making progress at — reached 0.1636. **A restart hot enough to leave the basin cannot interrogate
+  the basin's floor, and a restart that loses ground and never recovers is an INSTRUMENT FAILURE, not
+  evidence of a floor.** Implemented as `train_v3.py --restart_lr <rate>`, a rate and not a switch for
+  exactly this reason; `--resume` alone cannot do it, since `opt.load_state_dict` restores the decayed
+  LR. Judge the restart on its OWN trajectory — seeding its stop clock with the inherited best makes
+  the criterion "beat the old best within `stop_patience`", which a restart that first loses ground
+  can never meet.
 - **Adam vs AdamW is the question "should we use weight decay"** — they are IDENTICAL at `wd = 0`.
   And with `LayerNorm`/`tensor_rms_norm` downstream, weight decay largely acts as an **effective-LR
   modifier rather than regularisation**, because scaling a pre-normalisation weight down leaves the

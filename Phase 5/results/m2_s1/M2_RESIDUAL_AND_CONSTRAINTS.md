@@ -549,7 +549,13 @@ not a free lever.
 
 **The sizing error not to repeat:** 200 samples at batch 32 is **7 steps/epoch**, so the original
 400-epoch cap was ~2 800 gradient steps against the real run's ~42 000. Size a capacity probe by
-GRADIENT STEPS, not sample count. Logs `probe_L5.log`, `probe_L5_cont{,2}.log`, `probe_L10.log`.
+GRADIENT STEPS, not sample count.
+
+**Evidence, and where it lives.** Cite the committed `run_v3_*.json`, **not** the `probe_*.log` files
+— `*.log` is gitignored, so the logs are local scratch while the JSONs are in-repo and carry the
+FULL per-evaluation `history` (epoch, train, val, bulk, lr) from epoch 0, a restart inheriting and
+extending its parent's. L5 = `run_v3_res_bravais_w0_h1_L5_ns48_h64_e1600_star_ms_probe200_c10000.json`
+(103 points, ep 0–442, best 0.2213).
 
 **A bug this run exposed** (fixed, `train_v3.py:553`): the post-loop `per, bad = evaluate(...)`
 unpacked 2 values from a 3-tuple, so **any run that reached its stopping rule crashed before writing
@@ -616,6 +622,12 @@ it. Two restarts from §9g's epoch-2370 snapshot, both judged against its inheri
 |---|---|---|---|
 | **3e-3** (the INITIAL lr) | threw 0.1936 up to **0.73**, stalled at 0.705, never re-entered the basin | 0.7012 | **instrument failure — measures nothing** |
 | **2.7e-4** (a rate the run was still progressing at) | perturbed to 0.41, recovered past the old best within ~150 epochs | **0.1636 (−15.5 %)** | **the flat tail was the SCHEDULE** |
+
+Runs, all committed with their full `history` (the `probe_*.log` files are gitignored scratch —
+cite these): parent `..._probe8_c10000.json` (238 pts, ep 0–2370, 0.1936) · 3e-3 restart
+`..._probe8_c10000_rlr.json` (259 pts, ep 0–2580, never beat 0.1936) · 2.7e-4 restart
+`..._rlr0.00027.json` (313 pts, ep 0–3120, **0.1636**) · round 2 `..._rlr0.00027_rs2.json`
+(375 pts, ep 0–3740, **0.1485**).
 
 **So 0.1936 was not a floor.** §9g's stated caveat — that it ended on the lr floor with val still
 creeping — was the right caveat, and cashing it in moved the number 15.5 %.

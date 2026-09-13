@@ -255,9 +255,10 @@ section used to pose are answered:
 >    (threw 0.1936 to 0.73, never re-entered the basin, measures nothing) — so `CLAUDE.md` §3's
 >    "restore the initial lr" wording needs the qualifier **"a rate the run was still progressing
 >    at"**.
->    **⚠ THIS CONTAMINATES THE LEVELS OF EVERY TRAINED NUMBER IN S1.** The sequence is
->    **0.2213 → 0.1936 → 0.1636**, each "converged" by the plateau rule and each beaten by walking
->    further; the 2.7e-4 run ended on the lr floor too, exactly as its parent did. The whole ladder
+>    **⚠ THIS CONTAMINATES THE LEVELS OF EVERY TRAINED NUMBER IN S1.** ONE trajectory, beaten twice
+>    by walking further: **0.1936 → 0.1636 → 0.1485**, each stage ended on the lr floor and each
+>    "converged" by the plateau rule. *(The earlier 0.2213 → 0.1936 step is NOT part of this chain —
+>    that was a different probe at a different capacity ratio, §9g.)* The whole ladder
 >    (v2 0.5111 → … → **0.0925**) and the tier scores vs the sim used that same schedule. **Ranking
 >    probably safe** (shared schedule), **levels pessimistic by an unknown margin** — and 15 % is
 >    large next to the tier margins. **Do not quote them as converged without re-checking.**
