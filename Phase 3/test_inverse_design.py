@@ -516,7 +516,7 @@ def test_homogenization():
         assert ve < 3e-3, f"virial vs energy-Hessian disagree (phi={phi},psi={psi},eta={eta}): {ve:.2e}"
         assert vs < 0.01, f"solver vs physical homogenisation tensor disagree (phi={phi},psi={psi},eta={eta}): {vs:.2e}"
         worst_ve, worst_vs = max(worst_ve, ve), max(worst_vs, vs)
-    print(f"  [15] homogenisation: regular nu={nu0:.4f}/E={E0:.4f}; worst virial-vs-energy(ν,E)={worst_ve:.1e}, "
+    print(f"  [15] homogenisation: regular nu={nu0:.4f}/E={E0:.4f}; worst virial-vs-energy(nu,E)={worst_ve:.1e}, "
           f"solver-vs-physical(tensor)={worst_vs:.1e}  OK")
 
 
