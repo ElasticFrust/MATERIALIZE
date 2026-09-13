@@ -1,0 +1,24 @@
+{
+  "n": 200,
+  "n_triangles": 48642,
+  "label_std": [
+    0.8277025527603488,
+    0.2712206197277966,
+    0.3050090670474139,
+    0.22955399479645872,
+    0.225846004135838,
+    0.6604239629959816
+  ],
+  "trained_full_40k": {
+    "mae_over_std": 0.34550591422685906,
+    "bulk_mae_over_std": 0.12198701807050448,
+    "spd_violation": 0.0,
+    "checkpoint": "checkpoint_v3_res_bravais_w10_h1_L5_ns48_h64_e400_star_ms.pt"
+  },
+  "overfit_probe_200": {
+    "mae_over_std": 0.22132809457429822,
+    "bulk_mae_over_std": 0.06146642938843919,
+    "spd_violation": 0.0,
+    "checkpoint": "checkpoint_v3_res_bravais_w0_h1_L5_ns48_h64_e1600_star_ms_probe200_c10000.pt"
+  }
+}

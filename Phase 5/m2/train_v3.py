@@ -148,14 +148,43 @@ def oracle_check(prepped, raws, tol=1e-9):
     return n
 
 
+def _make_sched(a, opt):
+    """The LR schedule. One definition, because `--restart_lr` has to rebuild it mid-run.
+
+    `plateau` decays ON EVIDENCE OF STALLING, not on a clock; `threshold_mode='rel'` makes
+    `min_delta` a relative improvement so the bar scales with the current score. `cosine` is retained
+    ONLY so the pre-2026-08-28 runs stay reproducible -- it reaches ~0 lr at `T_max` and so flattens
+    the loss curve BY CONSTRUCTION, which once manufactured a "converged" result (CLAUDE.md section 3).
+    """
+    if a.schedule == 'cosine':
+        return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=a.epochs)
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        opt, mode='min', factor=0.3, patience=a.patience,
+        threshold=a.min_delta, threshold_mode='rel')
+
+
 def run_tag(a):
     """The run's identity, and the name of its checkpoint.
 
     Must encode ARCHITECTURE and EPOCHS, not just the data flags: an earlier version keyed only on
     holdout+filter+huber, so a 2-epoch throughput benchmark sharing those flags silently overwrote a
     220-epoch checkpoint -- 11.5 h of compute lost, and the junk committed in its place because the
-    metadata was never checked."""
+    metadata was never checked.
+
+    The DATASET is part of the identity too (added 2026-09-12). `--resume` looks up `<tag>.resume` by
+    name alone, so without it a resume against a different `--data` silently continues a trajectory
+    on DIFFERENT SAMPLES: `--overfit_probe n` draws its n by `rng(seed).choice(len(raw))`, and `raw`
+    depends on the file. Measured that morning -- resuming the 200-sample probe against
+    `dataset.npz` (9 715 usable) instead of `dataset_v2_s0.npz` (40 775) changed which 200 samples
+    were drawn, and only the `keeps 1956/9715` log line gave it away. The basename was already
+    recorded INSIDE the saved `.pt`, which makes a finished run traceable but cannot stop the
+    filename collision or the wrong-dataset resume."""
     tag = '%s_%s' % (M3.HEAD_VERSION, a.holdout if a.holdout != 'random' else 'within')
+    # dataset: `dataset_v2_s0.npz` -> `_dv2s0`, plain `dataset.npz` -> `_dbase`. Alphanumerics only,
+    # so the tag stays a legal filename on every platform.
+    _stem = os.path.splitext(os.path.basename(a.data))[0]
+    _stem = _stem[len('dataset'):].lstrip('_') if _stem.startswith('dataset') else _stem
+    tag += '_d%s' % (''.join(c for c in _stem if c.isalnum()) or 'base')
     if a.w_max_cut or a.huber:
         tag += '_w%g_h%g' % (a.w_max_cut, a.huber)
     tag += '_L%d_ns%d_h%d_e%d' % (a.layers, a.ns, a.hidden, a.epochs)
@@ -165,6 +194,10 @@ def run_tag(a):
         tag += '_ms'
     if getattr(a, 'overfit_probe', 0):
         tag += '_probe%d_c%g' % (a.overfit_probe, a.contrast_min)
+    if getattr(a, 'restart_lr', 0.0):
+        # a restarted trajectory is a DIFFERENT run from its parent, and two restarts at different
+        # RATES are different runs from each other
+        tag += '_rlr%g' % a.restart_lr
     if getattr(a, 'graph_balance', False):
         tag += '_gb'                           # a different objective is a different run
     if getattr(a, 'bulk_weight', 0):
@@ -175,6 +208,11 @@ def run_tag(a):
         tag += '_m%g' % a.mesh_frac            # a second holdout changes the TRAIN set: part of id
     if a.limit:
         tag += '_lim%d' % a.limit                             # probes can never look like real runs
+    if getattr(a, 'run_suffix', ''):
+        # For runs the other fields CANNOT separate -- successive `--restart_lr` rounds at the SAME
+        # rate being the case this exists for. Without it round 2 wears round 1's name, and saving it
+        # needs `--force`, i.e. overwriting the very result it is trying to improve on.
+        tag += '_%s' % ''.join(c for c in a.run_suffix if c.isalnum())
     return tag
 
 
@@ -255,6 +293,25 @@ def main():
                          'edge-compatibility pairing -- but C_curv, which couples the ~6 triangles '
                          'of a vertex star simultaneously, had no channel at all. This flag exists '
                          'so its effect can be measured as a single variable.')
+    ap.add_argument('--run_suffix', default='',
+                    help='appended to the run tag, for runs the other fields cannot tell apart -- '
+                         'successive --restart_lr rounds at the SAME rate above all. Alphanumerics '
+                         'are kept, everything else dropped, so the tag stays a legal filename.')
+    ap.add_argument('--restart_lr', type=float, default=0.0,
+                    help='LR-RESTART PROBE (CLAUDE.md section 3), as a RATE; 0 = off. With --resume, '
+                         'set the lr to this value and train on -- the decisive test of whether a '
+                         'flat tail is the model finding the bottom or the schedule no longer '
+                         'letting it walk, which a decay-driven ending cannot tell apart. Needed as '
+                         'a flag because --resume alone cannot do it: opt.load_state_dict restores '
+                         'the DECAYED lr (measured: 2.19e-06), so even a fresh scheduler keeps it. '
+                         'A RATE rather than a switch because restoring the INITIAL lr was measured '
+                         'DESTRUCTIVE on the 8-sample probe: 3e-3 threw a converged 0.1936 up to '
+                         '0.73 and it stalled at 0.705, never re-entering the basin, so the test '
+                         'could not interrogate the floor at all. Pick a rate at which the run was '
+                         'observably still making progress (2.7e-4 there), not the initial one. '
+                         'Resets the optimiser lr, the scheduler (fresh, so an inherited `best` '
+                         'cannot re-cut at once) and the stop clock; `best` is KEPT, since beating '
+                         'it is the measurement.')
     ap.add_argument('--resume', action='store_true',
                     help='continue from the last per-evaluation snapshot (<checkpoint>.resume) if '
                          'one exists: model, optimiser, scheduler, best-so-far and history, so the '
@@ -411,14 +468,7 @@ def main():
           % (sum(p.numel() for p in net.parameters()), a.ns, a.nt, a.hidden, a.layers))
     opt = (torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=a.wd) if a.opt == 'adamw'
            else torch.optim.Adam(net.parameters(), lr=a.lr, weight_decay=a.wd))
-    if a.schedule == 'cosine':
-        sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=a.epochs)
-    else:
-        # Decay ON EVIDENCE OF STALLING, not on a clock. `threshold_mode='rel'` makes `min_delta` a
-        # relative improvement, so the bar scales with the current score.
-        sch = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            opt, mode='min', factor=0.3, patience=a.patience,
-            threshold=a.min_delta, threshold_mode='rel')
+    sch = _make_sched(a, opt)
 
     # Track the BEST epoch's weights, not just the last. Training is NOT monotone here: the
     # depth-5 run jumped from val 0.4017 to 0.6522 in eight epochs before recovering, and a run
@@ -447,6 +497,20 @@ def main():
         t0 = time.time() - float(ck.get('elapsed', 0.0))
         print('RESUMED from %s at epoch %d (best %.4f at ep %d)'
               % (resume_path, start_ep, best['val'], best['epoch']))
+        if a.restart_lr:
+            for grp in opt.param_groups:
+                grp['lr'] = a.restart_lr
+            sch = _make_sched(a, opt)          # fresh: an inherited `best` would re-cut at once
+            # The stop clock is reset to INFINITY, not to the inherited `best`. Seeding it with
+            # `best` makes the criterion "improve on the old best within stop_patience evaluations",
+            # which a restart that first LOSES ground can essentially never satisfy -- the 3e-3
+            # restart was killed 209 epochs in while still descending from 0.73, judged against a
+            # 0.1936 it had been thrown far away from. The restart must be judged on its OWN
+            # trajectory; whether it beat the inherited best is read off `best` at the end.
+            last_sig = dict(val=float('inf'), epoch=start_ep)
+            print('  LR RESTART: lr -> %.2e, fresh scheduler, stop clock reset (judged on its OWN '
+                  'trajectory). Going below the inherited best %.4f means the flat tail was the '
+                  'SCHEDULE, not the model.' % (a.restart_lr, best['val']))
     elif a.resume:
         print('  --resume given but %s does not exist; starting fresh' % resume_path)
     for ep in range(start_ep, a.epochs):
@@ -550,7 +614,7 @@ def main():
                           'help.' % lr_now)
                     break
 
-    per, bad = evaluate(net, valid, sd)
+    per, bad, blk = evaluate(net, valid, sd)
     print('\nFINAL (%s)   per-triangle MAE/std = %.4f   SPD viol %.5f'
           % (split, float((per / sd).mean()), bad))
     # Reference points for the `bravais` holdout ONLY -- these are SPLIT-DEPENDENT, and quoting

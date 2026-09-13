@@ -162,7 +162,7 @@ section used to pose are answered:
 |---|---|---|
 | **S0** | `CLAUDE.md` wording; **pin `OMP/MKL_NUM_THREADS` + the tiling method in the builder** | wording ✅ (swept across *all* docs 2026-08-25); **thread + method pinning NOT DONE — the one S0 item still open** |
 | **S0b** | dilution validity sweep, 266 cases | ✅ **`k_soft ≥ 1e-8` is safe at every `f ≤ 0.40`**, including sub-isostatic `z = 3.6`; below 1e-12 unusable. `results/dilution_validity/DILUTION_VALIDITY.md` |
-| **S1 — MEASURED; VERDICT STILL PENDING (two runs in flight, 2026-09-06)** | head `C(s) = Q·MMᵀ·Qᵀ`; body is **v3 = TENSOR messages on TRIANGLE adjacency**, now with the **residual head** and the solver's **CONSTRAINT channels** (plan §2.4–2.5; the how-and-why is `documentation/GNN_GUIDE.md`) | see the block below |
+| **S1 — MEASURED; the TIER VERDICT is a pending SPEC decision (the mean-based criterion is not reproducible at n=400), and the error is now shown to be a FITTING floor (§9f)** | head `C(s) = Q·MMᵀ·Qᵀ`; body is **v3 = TENSOR messages on TRIANGLE adjacency**, now with the **residual head** and the solver's **CONSTRAINT channels** (plan §2.4–2.5; the how-and-why is `documentation/GNN_GUIDE.md`) | see the block below |
 | S2 | scaled, balanced dataset (~10 k), trajectories + provenance | after S1 — see §3 |
 | S3 | 5-fold leave-one-family-out training | **must**: MAE(ν) ≤ 0.02 and MAE(E)/E ≤ 5 % **against the independent sim**; **kill criterion** MAE(ν) > 0.05 ⇒ stop and report, which is a legitimate result |
 | S4 | wire in as an M1 pre-filter | solver calls per design reduced at unchanged design quality |
@@ -197,6 +197,10 @@ section used to pose are answered:
 > accurate and the failure is ALL tail. **SPEC QUESTION FOR THE USER: should a mean-based kill
 > criterion at n=400 remain the instrument?** Tuning architecture against it is tuning against noise.
 >
+> **USER'S CALL, 2026-09-12: do NOT switch to a median-based kill criterion yet.** The mean-based
+> criterion stays the instrument for the time being; the reproducibility problem above is recorded,
+> not acted on. Do not re-propose the switch without new evidence.
+>
 > **Generalisation is FINE:** train 0.1197 vs fresh unseen meshes 0.1313 = **+9.7 %**.
 >
 > **Error structure:** `R = mean|err|/|mean err|` tracks **sqrt(N) at a constant 0.435** in every
@@ -212,19 +216,65 @@ section used to pose are answered:
 >
 > ### NEXT STEPS, in order
 >
-> 1. **FINISH THE OVERFIT PROBE -- it ran but was STOPPED, and was MIS-SIZED.**
->    `train_v3.py --overfit_probe 200 --contrast_min 10000`, train == val, L5 vs L10.
->    Reached: **L5 ep 399 (the CAP, not the stopping rule) at MAE/sigma 0.2272 and STILL FALLING**
->    (0.4353 @ ep 125); **L10 ep 200 at 0.5258, STALLED** (lr collapsed to 2.43e-05).
->    - **Depth 10 stalls.** With the depth-8 arm having DIVERGED at lr 3e-3, that is two independent
->      signs that **depth past 5 is an OPTIMISATION problem here**, not a free lever.
->    - **Nothing can yet be concluded about reach vs expressivity** -- L5 had not converged.
->    - **THE SIZING ERROR, do not repeat it:** 200 samples at batch 32 is **7 steps/epoch**, so 400
->      epochs ~ 2 800 gradient steps against the real run's ~42 000. Size a capacity probe by
->      GRADIENT STEPS, not sample count. At ~0.1-0.3 s/sample this costs hours whatever the sample
->      size (fewer samples = fewer steps/epoch; more samples = longer epochs).
->    - **To finish:** raise `--epochs` far past 400 and run ONE arm at a time on all four threads;
->      L5 alone is cheaper and better-conditioned. Logs `Phase 5/results/m2_s1/probe_L{5,10}.log`.
+> 1. ✅ **OVERFIT PROBE — DONE 2026-09-12. The high-contrast error is a FITTING failure, not a
+>    generalisation gap, so MORE DATA CANNOT HELP IT.** Full record
+>    `Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md` §9f; script
+>    `Phase 5/verifications/m2_probe_vs_trained.py`.
+>    L5 was resumed from its ep-399 snapshot (cap 400 → 1600) and **stopped on its own measured rule
+>    at ep 442, best 0.2213**. Scored against the real S1 model on the **same 200 samples under ONE
+>    `sd`**: trained-on-40 775 **0.3455** vs memorise-only-these-200 **0.2213** — aiming all 397 k
+>    parameters at the hard population buys **−36 %** and nowhere near zero. **Bulk 0.0615 vs
+>    per-triangle 0.2213**: it fits each graph's MEAN `C` and fails on the SPATIAL structure.
+>    Depth 10 stalled at 0.5258 and depth 8 diverged ⇒ **depth past 5 is an OPTIMISATION problem.**
+>    **Two cheap follow-ups this leaves open, both un-run:** (a) the **LR-RESTART probe** — the lr
+>    fell 37× in the 36 epochs before stopping, and `CLAUDE.md` §3 says the restart, not the plateau
+>    rule, is the decisive convergence test; (b) a **TIGHT capacity probe** at ~16 samples, because
+>    200 samples are 291 852 target scalars against 397 328 parameters — **1.4:1 is not "free to
+>    memorise"**, so today's claim is "cannot fit at this ratio", not "cannot represent".
+>    Also fixed on the way: **`train_v3.py:553` unpacked 2 values from a 3-tuple, so every run that
+>    reached its stopping rule crashed before saving its checkpoint.**
+>
+> 1b. ✅ **TIGHT capacity probe DONE 2026-09-12 — CAPACITY IS REFUTED.** §9g. 8 samples at
+>    **39.7:1** params-to-target-scalars (vs 1.4:1) and **~9 480 gradient steps** (vs ~3 100):
+>    floor moved only **0.2213 → 0.1936, −12.5 %**. A 28× better capacity ratio buys almost nothing,
+>    so **neither more parameters nor more data will fix the high-contrast error.** Bulk 0.0571 vs
+>    per-triangle 0.1936 again: the deficit is the per-triangle SPATIAL structure.
+>    ⚠ **It ended on the LR FLOOR** (2.19e-06, scheduler-driven) with val still creeping ~0.5 %/100
+>    epochs, so **expressivity vs optimisation is NOT yet decided** — and `CLAUDE.md` §3 names the
+>    **LR-RESTART probe** as the decisive test. `train_v3.py` has no restart switch; adding one
+>    (a `--restart_lr` flag resetting `opt.param_groups[*]['lr']` after a resume, since the optimiser
+>    state carries the decayed lr even with a fresh scheduler) is **the next action in this thread**.
+>    It matters because the two branches point opposite ways: expressivity ⇒ STRUCTURAL change
+>    (a new channel / different message space); optimisation ⇒ schedule / init / loss.
+>    **Either way `--graph_balance` is not indicated** — a per-graph re-weighting does not address a
+>    per-triangle spatial deficit.
+>
+> 1c. ✅ **LR-RESTART DONE 2026-09-12 — THE "FLOOR" WAS PARTLY THE SCHEDULE: 0.1936 → 0.1636.** §9h.
+>    `--restart_lr <rate>` added (a RATE, not a switch). Restarting at **2.7e-4** beat the
+>    "converged" best by **15.5 %**; restarting at the INITIAL **3e-3** was an instrument failure
+>    (threw 0.1936 to 0.73, never re-entered the basin, measures nothing) — so `CLAUDE.md` §3's
+>    "restore the initial lr" wording needs the qualifier **"a rate the run was still progressing
+>    at"**.
+>    **⚠ THIS CONTAMINATES THE LEVELS OF EVERY TRAINED NUMBER IN S1.** The sequence is
+>    **0.2213 → 0.1936 → 0.1636**, each "converged" by the plateau rule and each beaten by walking
+>    further; the 2.7e-4 run ended on the lr floor too, exactly as its parent did. The whole ladder
+>    (v2 0.5111 → … → **0.0925**) and the tier scores vs the sim used that same schedule. **Ranking
+>    probably safe** (shared schedule), **levels pessimistic by an unknown margin** — and 15 % is
+>    large next to the tier margins. **Do not quote them as converged without re-checking.**
+>    **Round 2 (`--run_suffix rs2`, same rate): 0.1636 → 0.1485, −9.2 %** — diminishing, not
+>    inexhaustible. Cumulative over two restarts **−23 %**; a two-point extrapolation (ratio 0.59)
+>    suggests an asymptote near **0.13**, ~30 % under the original "converged" value — **flagged as a
+>    guess at the form, not a measurement.**
+>    **BOTH things are true, and this is the settled reading:**
+>    (i) the schedule cost a real bounded amount, so **levels across S1 are pessimistic by plausibly
+>    20–30 %** (ranking probably safe — shared schedule) and must not be quoted as converged; and
+>    (ii) **restarts do NOT reach zero**, so ~0.13–0.15 on 8 memorisable samples at 39.7:1 is a
+>    surviving **representational** deficit — structural work (new channel / different message space)
+>    is back on the table, now measurable against a correct baseline.
+>    **PROTOCOL:** repeated warm restarts until a round buys < ~2 %, and that is **the baseline any
+>    architectural change is measured against** — otherwise a structural gain is confounded with
+>    schedule headroom the baseline never collected.
+>    **NEXT:** re-measure the ladder + tier scores under warm restarts before any structural work.
 > 2. **`--graph_balance` vs baseline -- UNTESTED and now the live hypothesis.** `--bulk_weight`
 >    is **REFUTED** (preliminary, 15 ep, not converged): it cost 14 % on the per-triangle
 >    metric and buys NOTHING on bulk (0.1018 vs baseline 0.1016) -- exactly as the

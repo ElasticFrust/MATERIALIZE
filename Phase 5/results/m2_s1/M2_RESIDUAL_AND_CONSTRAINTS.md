@@ -497,32 +497,172 @@ the mechanism §9c actually identifies for the `cells` failure. Its single epoch
 against baseline's 0.7423.
 
 
-### 9f. Overfit probe — PARTIAL: depth 10 STALLS, depth 5 was still improving at the cap
+### 9f. Overfit probe — FINISHED 2026-09-12: the high-contrast error is a FITTING failure, not a generalisation gap
 
-`--overfit_probe 200 --contrast_min 10000`, train == val, L5 vs L10, otherwise identical.
-Stopped by the user before either arm finished; **neither result is a converged capacity verdict.**
+`--overfit_probe 200 --contrast_min 10000`, train == val, otherwise identical to the S1 run. The L5
+arm was **resumed from its epoch-399 snapshot** (same model/optimiser/scheduler/history, cap raised
+400 → 1600) and **stopped on its own measured rule at epoch 442**: 12 evaluations without a > 2 %
+improvement, best **0.2213 @ ep 442**. L10 had already stopped itself at 200 epochs / 0.5258.
 
-| | epochs reached | MAE/σ (on data seen every epoch) | train loss | lr at stop |
-|---|---|---|---|---|
-| **L5** | 399 *(hit the 400 cap)* | **0.2272**, still falling (0.4353 @ ep 125) | 0.0644 | 2.70e-04 |
-| **L10** | 200 | **0.5258**, stalled | 0.2322 | **2.43e-05** |
+| | epochs | MAE/σ (on data seen every epoch) | train loss | lr at stop | ended by |
+|---|---|---|---|---|---|
+| **L5** | **442** | **0.2213** | 0.0552 | 7.29e-06 | **stopping rule** (was the 400 cap before) |
+| **L10** | 200 | 0.5258 | 0.2322 | 2.43e-05 | stopping rule |
 
-**What can be said:**
-- **Depth 10 STALLED.** Its LR had collapsed four cuts to 2.43e-05 while sitting at 0.53 — the
-  plateau scheduler fired repeatedly, i.e. it stopped improving. Together with the depth-8 arm
-  diverging outright at lr 3e-3, that is two independent signs that **depth past 5 is an
-  OPTIMISATION problem in this architecture**, not a free lever.
-- **Depth 5 had NOT converged** — 0.4353 → 0.2272 between ep 125 and ep 399, still halving when the
-  epoch cap hit. So it cannot be said that the architecture *cannot* fit these samples.
+**The decisive comparison** (`Phase 5/verifications/m2_probe_vs_trained.py` →
+`probe_vs_trained.json`): both checkpoints scored on the **same 200 samples**, with **one `sd`**
+computed on that population, because the two runs each normalised by their own train-set `sd` and
+their published numbers are therefore not on a common scale — the lesson of the "0.5144 was the train
+split" error (§ 2026-08-27).
 
-**What CANNOT be concluded:** the reach-vs-expressivity question. The probe needed more gradient
-steps than it got — 200 samples at batch 32 is only **7 steps/epoch**, so 400 epochs is ~2 800 steps
-against the real run's ~42 000. Sizing the probe by SAMPLE COUNT was the error; a capacity probe has
-to be sized by GRADIENT STEPS, and at ~0.1–0.3 s/sample for this model that is hours whatever the
-sample size (fewer samples give fewer steps per epoch, more samples give longer epochs).
+| | per-triangle MAE/σ | bulk MAE/σ |
+|---|---|---|
+| trained on all 40 775 (the 0.0925 model) | 0.3455 | 0.1220 |
+| **overfit probe, these 200 only** | **0.2213** | **0.0615** |
 
-**To finish it:** raise `--epochs` well past 400 (the cap, not the stopping rule, ended L5) and run
-ONE arm at a time on all four threads. L5 alone is the cheaper and better-conditioned arm.
+**Reading.** Pointing all 397 328 parameters at 200 high-contrast samples, and training to
+convergence on data it sees every epoch, improves per-triangle MAE/σ only **0.3455 → 0.2213 (−36 %)**
+and gets nowhere near zero. So the high-contrast error is **not** a generalisation gap and **not** a
+data shortage — the architecture **cannot fit that population even when free to memorise it**. This
+is consistent with §9c (no systematic bias) and with the +9.7 % train→fresh-mesh gap: more data buys
+nothing here.
+
+**The bulk number localises it:** 0.0615 bulk against 0.2213 per-triangle. The probe fits each
+graph's MEAN `C` well and fails on the per-triangle SPATIAL structure — the same split §9c found.
+
+**Depth 10 stalls** (0.5258, lr collapsed to 2.43e-05), and the depth-8 arm diverged outright at
+lr 3e-3: two independent signs that **depth past 5 is an OPTIMISATION problem in this architecture**,
+not a free lever.
+
+**Three limits on this verdict, all load-bearing:**
+1. **"Free to memorise" is not established by counting.** The 200 samples carry 48 642 triangles =
+   **291 852 target scalars against 397 328 parameters — only 1.4:1**, on a structured target. A
+   clean capacity probe needs parameters ≫ targets (≈16 samples, ~30:1), so the honest claim is
+   "cannot fit at this capacity ratio", not "cannot represent".
+2. **Convergence rests on the plateau rule, not on an LR restart.** The lr fell 37× (2.70e-04 →
+   7.29e-06) in the 36 epochs before stopping, and `CLAUDE.md` §3 is explicit that the decisive test
+   is an **LR-restart probe** — reload the best checkpoint, restore the initial lr, train on. Not yet
+   run; until it is, "0.2213 is the floor" is the weaker instrument's answer.
+3. **Reach vs expressivity is still NOT separated.** This says the deficit is in fitting, not in
+   data; it does not say which structural property is missing. (The earlier "reach is the deficit"
+   claim stays withdrawn — see §9c.)
+
+**The sizing error not to repeat:** 200 samples at batch 32 is **7 steps/epoch**, so the original
+400-epoch cap was ~2 800 gradient steps against the real run's ~42 000. Size a capacity probe by
+GRADIENT STEPS, not sample count. Logs `probe_L5.log`, `probe_L5_cont{,2}.log`, `probe_L10.log`.
+
+**A bug this run exposed** (fixed, `train_v3.py:553`): the post-loop `per, bad = evaluate(...)`
+unpacked 2 values from a 3-tuple, so **any run that reached its stopping rule crashed before writing
+its checkpoint** — `blk` is consumed at the JSON dump. It survived because earlier runs were killed
+or hit the epoch cap path. The `.resume` snapshot meant nothing was lost.
+
+### 9g. TIGHT capacity probe (8 samples, 39.7:1) — CAPACITY IS REFUTED
+
+> **ANSWERED BY §9h:** the expressivity-vs-optimisation question this section leaves open is settled
+> PARTLY in the OPTIMISATION direction — LR restarts at a sensible rate took this section's
+> "floor" of 0.1936 down to **0.1485**. But they do NOT reach zero, so a REPRESENTATIONAL deficit
+> survives. Read §9g for the capacity refutation, which stands, then §9h for both halves.
+
+§9f's verdict was bounded by a weak capacity ratio (1.4:1). This re-runs it at **39.7:1** — 8 samples
+from the same contrast ≥ 10⁴ pool, same rng and seed, 1 670 triangles = 10 020 target scalars against
+397 328 parameters. Sized by **gradient steps** this time: batch 2 → 4 steps/epoch, and it ran
+**2 370 epochs ≈ 9 480 steps** against the 200-sample probe's ~3 100.
+Command: `train_v3.py --overfit_probe 8 --contrast_min 10000 --batch 2 --epochs 6000 --eval_every 10
+--patience 8 --stop_patience 20` (patience widened to keep the stop window ~800 steps, so a cheap
+epoch cannot buy a premature "cannot fit").
+
+Both probes scored against the real S1 model on their **own** sample set under **one `sd`**
+(`m2_probe_vs_trained.py --n {8,200}`):
+
+| probe | params : target scalars | grad steps | trained-on-40 775 | **probe** | probe bulk |
+|---|---|---|---|---|---|
+| 200 samples | 1.4 : 1 | ~3 100 | 0.3455 | **0.2213** | 0.0615 |
+| **8 samples** | **39.7 : 1** | **~9 480** | 0.3248 | **0.1936** | 0.0571 |
+
+**CAPACITY IS NOT THE BINDING CONSTRAINT.** A **28× better** parameter-to-target ratio and **3× the
+gradient steps** moved the floor only **0.2213 → 0.1936 (−12.5 %)**. Two probes differing that much in
+capacity land within 0.03 of each other, at ~0.2, on data they see every epoch. So §9f's bounded
+claim is now unbounded in the direction that matters: **adding parameters will not fix the
+high-contrast error, and neither will adding data (§9f).**
+
+**Bulk 0.0571 vs per-triangle 0.1936** reproduces §9f exactly: the model fits each graph's MEAN `C`
+and fails on the per-triangle SPATIAL structure. That is the deficit, stated in one number.
+
+**WHAT IS STILL OPEN, and it is NOT a formality.** The run ended on the **LR FLOOR** —
+`lr 2.19e-06 < 1e-3 of initial`, the scheduler having cut it repeatedly — **not** on the
+no-improvement rule, and val was still creeping down (0.1945 → 0.1936 over the last 100 epochs,
+~0.5 %). `CLAUDE.md` §3 is explicit that a clock- or decay-driven ending cannot distinguish *"found
+the bottom"* from *"no longer allowed to walk"*, and that **the decisive test is an LR-RESTART
+PROBE**. So the choice between
+- **expressivity** — the architecture cannot represent the per-triangle high-contrast target, ⇒ the
+  next move is STRUCTURAL (a new channel / a different message space), not a training knob; and
+- **optimisation** — it can represent it but cannot be trained there from this initialisation at this
+  schedule, ⇒ the next move is the schedule, the initialisation, or the loss,
+
+**is not yet made** *(made in §9h: **optimisation**)*. Both probes ended with their lr exhausted, so
+the agreement between them is *also* consistent with both hitting the same optimisation wall — which
+is what §9h then measured. `--restart_lr` was added for it.
+
+**What it does settle regardless:** neither more parameters nor more data is the lever, and
+`--graph_balance` (a per-graph re-weighting) does not address a per-triangle spatial deficit either.
+
+### 9h. LR-RESTART probes — the "floor" WAS PARTLY THE SCHEDULE (0.1936 → 0.1485 over two restarts), but restarts do NOT reach zero
+
+`--restart_lr <rate>` added for this (`train_v3.py`), because `--resume` alone cannot do it:
+`opt.load_state_dict` restores the **decayed** lr (measured 2.19e-06), so even a fresh scheduler keeps
+it. Two restarts from §9g's epoch-2370 snapshot, both judged against its inherited best **0.1936**:
+
+| restart rate | what happened | best reached | verdict |
+|---|---|---|---|
+| **3e-3** (the INITIAL lr) | threw 0.1936 up to **0.73**, stalled at 0.705, never re-entered the basin | 0.7012 | **instrument failure — measures nothing** |
+| **2.7e-4** (a rate the run was still progressing at) | perturbed to 0.41, recovered past the old best within ~150 epochs | **0.1636 (−15.5 %)** | **the flat tail was the SCHEDULE** |
+
+**So 0.1936 was not a floor.** §9g's stated caveat — that it ended on the lr floor with val still
+creeping — was the right caveat, and cashing it in moved the number 15.5 %.
+
+**"Restore the INITIAL lr" is the wrong probe here, and that is the reusable lesson.** `CLAUDE.md` §3
+words the test that way, but 3e-3 is hotter than any rate at which this run ever made progress — the
+parent's history shows 0.49 → 0.31 over a thousand epochs **all at 2.7e-4**, with 3e-3 only ever the
+early phase. A restart hot enough to leave the basin cannot interrogate the basin's floor. Hence the
+flag is a **RATE, not a switch**: pick a rate the run was observably still progressing at.
+
+**A flaw in the first version of the flag, recorded so it is not repeated.** The stop clock was seeded
+with the inherited `best`, which silently makes the criterion *"beat 0.1936 within `stop_patience`
+evaluations"* — something a restart that first LOSES ground can essentially never satisfy. The 3e-3
+run was killed 209 epochs in while still descending from 0.73. The clock now resets to **infinity**, so
+a restart is judged on its OWN trajectory; whether it beat the inherited best is read off `best`.
+
+**Round 2 (`--run_suffix rs2`, same 2.7e-4): 0.1636 → 0.1485, −9.2 %.** Real, and smaller than
+round 1's −15.5 %. Restarts are **diminishing, not inexhaustible**:
+
+| stage | MAE/σ | gain | ended by |
+|---|---|---|---|
+| 200-sample probe (1.4:1) | 0.2213 | — | lr decay |
+| 8-sample probe (39.7:1) | 0.1936 | −12.5 % | lr floor |
+| warm restart 1 @ 2.7e-4 | 0.1636 | **−15.5 %** | lr floor |
+| warm restart 2 @ 2.7e-4 | **0.1485** | **−9.2 %** | lr floor |
+
+**BOTH conclusions hold, and neither alone is the story.**
+1. **The schedule was costing a real, bounded amount.** Two restarts took 0.1936 → 0.1485, **−23 %**
+   cumulative. *Extrapolating* the 15.5 % → 9.2 % decay (ratio 0.59) puts the asymptote near **0.13**,
+   ~30 % below the original "converged" value. ⚠ **That is a two-point extrapolation — a guess at the
+   functional form, not a measurement.** A third round would test it; nothing here depends on it.
+2. **Restarts do NOT reach zero, so a genuine FITTING deficit survives the schedule fix.** ~0.13–0.15
+   on **8 samples the model sees every epoch, at 39.7:1 over-parametrisation**, is still a large
+   error. With capacity refuted (§9g) and the schedule now accounted for, **the residual is
+   representational** — so structural work (a new channel / a different message space) is back on the
+   table, but measured against a *correct* baseline rather than a schedule-limited one.
+
+**⚠ THE CONSEQUENCE FOR EVERY TRAINED NUMBER IN THIS DOCUMENT.** Every one came off the same
+plateau-and-stop schedule — the ladder v2 0.5111 → 0.2040 → 0.2023 → 0.1209 → **0.0925**, and the tier
+scores against the sim. **The RANKING is probably safe** (all arms shared the schedule), **but the
+LEVELS are pessimistic, plausibly by ~20–30 %**, which is large next to the tier margins. **Do not
+quote any of them as converged without re-checking under warm restarts.**
+
+**PROTOCOL CHANGE THIS EARNS:** make **repeated warm restarts** (restart at a rate the run was still
+progressing at, until a round buys < ~2 %) the standard, not a single decay to exhaustion — and make
+it the **baseline any architectural change is measured against**, or a structural gain will be
+confounded with schedule headroom the baseline never collected.
 
 ## 10. Limitations
 

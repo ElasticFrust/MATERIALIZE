@@ -411,6 +411,15 @@ The three existing channels were built this way; a fourth should be too.
 8. **Run it as a single variable** against the previous best, on the same data, split and seed, and
    **stratify** the result (§8).
 
+> **`run_tag` is the run's IDENTITY, not a label.** It names both the checkpoint and the `.resume`
+> snapshot, and `--resume` matches by that name alone — so anything that changes what the run *is*
+> belongs in it: architecture, epochs, objective flags, optimiser, **and the dataset** (`_dv2s0`,
+> `_dbase`; added 2026-09-12). Two incidents, both from something missing: a 2-epoch benchmark
+> overwrote a 220-epoch checkpoint (11.5 h lost, junk committed in its place), and a resume against
+> the wrong `--data` silently continued a trajectory on a *different* sample draw, since
+> `--overfit_probe n` picks its n by `rng(seed).choice(len(raw))`. Recording a value inside the saved
+> `.pt` makes a finished run traceable; only the tag prevents the collision.
+
 ---
 
 ## 10. Element glossary
