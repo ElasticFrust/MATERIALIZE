@@ -678,6 +678,38 @@ progressing at, until a round buys < ~2 %) the standard, not a single decay to e
 it the **baseline any architectural change is measured against**, or a structural gain will be
 confounded with schedule headroom the baseline never collected.
 
+### 9i. The REAL arm under warm restart — ⏳ IN PROGRESS, round 1 INCONCLUSIVE (still descending at the cap)
+
+§9h showed the *probe* was schedule-limited. **That does not automatically transfer to the real arm**,
+which trains on 25 812 samples rather than 8, so this measures it directly.
+
+Setup: the `..._L5_..._star_ms` arm (the **0.0925** model), resumed from its own `.resume` at epoch 104
+and restarted at **8.1e-5 — the lr at its last significant improvement (ep 82)**, which is exactly what
+`CLAUDE.md` §3 now prescribes, and gentler than the 2.7e-4 that perturbed the probe 2.1×. `eval_every 1`.
+**806 gradient steps/epoch**, 48.3 min/epoch.
+
+| epoch | 105 | 106 | 107 | 108 | 109 |
+|---|---|---|---|---|---|
+| val MAE/σ | 0.0971 | 0.1000 | **0.0949** | 0.0953 | **0.0941** |
+
+**Round 1 is INCONCLUSIVE, and it ended on the EPOCH CAP — not the stopping rule.** The restart
+perturbed 0.0925 → ~0.10 (a gentle ~8 %, as intended), then descended ~2 %/epoch and was **still
+descending when the budget ran out**, at 0.0941 — **1.7 % above** the inherited best. So it has neither
+confirmed nor refuted that the real arm is schedule-limited.
+
+**One thing it does establish cleanly:** the lr **never decayed** (8.1e-5 throughout — the fresh
+scheduler's 8-evaluation patience never elapsed in 5 epochs), so this is a constant-rate descent with
+**no schedule artefact in it at all**. Whatever it converges to is not a decay artefact.
+
+**Continued to epoch 115** (`realarm_rlr8.1e-05_cont.log`). The continuation re-passes
+`--restart_lr 8.1e-5`, which is a **NO-OP on the lr** because the lr had never been cut; it is passed
+only to keep the run tag identical (the tag carries the restart rate) and it does reset the stop
+clock. *Recorded because it looks like a second restart in the log and is not one.*
+
+**Do not read the trend as the result.** Extrapolating ~2 %/epoch crosses 0.0925 in 1–3 epochs, but
+that is an extrapolation from a noisy five-point descent that went UP at ep 106 and wobbled at 108.
+The measurement is whether it actually crosses.
+
 ## 10. Limitations
 
 - **`M_S` destroys the finite receptive field** — one perturbation reaches every triangle in one
