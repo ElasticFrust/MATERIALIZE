@@ -160,7 +160,7 @@ section used to pose are answered:
 
 | stage | what | status |
 |---|---|---|
-| **S0** | `CLAUDE.md` wording; **pin `OMP/MKL_NUM_THREADS` + the tiling method in the builder** | wording ✅ (swept across *all* docs 2026-08-25); **thread + method pinning NOT DONE — the one S0 item still open** |
+| **S0** | `CLAUDE.md` wording; **pin `OMP/MKL_NUM_THREADS` + the tiling method in the builder** | ✅ **COMPLETE** — wording swept 2026-08-25; **pinning was in fact DONE and this row was stale (verified 2026-09-13 against the BUILT data, not the source):** `build_dataset.py` pins all four thread vars *before* numpy/torch import and calls `torch.set_num_threads`, and all **41 431** samples of `dataset_v2_s0.npz` carry `n_threads=1`, `tiling_method='fan'`, `commit=0680c06`, `seed=0`. D3 + D4 satisfied |
 | **S0b** | dilution validity sweep, 266 cases | ✅ **`k_soft ≥ 1e-8` is safe at every `f ≤ 0.40`**, including sub-isostatic `z = 3.6`; below 1e-12 unusable. `results/dilution_validity/DILUTION_VALIDITY.md` |
 | **S1 — MEASURED; the TIER VERDICT is a pending SPEC decision (the mean-based criterion is not reproducible at n=400), and the error is now shown to be a FITTING floor (§9f)** | head `C(s) = Q·MMᵀ·Qᵀ`; body is **v3 = TENSOR messages on TRIANGLE adjacency**, now with the **residual head** and the solver's **CONSTRAINT channels** (plan §2.4–2.5; the how-and-why is `documentation/GNN_GUIDE.md`) | see the block below |
 | S2 | scaled, balanced dataset (~10 k), trajectories + provenance | after S1 — see §3 |
@@ -214,6 +214,27 @@ section used to pose are answered:
 > 72-240-triangle meshes and the errors are correlated over ~1 hop, so the contrast trend does NOT
 > distinguish reach from expressivity. Also `W=0` needs ORDERED geometry AND uniform k.
 >
+> ### ⏱ COST STRUCTURE — read before calling any of this cheap *(measured 2026-09-13)*
+>
+> The real arm is **48.3 min/epoch** (25 812 train samples, 806 gradient steps/epoch) and its
+> recorded run was **84.5 h** for 105 epochs. That single fact reorders the roadmap:
+>
+> | experiment | cost | note |
+> |---|---|---|
+> | warm RESTART of an existing arm | **~0.8 h/epoch**, ~5 h for 6 epochs = 4 836 steps | cheap, and 806 steps/epoch means a restart recovers and improves within 1–2 epochs |
+> | full retrain, `--w_max_cut 10` | **~85 h** | what the existing ladder each cost |
+> | full retrain, UNFILTERED (`--w_max_cut 0`) | **~129 h** | +53 % samples (39 475 vs 25 812) — the tail is a third of the data |
+> | any NEW CHANNEL / structural change | **~85 h per arm** | and it needs a warm-restart baseline to compare against, so ~2 arms |
+> | probe restart round, for scale | ~0.4 h | 8 samples, 4 steps/epoch |
+>
+> **Consequences.** (1) `--w_max_cut` is **NOT a cheap win** — it is the single most expensive item on
+> the list at ~129 h, precisely because the tail it adds is 34.6 % of the data. (2) Structural work is
+> ~2 × 85 h before it says anything. (3) **Warm restarts are ~100× cheaper per gradient step than
+> retraining**, so they are the right first move on any existing checkpoint — and the `.resume`
+> snapshots that make them possible exist for every arm (`Phase 5/m2/*.pt.resume`, gitignored).
+> (4) Anything involving the real arm is a **multi-DAY** commitment: plan it as such, with the run
+> pinned to all cores and nothing else competing.
+
 > ### NEXT STEPS, in order
 >
 > 1. ✅ **OVERFIT PROBE — DONE 2026-09-12. The high-contrast error is a FITTING failure, not a
@@ -284,10 +305,16 @@ section used to pose are answered:
 >    which is the mechanism actually identified for the `cells` failure. Judge on per-family
 >    MAE(nu) on FRESH meshes, `cells` in particular -- NOT on aggregate val, which the
 >    variants deliberately re-weight.
-> 3. **The `--w_max_cut` question.** All the failure is in the tail, and those networks are excluded
->    from TRAINING on a premise now measured FALSE (solver labels are sound at every |W|: max gap
->    4.97e-02 at |W| 1-3 falling to 7.04e-03 above 100, zero samples over 0.05). Training on them may
->    be the largest available gain and costs nothing architectural.
+> 3. **The `--w_max_cut` question — still open, but it is the MOST EXPENSIVE item, not a cheap win.**
+>    All the failure is in the tail, and those networks are excluded from TRAINING on a premise now
+>    measured FALSE (solver labels are sound at every |W|: max gap 4.97e-02 at |W| 1-3 falling to
+>    7.04e-03 above 100, zero samples over 0.05). It costs nothing *architectural* — but it costs
+>    **~129 h of compute** *(measured 2026-09-13, see the COST STRUCTURE table above)*, because the
+>    tail it restores is **34.6 % of the data**: 39 475 samples against 25 812, at 48.3 min/epoch.
+>    *(An earlier version of this item called it "the largest available gain and costs nothing" —
+>    true of the code, badly wrong about the compute. Budget it as a multi-day run.)*
+>    **Cheaper thing to do first:** the warm-restart baseline (item 1d), since comparing an unfiltered
+>    retrain against a schedule-limited baseline would confound the two effects anyway.
 > 4. **Then the differentiable designer** -- gradient descent on (positions, k) through the frozen
 >    GNN inside a solver-verified trust region. The GNN has no position-gradient asymmetry (positions
 >    enter via `bond_R` -> `q_e`, all in torch), so it unlocks joint k+position design the exact
@@ -380,7 +407,11 @@ What the rebuild must respect, all of it measured *since* this section was first
   across the leave-one-family-out split**;
 - **the two leakage traps** — split by **trajectory id** (steps within one optimisation are
   near-duplicates), and **attribute every ingested design to its source family** so it is held out
-  with that family;
+  with that family. ⚠ *Note (2026-09-13): the trajectory guard is so far **untested in practice** —
+  `dataset_v2_s0.npz` has **41 431 unique `traj_id` over 41 431 samples**, i.e. one per sample, because
+  that build ingested no multi-step optimisations. Splitting by `traj_id` there is identical to
+  splitting by sample. The guard only starts doing work when S2 stores trajectories, so S2 is also
+  the first time it can be verified — do not assume it is exercised today;*
 - **balance, not size** — no family below ~10 %; `random` can be generated without limit while
   `tiling`, `basis` and `auxetic` are a handful of topologies each.
 
