@@ -216,15 +216,18 @@ def test_mesh_preconditions():
         assert ok, f'{lab} should be REPAIRED and PASS now, got {f}'
         assert rec.get('mesh_ok', True), f'{lab} should be tagged mesh_ok=True'
 
-    # STILL not closed: `_reentrant_honeycomb` still uses the Delaunay chord split
-    # (`_triangulate_and_tag`), so A-17's tail applies to it. TAGGED, not raised, so the gate
-    # rejects it at point of use instead of crashing every driver that builds it. Giving it the fan
-    # treatment is the obvious follow-up.
+    # `_reentrant_honeycomb` now PASSES too. It used to fail as not-closed because it took the
+    # Delaunay chord split (`_triangulate_and_tag`), so A-17's tail applied to it, and this block
+    # asserted that failure, closing with "giving it the fan treatment is the obvious follow-up".
+    # The fan treatment LANDED -- commit 5526e2b, 2026-08-25, switched it to `_fan_and_tag` -- and
+    # this assertion was not updated with it, so it went on asserting that a FIXED thing was still
+    # broken and **this gate was red for 19 days** (caught 2026-09-13). A test that encodes a
+    # tombstone rather than a requirement fails exactly when the bug is fixed; if this one ever
+    # inverts again, check `seeds._reentrant_honeycomb`'s triangulation call first.
     for lab, rec in (('reentrant_honeycomb', seeds._reentrant_honeycomb(reps=4)),):
         ok, f = MB.check_mesh_preconditions(rec['geo'], periodic=True)
-        assert not ok and any('not closed' in x or 'torus' in x for x in f), \
-            f'{lab} should FAIL as not-closed, got {f}'
-        assert rec.get('mesh_ok') is False, f'{lab} should be tagged mesh_ok=False, got {rec.get("mesh_ok")}'
+        assert ok, f'{lab} should be REPAIRED and PASS since 5526e2b, got {f}'
+        assert rec.get('mesh_ok') is True, f'{lab} should be tagged mesh_ok=True, got {rec.get("mesh_ok")}'
 
     # FAIL (2) inverted: the chord triangulation folds once the hexagon is non-convex (gap 8.6)
     ok, f = MB.check_mesh_preconditions(HV.build_chords(2, 2, 0.6)[0], periodic=True)
