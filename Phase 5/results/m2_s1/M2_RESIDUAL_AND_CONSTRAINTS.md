@@ -736,7 +736,62 @@ run whose epochs are small relative to its patience *will* still be stranded, wh
 probes live in. The honest scope is: **restarts pay when steps-per-epoch is small; check the stop
 window in STEPS before assuming a run was stranded.**
 
-### 9j. `--w_max_cut 0` — training on the near-mechanism TAIL. ⏳ RUNNING; DECISION RULE PRE-REGISTERED BELOW
+### 9j. `--w_max_cut 0` — training on the near-mechanism TAIL. ❌ **NEGATIVE on the pre-registered rule; the error was REDISTRIBUTED, not reduced**
+
+> **RESULT — scored against the rule below, which was committed before the run (`fc881e2`).**
+> Final: val 0.0920 vs baseline 0.0925, i.e. the headline is flat, exactly as predicted either way.
+>
+> **Two independent evaluations, both models scored in one pass with `--w_max_cut 10` held as the
+> boundary. They agree on every sign.**
+>
+> `m2_error_strata`, the 1300-sample `bravais` holdout:
+>
+> | metric | baseline | unfiltered | change |
+> |---|---|---|---|
+> | overall MAE/σ | 0.0908 | 0.0920 | +1.3 % |
+> | overall MAE(ν) | 0.0372 | 0.0442 | +18.7 % |
+> | in-domain (≤10) MAE/σ | 0.0742 | 0.0806 | +8.6 % |
+> | in-domain MAE(ν) | 0.0231 | 0.0287 | +24.4 % |
+> | in-domain rel_E | 1.3779 | **0.4344** | **−68.5 %** |
+> | **tail (>10) MAE/σ** | 0.2706 | **0.2155** | **−20.3 %** |
+> | tail MAE(ν) | 0.1899 | 0.2113 | +11.3 % |
+> | **tail rel_E** | 345.93 | **57.22** | **−83.5 %** |
+>
+> `m2_fresh_holdout` on `dataset_fresh_s4321` (20 of 641 meshes shared, 3.1 %; 22 399 unseen samples):
+> tail MAE/σ **0.2694 → 0.2113 (−21.6 %)**, tail MAE(ν) 0.1546 → 0.1692 (**+9.4 %**), in-domain MAE/σ
+> 0.1272 → 0.1314, in-domain MAE(ν) 0.0464 → 0.0460 (flat). Generalisation gap NARROWED, +6.9 % → +3.2 %.
+>
+> **VERDICT: NEGATIVE.** The rule required tail MAE(ν) to improve and in-domain not to regress.
+> Tail MAE(ν) got **worse** in both evaluations (+11.3 %, +9.4 %) and in-domain regressed. Not
+> SUCCESS, and not PARTIAL either, since PARTIAL also required the tail to improve *on ν*.
+>
+> **WHAT THE RULE DID NOT ANTICIPATE, reported separately so it cannot be mistaken for the
+> pre-registered outcome.** Two large, replicated gains:
+> - **the tail's TENSOR error fell ~20 %** in both evaluations — so the tail IS learnable as a tensor;
+> - **E improved enormously** — in-domain rel_E −68.5 %, tail −83.5 % (345.93 → 57.22). The tail is
+>   where `E` spans orders of magnitude, and training on it fixed the SCALE.
+>
+> **THE READING, and it corroborates §9g rather than contradicting it.** Overall per-triangle error is
+> **essentially conserved** (0.0908 → 0.0920) while its *distribution* moved: out of the tail, into the
+> bulk. Adding 34.6 % more, harder data did not reduce total error — it **reallocated** it. That is
+> what a **representation-limited** model does, not a data-limited one, and it is the same conclusion
+> capacity (§9g, 39.7:1) and data volume (+9.7 %) already reached by different routes.
+> **ν vs E splits the same way the physics does:** `E` is a scale and `ν` is a ratio of contractions,
+> so a model whose per-triangle tensor gets better in the tail can fix the scale while the *shape* of
+> `C` — which is what ν reads — gets no better, or worse where capacity was withdrawn from the bulk.
+>
+> **⚠ A METHOD ERROR OF MINE, recorded because it nearly produced a wrong number.** My first fresh-mesh
+> run used the script's DEFAULT `--fresh dataset_fresh_s1234.npz`, which shares **389 of its meshes
+> with training** (against s4321's 20), and `--n 300`, which left the tail bin at n = 27 against 801.
+> That is not a fresh-mesh test at all. It also **overwrote the committed baseline JSON** with the
+> contaminated numbers. Restored from git and re-run on `s4321` for both models — the numbers above.
+> **Always pass `--fresh dataset_fresh_s4321.npz` explicitly; the default is the contaminated build**
+> (cf. the seeding bug, NEXT_SESSION 2026-09-11).
+>
+> Artifacts: `strata_v3_..._init516da4.json`, `fresh_v3_..._init516da4.json`,
+> `run_v3_..._init516da4.json`, `checkpoint_v3_..._init516da4.pt`.
+
+#### The pre-registration, as committed before the run
 
 **Written before the result exists, deliberately.** Every cheap lever is now closed — capacity (§9g),
 data volume (+9.7 %), the schedule on the full arm (§9i), `--bulk_weight`, and `--graph_balance` (which

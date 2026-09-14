@@ -343,7 +343,23 @@ section used to pose are answered:
 >    which is the mechanism actually identified for the `cells` failure. Judge on per-family
 >    MAE(nu) on FRESH meshes, `cells` in particular -- NOT on aggregate val, which the
 >    variants deliberately re-weight.
-> 3. **The `--w_max_cut` question — still open, but it is the MOST EXPENSIVE item, not a cheap win.**
+> 3. ❌ **`--w_max_cut` ANSWERED 2026-09-14 — NEGATIVE on the pre-registered rule (§9j). The error was
+>    REDISTRIBUTED, not reduced.** Warm-started the 0.0925 arm on the full unfiltered 39 475 samples
+>    (`--init_from`, 15 epochs, 18 495 steps, ~21 h instead of 129 h from scratch).
+>    Two evaluations, both models in one pass, agreeing on every sign: **tail (|W|>10) TENSOR error
+>    −20.3 %** (holdout) / **−21.6 %** (fresh unseen meshes), but **tail MAE(ν) +11.3 % / +9.4 %**, and
+>    in-domain regressed (MAE/σ +8.6 %, MAE(ν) +24.4 %). Overall MAE/σ **0.0908 → 0.0920 — conserved**.
+>    **Unanticipated and large: E improved hugely** — rel_E in-domain −68.5 %, tail −83.5 %
+>    (345.93 → 57.22). The tail is where E spans orders of magnitude; training on it fixed the SCALE,
+>    not the SHAPE, and ν reads the shape.
+>    **THE READING:** total error conserved while its distribution moved out of the tail into the bulk
+>    ⇒ the model is **representation-limited, not data-limited** — the same verdict capacity (§9g) and
+>    data volume (+9.7 %) reached independently. **Adding data now only reallocates error.**
+>    ⚠ Bounded: warm-start ≠ from-scratch (a 129 h unfiltered run from scratch could differ), and
+>    **always pass `--fresh dataset_fresh_s4321.npz`** — the script's default s1234 shares 389 meshes
+>    with training against s4321's 20, and using it produced a contaminated first answer.
+>
+> 3b. *(superseded context)* **`--w_max_cut` was the MOST EXPENSIVE item, not a cheap win.**
 >    All the failure is in the tail, and those networks are excluded from TRAINING on a premise now
 >    measured FALSE (solver labels are sound at every |W|: max gap 4.97e-02 at |W| 1-3 falling to
 >    7.04e-03 above 100, zero samples over 0.05). It costs nothing *architectural* — but it costs
