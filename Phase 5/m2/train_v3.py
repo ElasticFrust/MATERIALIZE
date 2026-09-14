@@ -194,6 +194,11 @@ def run_tag(a):
         tag += '_ms'
     if getattr(a, 'overfit_probe', 0):
         tag += '_probe%d_c%g' % (a.overfit_probe, a.contrast_min)
+    if getattr(a, 'tie', False):
+        # a tied model is a DIFFERENT architecture from a stacked one of the same depth
+        tag += '_tie%d' % (a.n_iter or a.layers)
+        if getattr(a, 'n_iter_hi', 0):
+            tag += '-%d' % a.n_iter_hi
     if getattr(a, 'init_from', ''):
         # WEIGHTS-ONLY warm start: a different starting point is a different run. The tag carries a
         # short digest of the source basename rather than the basename itself (which is ~70 chars);
@@ -300,6 +305,22 @@ def main():
                          'edge-compatibility pairing -- but C_curv, which couples the ~6 triangles '
                          'of a vertex star simultaneously, had no channel at all. This flag exists '
                          'so its effect can be measured as a single variable.')
+    ap.add_argument('--tie', action='store_true',
+                    help='WEIGHT-TIED ITERATION: one message-passing block applied --n_iter times, '
+                         'instead of --layers distinct blocks used once each. `W(s)` is an operator '
+                         'INVERSE, so a fixed-depth net is a fixed number of relaxation sweeps; '
+                         'plain depth is the wrong way to buy more, since it adds parameters and '
+                         'does not train (depth 8 DIVERGED, depth 10 STALLED). Tying decouples the '
+                         'iteration count from both.')
+    ap.add_argument('--n_iter', type=int, default=0,
+                    help='block applications per forward pass (0 = --layers). With --tie this is '
+                         'free, and can be changed AFTER training to sweep it at inference -- which '
+                         'is the direct test of the iteration hypothesis.')
+    ap.add_argument('--n_iter_hi', type=int, default=0,
+                    help='if > 0, JITTER the iteration count per batch, uniform in '
+                         '[--n_iter, --n_iter_hi]. Without this a later inference-time sweep over '
+                         'n_iter is an EXTRAPOLATION; with it the sweep is in-distribution and the '
+                         'test means something. Evaluation always uses the nominal --n_iter.')
     ap.add_argument('--init_from', default='',
                     help='WEIGHTS-ONLY warm start from a FINAL checkpoint (.pt), with a fresh '
                          'optimiser and scheduler. Distinct from --resume, which continues a '
@@ -482,7 +503,13 @@ def main():
     sd_bulk = torch.stack([t['target'].mean(0) for t in train]).std(0).clamp_min(1e-12)
 
     net = M3.ForwardGNNv3(ns=a.ns, nt=a.nt, hidden=a.hidden, n_layers=a.layers,
-                          use_star=not a.no_star, use_global=not a.no_global)
+                          use_star=not a.no_star, use_global=not a.no_global,
+                          tie=a.tie, n_iter=a.n_iter)
+    if a.tie:
+        print('WEIGHT-TIED: 1 block applied %d times%s (untied depth-%d would be %d distinct blocks)'
+              % (net.n_iter,
+                 ' , jittered per batch in [%d, %d]' % (net.n_iter, a.n_iter_hi)
+                 if a.n_iter_hi else '', a.layers, a.layers))
     print('%d parameters  (ns=%d nt=%d hidden=%d layers=%d)'
           % (sum(p.numel() for p in net.parameters()), a.ns, a.nt, a.hidden, a.layers))
     if a.init_from:
@@ -560,7 +587,13 @@ def main():
         net.train()
         np.random.default_rng(ep).shuffle(order)
         tot = nb = 0.0
+        nominal_iter = net.n_iter
         for b0 in range(0, len(order), a.batch):
+            if a.tie and a.n_iter_hi:
+                # jitter the sweep count per BATCH so an inference-time n_iter sweep is
+                # in-distribution. Seeded by epoch so a resumed run repeats the same schedule.
+                net.n_iter = int(np.random.default_rng(10007 * ep + b0).integers(
+                    nominal_iter, a.n_iter_hi + 1))
             t = collate([train[j] for j in order[b0:b0 + a.batch]])
             pred = predict(net, t)
             resid = (pred - t['target']) / sd
@@ -609,6 +642,7 @@ def main():
             opt.step(); tot += float(loss.detach()); nb += 1
         if a.schedule == 'cosine':
             sch.step()
+        net.n_iter = nominal_iter          # evaluate at the NOMINAL count, never a jittered one
         if ep % max(1, a.eval_every) == 0 or ep == a.epochs - 1:
             per, bad, blk = evaluate(net, valid, sd)
             vnorm = float((per / sd).mean())
@@ -693,7 +727,8 @@ def main():
                     use_star=not a.no_star, use_global=not a.no_global, head=M3.HEAD_VERSION,
                     holdout=a.holdout, w_max_cut=a.w_max_cut, huber=a.huber,
                     epochs=a.epochs, n_train=len(train), seed=a.seed,
-                    data=os.path.basename(a.data),
+                    data=os.path.basename(a.data), tie=a.tie, n_iter=net.n_iter,
+                    n_iter_hi=a.n_iter_hi,
                     init_from=os.path.basename(a.init_from) if a.init_from else None),
                ckpt_path)
     with open(os.path.join(RESULTS, 'run_v3_%s.json' % tag), 'w', encoding='utf-8') as fh:
@@ -701,6 +736,7 @@ def main():
                        w_max_cut=a.w_max_cut, huber=a.huber, batch=a.batch, lr=a.lr,
                        bulk_weight=a.bulk_weight, graph_balance=bool(a.graph_balance),
                        opt=a.opt, wd=a.wd, init_from=a.init_from or None,
+                       tie=bool(a.tie), n_iter=int(net.n_iter), n_iter_hi=int(a.n_iter_hi),
                        schedule=a.schedule, patience=a.patience, stop_patience=a.stop_patience,
                        min_delta=a.min_delta, eval_every=a.eval_every,
                        hidden=a.hidden, layers=a.layers, n_train=len(train), n_val=len(valid),

@@ -361,10 +361,37 @@ class ForwardGNNv3(nn.Module):
     """
 
     def __init__(self, ns=32, nt=8, hidden=64, n_layers=3, passive=True,
-                 n_tri_scalars=9, n_bond_feat=2, use_star=True, use_global=True):
+                 n_tri_scalars=9, n_bond_feat=2, use_star=True, use_global=True,
+                 tie=False, n_iter=0):
+        """`tie` + `n_iter`: WEIGHT-TIED ITERATION instead of stacked distinct layers.
+
+        `W(s)` is the solution of a global constrained system -- an operator INVERSE -- so a
+        fixed-depth message-passing net is a fixed number of relaxation sweeps, and the sweeps a
+        solve needs grow with the system's conditioning. Plain depth is the wrong way to buy more
+        sweeps: it adds parameters and it does not train (depth 8 DIVERGED at lr 3e-3, depth 10
+        STALLED at 0.53 against depth 5's 0.19). Tying reuses ONE block `n_iter` times, so the
+        iteration count is decoupled from both the parameter count and the optimisation difficulty.
+
+        It also makes the hypothesis DIRECTLY TESTABLE in a way nothing else here is: `n_iter` can be
+        changed AFTER training (`net.n_iter = N`), so a single trained model can be swept over N at
+        inference. If the iteration picture is right, error falls with N on fixed weights. Train with
+        N jittered per batch so that sweep is in-distribution rather than an extrapolation.
+
+        Defaults are OFF, so every existing checkpoint and every call site is unaffected.
+        """
         super().__init__()
         self.ns, self.nt, self.passive = ns, nt, passive
         self.use_star, self.use_global = use_star, use_global
+        self.tie = bool(tie)
+        #: applications of the block(s) per forward pass. Untied, this MUST equal n_layers (each
+        #: layer is a distinct module and is used once); tied, it is free and may be changed after
+        #: training.
+        self.n_iter = int(n_iter) if n_iter else int(n_layers)
+        if not self.tie and self.n_iter != n_layers:
+            raise ValueError('n_iter=%d != n_layers=%d is only meaningful with tie=True; untied, '
+                             'each layer is a distinct module used exactly once'
+                             % (self.n_iter, n_layers))
+        n_blocks = 1 if self.tie else n_layers
         # initial tensor channels are the triangle's own three q_e, mixed up to `nt`
         self.t_in = nn.Linear(3, nt, bias=False)
         # initial scalars: the 9 invariants <q_i, q_j> of the triangle's own geometry,
@@ -374,7 +401,7 @@ class ForwardGNNv3(nn.Module):
                                   nn.Linear(hidden, ns))
         self.norm_in = nn.LayerNorm(ns)
         self.layers = nn.ModuleList(TensorMP(ns, nt, hidden, n_bond_feat)
-                                    for _ in range(n_layers))
+                                    for _ in range(n_blocks))
         # the CURVATURE channel, one per layer, run alongside the bond channel. Flagged so it can be
         # ablated as a single variable against the bond-only model.
         self.stars = nn.ModuleList(StarMP(ns, nt, hidden) for _ in range(n_layers))             if use_star else None
@@ -407,13 +434,16 @@ class ForwardGNNv3(nn.Module):
         gram = inner(Qc, Qc)                                           # 9 invariants of the geometry
         s = self.norm_in(self.s_in(torch.cat([gram, g['tri_scalars']], -1)))
 
-        for i, lay in enumerate(self.layers):
-            s, T = lay(s, T, g['tri_src'], g['tri_dst'], g['bond_q'], g['bond_feat'])
+        # TIED: one block, applied `n_iter` times (index 0 every sweep). UNTIED: the original
+        # behaviour exactly -- n_iter == n_layers, so `j == i` and each distinct layer runs once.
+        for i in range(self.n_iter):
+            j = 0 if self.tie else i
+            s, T = self.layers[j](s, T, g['tri_src'], g['tri_dst'], g['bond_q'], g['bond_feat'])
             if self.stars is not None and 'star_tri' in g:
-                s, T = self.stars[i](s, T, g['star_tri'], g['star_vert'], g['star_w'],
+                s, T = self.stars[j](s, T, g['star_tri'], g['star_vert'], g['star_w'],
                                      int(g['n_vert']))
             if self.globals is not None and 'tri_batch' in g:
-                s, T = self.globals[i](s, T, g['tri_batch'], g['area_w'], int(g['n_graphs']))
+                s, T = self.globals[j](s, T, g['tri_batch'], g['area_w'], int(g['n_graphs']))
 
         raw = self.readout(torch.cat([s, inner(T, T)], -1))
         return self._to_G(raw, self.analytic_G(g))
@@ -440,9 +470,13 @@ def from_checkpoint(ck, eval_mode=True):
     architecture is inferred from the state dict's own parameter names, which is the only honest
     source left."""
     ks = ck['state'].keys()
+    # A TIED checkpoint has exactly ONE block, so `layers.1.*` is absent -- inferable from the
+    # state dict for checkpoints written before the flag existed, same principle as the channels.
+    tie = ck.get('tie', not any(k.startswith('layers.1.') for k in ks) and int(ck['layers']) > 1)
     net = ForwardGNNv3(ns=ck['ns'], nt=ck['nt'], hidden=ck['hidden'], n_layers=ck['layers'],
                        use_star=ck.get('use_star', any(k.startswith('stars.') for k in ks)),
-                       use_global=ck.get('use_global', any(k.startswith('globals.') for k in ks)))
+                       use_global=ck.get('use_global', any(k.startswith('globals.') for k in ks)),
+                       tie=tie, n_iter=ck.get('n_iter', 0))
     net.load_state_dict(ck['state'])
     if eval_mode:
         net.eval()
