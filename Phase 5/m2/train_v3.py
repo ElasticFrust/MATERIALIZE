@@ -148,6 +148,35 @@ def oracle_check(prepped, raws, tol=1e-9):
     return n
 
 
+def check_init_compat(a, ck):
+    """FAIL FAST if a `--init_from` checkpoint's architecture differs from this run's.
+
+    Raises `SystemExit` on the first difference; returns None when the two match.
+
+    `load_state_dict` raises on a SHAPE mismatch by itself, so that is not what this is for. It is
+    for the differences that keep shapes and load SILENTLY: `use_star` / `use_global` toggle whole
+    sub-modules, so a checkpoint trained with a channel can be loaded into a model built without it
+    (or the reverse) and will train, and look plausible, on half-loaded weights. `head` is checked
+    for the same reason -- a different head version means the tensor being predicted is not the same
+    object.
+
+    Lives here, rather than inline in `main`, so `test_m2_train_surface.py [2]` exercises THE SHIPPED
+    GUARD instead of a copy of it. A test that reimplements the logic it is testing cannot catch a
+    regression in the original.
+    """
+    for k in ('ns', 'nt', 'hidden', 'layers'):
+        if int(ck.get(k, -1)) != int(getattr(a, k)):
+            raise SystemExit('--init_from architecture mismatch: checkpoint %s=%s, this run %s=%s'
+                             % (k, ck.get(k), k, getattr(a, k)))
+    for k, want in (('use_star', not a.no_star), ('use_global', not a.no_global)):
+        if bool(ck.get(k, True)) != bool(want):
+            raise SystemExit('--init_from channel mismatch: checkpoint %s=%s, this run %s=%s'
+                             % (k, ck.get(k), k, want))
+    if ck.get('head') != M3.HEAD_VERSION:
+        raise SystemExit('--init_from head mismatch: checkpoint head=%s, this run %s'
+                         % (ck.get('head'), M3.HEAD_VERSION))
+
+
 def _make_sched(a, opt):
     """The LR schedule. One definition, because `--restart_lr` has to rebuild it mid-run.
 
@@ -517,21 +546,7 @@ def main():
             raise SystemExit('--init_from and --resume are mutually exclusive: one starts a NEW '
                              'trajectory from borrowed weights, the other continues an existing one.')
         ck0 = torch.load(a.init_from, weights_only=False)
-        # FAIL FAST on any architecture difference. `load_state_dict` raises on a shape mismatch but
-        # is SILENT when the configs differ in a way that happens to keep shapes (use_star /
-        # use_global toggle whole sub-modules), and a silently half-loaded model would train and look
-        # plausible.
-        for k in ('ns', 'nt', 'hidden', 'layers'):
-            if int(ck0.get(k, -1)) != int(getattr(a, k)):
-                raise SystemExit('--init_from architecture mismatch: checkpoint %s=%s, this run %s=%s'
-                                 % (k, ck0.get(k), k, getattr(a, k)))
-        for k, want in (('use_star', not a.no_star), ('use_global', not a.no_global)):
-            if bool(ck0.get(k, True)) != bool(want):
-                raise SystemExit('--init_from channel mismatch: checkpoint %s=%s, this run %s=%s'
-                                 % (k, ck0.get(k), k, want))
-        if ck0.get('head') != M3.HEAD_VERSION:
-            raise SystemExit('--init_from head mismatch: checkpoint head=%s, this run %s'
-                             % (ck0.get('head'), M3.HEAD_VERSION))
+        check_init_compat(a, ck0)
         net.load_state_dict(ck0['state'])
         print('INIT FROM %s  (trained on %s, w_max_cut=%s, n_train=%s) -- WEIGHTS ONLY, fresh '
               'optimiser and scheduler' % (os.path.basename(a.init_from), ck0.get('data'),

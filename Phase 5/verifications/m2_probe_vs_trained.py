@@ -54,6 +54,13 @@ def build(ck):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--seed', type=int, default=0,
+                    help='seed for the sample draw. The DEFAULT 0 is not arbitrary and should not '
+                         'normally be changed: it reproduces the exact draw the overfit probe '
+                         'trained on (`train_v3.py --overfit_probe` uses `rng(--seed)` over the same '
+                         'filtered pool), which is what makes this a comparison on the SAME '
+                         'samples the probe saw. A different seed silently scores a different '
+                         'population.')
     ap.add_argument('--n', type=int, default=200, choices=sorted(PROBES),
                     help='which overfit probe to compare: 200 samples (1.4:1 params-to-targets) '
                          'or 8 (39.7:1). Both drawn from the same pool with the same rng and seed, '
@@ -63,8 +70,8 @@ def main():
                             % ('' if a.n == 200 else '_n%d' % a.n))
     raw = [g for g in T2.load(DATA) if g['sim_ok'] and g['size_bin'] != 'large_holdout']
     raw = [g for g in raw if float(g.get('contrast', 0.0)) >= 1e4]
-    # The probe's selection, reproduced exactly: same rng, same seed, same pool.
-    sel = np.random.default_rng(0).choice(len(raw), a.n, replace=False)
+    # The probe's selection, reproduced exactly: same rng, same seed (--seed, default 0), same pool.
+    sel = np.random.default_rng(a.seed).choice(len(raw), a.n, replace=False)
     sub = [raw[i] for i in sorted(sel)]
     samples = [T3.prepare(g) for g in sub]
     # ONE sd for BOTH models, computed on the population being scored. The two runs normalised by

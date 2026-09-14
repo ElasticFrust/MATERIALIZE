@@ -34,6 +34,7 @@ DUMPS = os.path.join(HERE, 'b1_dumps')
 
 sys.path.insert(0, HERE)
 import _common as C                                              # wires the rest of sys.path
+import solve_probe as SP                                         # shared lstsq/cond probes
 import torch
 from inverse_design import DesignProblem
 
@@ -134,8 +135,7 @@ def section_b(targets, P, scale):
         torch.linalg.lstsq = real
 
     G = cap['G'].numpy()
-    sv = np.linalg.svd(G, compute_uv=False)
-    cut = np.finfo(np.float64).eps * max(G.shape) * sv[0]          # the rcond=None convention
+    sv, cut = SP.spectrum(G)                    # the rcond=None convention, shared: solve_probe.py
     print(f'    G {G.shape}  sigma_max={sv[0]:.4e}  cutoff={cut:.4e}  sigma_min={sv[-1]:.4e}'
           f'  ({sv[-1]/cut:.3e} x cutoff)')
     print(f'    numerical rank {(sv > cut).sum()}/{G.shape[0]};  '

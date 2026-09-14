@@ -56,38 +56,23 @@ import train_v3 as T3                                                     # noqa
 import train_v2 as T2                                                     # noqa: E402
 from evaluate_v2 import geo_of                                            # noqa: E402
 from inverse_design import DesignProblem, c6_to_nuE                       # noqa: E402
+import solve_probe as SP                                                  # noqa: E402
 
 RESULTS = os.path.join(REPO, 'Phase 5', 'results', 'm2_s1')
-
-
-def cond_eff_of_G(G):
-    """sigma_max / sigma_min over the NUMERICALLY NONZERO spectrum -- see the module docstring."""
-    sv = np.linalg.svd(np.asarray(G, float), compute_uv=False)
-    cut = np.finfo(np.float64).eps * max(G.shape) * sv[0]   # the rcond=None convention lstsq uses
-    live = sv[sv > cut]
-    return (float(sv[0] / live[-1]) if len(live) else float('inf')), int(len(sv) - len(live))
 
 
 def capture_G(prob, k):
     """Run one forward solve, capturing G from the `lstsq` the intrinsic path ends in.
 
-    Patches `torch.linalg.lstsq` for the duration only; the protected core is NOT modified.
+    Both the capture and the effective-conditioning arithmetic live in
+    `Phase 3/verifications/solve_probe.py`, shared with `b1_excursion_analysis.py` -- the cutoff
+    convention is easy to get subtly wrong and a wrong one silently redefines "rank".
     """
-    grabbed = {}
-    real = torch.linalg.lstsq
-
-    def spy(A, B, *args, **kw):
-        if 'G' not in grabbed:                              # the FIRST lstsq is the KKT solve
-            grabbed['G'] = A.detach().cpu().numpy().copy()
-        return real(A, B, *args, **kw)
-
-    torch.linalg.lstsq = spy
-    try:
+    def _run():
         with torch.no_grad():
-            out = prob.forward(torch.as_tensor(np.asarray(k, float)), physical_units=True)
-    finally:
-        torch.linalg.lstsq = real
-    return out, grabbed.get('G')
+            return prob.forward(torch.as_tensor(np.asarray(k, float)), physical_units=True)
+
+    return SP.capture_lstsq_lhs(_run)                       # the FIRST lstsq is the KKT solve
 
 
 def bin_report(name, x, err, nbins=5):
@@ -131,29 +116,33 @@ def main():
     print('scoring %d %s networks (seed %d)' % (len(val), a.holdout, a.seed))
 
     net = M3.from_checkpoint(torch.load(os.path.join(M2DIR, a.ckpt), weights_only=False))
+    # NO exception handling in the loop, deliberately (CLAUDE.md: fail-fast by default). This path
+    # touches only the SOLVER, which "degrades gracefully and needs no guard" -- the catchable
+    # `UnhealthyGeometryError` belongs to the SIM entry points, which are never called here. So there
+    # is no expected benign failure, and anything that does fail is a bug worth stopping for. An
+    # earlier broad `except Exception` swallowed a TypeError on all 12 smoke samples, reported them as
+    # "skipped", and cost a debugging cycle -- and had it hit only SOME samples it would have biased
+    # the population silently.
     rec = []
     for i, g in enumerate(val):
-        try:
-            prob = DesignProblem.from_geo(geo_of(g))
-            _, G = capture_G(prob, g['k'])
-            if G is None:
-                continue
-            ce, ndrop = cond_eff_of_G(G)
-            t = T3.prepare(g)
-            with torch.no_grad():
-                pred = T3.predict(net, t).numpy()
-            tgt = np.asarray(g['C6_per'], float)
-            # `c6_to_nuE` is torch-native, and the TARGET is the stored bulk `C6` -- both exactly as
-            # `m2_error_strata.py` does it, so the two scripts define nu identically rather than
-            # nearly so.
-            nu_p = float(c6_to_nuE(torch.as_tensor(pred.mean(0)))[0])
-            nu_t = float(c6_to_nuE(torch.as_tensor(np.asarray(g['C6'], float)))[0])
-            rec.append(dict(cond=ce, rank_drop=ndrop, contrast=float(g['contrast']),
-                            n_tri=int(len(tgt)), w_max=float(g['w_max']),
-                            dnu=abs(nu_p - nu_t),
-                            mae=float(np.abs(pred - tgt).mean())))
-        except Exception as e:                                            # noqa: BLE001
-            print('  [%d] skipped: %s: %s' % (i, type(e).__name__, e))
+        prob = DesignProblem.from_geo(geo_of(g))
+        _, G = capture_G(prob, g['k'])
+        if G is None:
+            continue
+        ce, ndrop = SP.effective_cond(G)
+        t = T3.prepare(g)
+        with torch.no_grad():
+            pred = T3.predict(net, t).numpy()
+        tgt = np.asarray(g['C6_per'], float)
+        # `c6_to_nuE` is torch-native, and the TARGET is the stored bulk `C6` -- both exactly as
+        # `m2_error_strata.py` does it, so the two scripts define nu identically rather than
+        # nearly so.
+        nu_p = float(c6_to_nuE(torch.as_tensor(pred.mean(0)))[0])
+        nu_t = float(c6_to_nuE(torch.as_tensor(np.asarray(g['C6'], float)))[0])
+        rec.append(dict(cond=ce, rank_drop=ndrop, contrast=float(g['contrast']),
+                        n_tri=int(len(tgt)), w_max=float(g['w_max']),
+                        dnu=abs(nu_p - nu_t),
+                        mae=float(np.abs(pred - tgt).mean())))
         if (i + 1) % 50 == 0:
             print('  ... %d/%d' % (i + 1, len(val)))
 

@@ -24,7 +24,7 @@ including "nothing".** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
 
 ---
 
-## ⚙ GATE STATUS — all 5 green as of 2026-09-13, after TWO were found broken
+## ⚙ GATE STATUS — all 5 green as of 2026-09-13 (after TWO were found broken); a 6th added 2026-09-14
 
 Run them with `PYTHONIOENCODING=utf-8` on Windows, or pipe-safe now that the second bug below is fixed.
 
@@ -34,6 +34,7 @@ Run them with `PYTHONIOENCODING=utf-8` on Windows, or pipe-safe now that the sec
 | `Phase 3/test_inverse_design.py` | 16/16 — [15] regular lattice **nu=0.3333 / E=1.1547**, virial-vs-energy **1.1e-13**, solver-vs-physical tensor **1.6e-12** |
 | `Phase 5/verifications/test_designer_surface.py` | ALL PASSED — [5] 7 good meshes pass, 1 not-closed + 1 folded still fail |
 | `Phase 5/verifications/test_hex_closed_form.py` | ALL PASSED — max abs(dnu) **4.34e-06** over d in [0.05, 2] |
+| **`Phase 5/verifications/test_m2_train_surface.py`** *(new 2026-09-14)* | ALL PASSED — 6 tests over the M2 TRAINING surface: run identity (13 tag variants distinct), `--init_from` (7 mismatches refused), tied iteration, the analytic answer surviving tying (exact, 0.0e+00), pre-`tie` checkpoint compatibility, `_make_sched` + `effective_cond` |
 
 **⚠ Two gates were broken and nobody knew. Neither was a physics regression, and that is the point —
 both failed for reasons that look like noise and get skipped over.**
