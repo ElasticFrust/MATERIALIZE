@@ -836,6 +836,54 @@ from-scratch unfiltered run could still differ. Say so if it comes out negative;
 **tail and in `longrange`/`cells`**, not in the headline mean — the bulk metric is already 0.031 and
 the mean is dominated by the accurate majority.
 
+### 9k. Does cond(G) predict the surrogate's error? ❌ **NO — my own hypothesis failed its own test**
+
+**The claim under test (mine, 2026-09-14).** `W(s)` is the solution of a global constrained system, so
+a fixed-depth GNN is a fixed number of relaxation sweeps, and the sweeps a solve needs grow with the
+CONDITION NUMBER. Prediction: **error should track `cond(G)`, with `k`-contrast only a proxy for it.**
+
+Instrument: `Phase 5/verifications/m2_conditioning_vs_error.py` — captures `G = J3 @ PinvJt` by
+monkey-patching `torch.linalg.lstsq` around one forward solve (the protected core untouched; the
+technique `b1_excursion_analysis.py` already uses), takes the EFFECTIVE conditioning
+(σ_max/σ_min above `lstsq`'s own rcond cutoff, since `G` can be singular by construction), and reports
+**binned medians, never raw correlations**. 400 `bravais` networks, `cond(G)` spanning 2.21e+01 …
+4.17e+07 (median 1.81e+02; rank drop median **0** — unlike the regular lattice's 671/672).
+
+**Spread in median |Δν| across quintiles — `cond(G)` LOSES to the predictor we already had:**
+
+| variable | spread explained | rank corr. with abs(dnu) |
+|---|---|---|
+| **max abs(W)** | **8.96×** | **+0.362** |
+| `cond(G)` | 7.33× | +0.291 |
+| `k`-contrast | 5.84× | — |
+| `n_tri` | 2.40× | — |
+
+**And `cond(G)` is largely max abs(W) in disguise: Spearman +0.772** (and +0.736 with contrast).
+
+**Stratified both ways — non-monotone, so neither variable dominates:** within max abs(W) terciles,
+splitting by median `cond(G)` gives ratios **1.86× / 0.93× / 4.30×** (the middle tercile goes the WRONG
+way); the reverse split gives **1.07× / 1.46× / 5.62×**. Both variables are essentially **threshold
+indicators of "near-mechanism"** that only bite in the top bin, and they are collinear.
+
+**VERDICT: the hypothesis is NOT SUPPORTED.** `cond(G)` predicts the surrogate's error *worse* than
+`max abs(W)`, which was already known and already in the docs. The diagnostic therefore **does not
+discriminate** "needs more relaxation iterations" from "needs different expressivity per layer", which
+is the single thing it was built to do. **It does not justify building the recurrent architecture.**
+
+**What it does NOT do is refute the iteration idea** — it refutes *this test of it*. Three reasons the
+proxy may simply be wrong: (i) the GNN does not solve the KKT system, it approximates the map, so
+`cond(G)` need not set its effective iteration count; (ii) the `bravais` range is narrow — the median
+is 181 and only the top quintile reaches 1e7; (iii) with rank drop 0 these samples do not exhibit the
+redundancy that motivated the effective-conditioning definition, so it may be measuring something
+other than what the argument assumes.
+**The honest position: the iteration hypothesis is now UNSUPPORTED, not refuted, and its only direct
+test is the weight-tied recurrent model itself** — train once, vary the iteration count at inference,
+and see whether error falls monotonically. That is the ~85 h route this diagnostic was meant to avoid
+paying for on speculation, and on this evidence it should not be paid.
+
+*(Scope: one family, `bravais`, the holdout. A broader sweep could differ — but the burden was on the
+hypothesis to show an advantage here, and it did not.)*
+
 ## 10. Limitations
 
 - **`M_S` destroys the finite receptive field** — one perturbation reaches every triangle in one
