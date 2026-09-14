@@ -51,6 +51,8 @@ import model_v3 as M3                                                     # noqa
 import train_v3 as T3                                                     # noqa: E402
 import train_v2 as T2                                                     # noqa: E402
 import solve_probe as SP                                                  # noqa: E402
+sys.path.insert(0, HERE)
+import m2_probe_vs_trained as PVT                                         # noqa: E402
 
 CKPT = os.path.join(M2DIR, 'checkpoint_v3_res_bravais_w10_h1_L5_ns48_h64_e400_star_ms.pt')
 SMOKE = os.path.join(M2DIR, 'data', 'dataset_smoke.npz')
@@ -232,11 +234,45 @@ def test_helpers():
           'with cond 1e4 and one null direction (rank drop %d)  OK' % (cond, drop))
 
 
+def test_draw_is_reproducible():
+    """A probe's SAMPLE DRAW must be reproducible from its checkpoint alone, or not at all.
+
+    The probe's samples are never stored as a list -- they are drawn by
+    `rng(seed).choice(len(raw), n)` -- so a consumer has to regenerate them. FOUR things determine the
+    result: seed, dataset, contrast filter (which shrinks `raw` BEFORE the draw, changing what every
+    index means) and count. Hardcoding any of them encodes an assumption about how a different
+    program was invoked, and a mismatch yields a normal-looking table for the WRONG population.
+    """
+    for path in PVT.PROBES.values():
+        ck = torch.load(path, weights_only=False)
+        draw = PVT.draw_from_checkpoint(ck, os.path.basename(path))
+        assert set(draw) == set(PVT.DRAW_KEYS), draw
+        assert int(draw['overfit_probe']) > 0 and float(draw['contrast_min']) > 0, draw
+
+    # a checkpoint missing ANY of the four must be refused, not guessed at
+    full = torch.load(PVT.PROBES[8], weights_only=False)
+    for key in PVT.DRAW_KEYS:
+        try:
+            PVT.draw_from_checkpoint({k: v for k, v in full.items() if k != key}, 'stripped')
+            raise AssertionError('a checkpoint missing %r was accepted' % key)
+        except SystemExit:
+            pass
+    # and asking for a count the checkpoint was not trained on must be refused
+    try:
+        PVT.draw_from_checkpoint(full, 'probe8', expect_n=200)
+        raise AssertionError('mismatched --n was accepted')
+    except SystemExit:
+        pass
+    print('  [7] sample draw: %d probe checkpoints record all of %s; each missing key refused, and '
+          'a mismatched --n refused  OK' % (len(PVT.PROBES), ', '.join(PVT.DRAW_KEYS)))
+
+
 def main():
     print('M2 training-surface tests (run identity, warm start, tied iteration)')
     failed = 0
     for t in (test_run_identity, test_init_from_guards, test_tied_iteration,
-              test_analytic_survives_tying, test_backward_compatible_checkpoint, test_helpers):
+              test_analytic_survives_tying, test_backward_compatible_checkpoint, test_helpers,
+              test_draw_is_reproducible):
         try:
             t()
         except Exception as e:                                             # noqa: BLE001

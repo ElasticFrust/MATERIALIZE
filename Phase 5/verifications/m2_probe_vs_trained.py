@@ -32,13 +32,38 @@ import model_v3 as M3                                                     # noqa
 import train_v2 as T2                                                     # noqa: E402
 import train_v3 as T3                                                     # noqa: E402
 
-DATA = os.path.join(M2DIR, 'data', 'dataset_v2_s0.npz')
 TRAINED = os.path.join(M2DIR, 'checkpoint_v3_res_bravais_w10_h1_L5_ns48_h64_e400_star_ms.pt')
 PROBES = {200: os.path.join(M2DIR, 'checkpoint_v3_res_bravais_w0_h1_L5_ns48_h64_e1600_star_ms'
                                   '_probe200_c10000.pt'),
           8: os.path.join(M2DIR, 'checkpoint_v3_res_bravais_w0_h1_L5_ns48_h64_e6000_star_ms'
                                 '_probe8_c10000.pt')}
 RESULTS = os.path.join(HERE, '..', 'results', 'm2_s1')
+
+
+#: everything that determines which samples `--overfit_probe` drew. `seed` alone is NOT enough:
+#: the draw is `rng(seed).choice(len(raw), n)`, and `raw` is built from `data` then SHRUNK by
+#: `contrast_min`, so the same seed over a different pool selects entirely different networks.
+DRAW_KEYS = ('seed', 'data', 'overfit_probe', 'contrast_min')
+
+
+def draw_from_checkpoint(ck, name, expect_n=None):
+    """-> the four parameters that reproduce a probe's sample draw; FAIL FAST if any is missing.
+
+    Extracted from `main` so `test_m2_train_surface.py` exercises the shipped refusal rather than a
+    copy of it.
+    """
+    draw = {}
+    for key in DRAW_KEYS:
+        if key not in ck:
+            raise SystemExit(
+                'probe checkpoint %s does not record %r, so its sample draw cannot be reproduced. '
+                'Checkpoints written before 2026-09-14 predate this; re-save it with the value from '
+                'its run tag.' % (name, key))
+        draw[key] = ck[key]
+    if expect_n is not None and int(draw['overfit_probe']) != int(expect_n):
+        raise SystemExit('--n %d but %s was trained on %d samples'
+                         % (expect_n, name, int(draw['overfit_probe'])))
+    return draw
 
 
 def build(ck):
@@ -54,13 +79,6 @@ def build(ck):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--seed', type=int, default=0,
-                    help='seed for the sample draw. The DEFAULT 0 is not arbitrary and should not '
-                         'normally be changed: it reproduces the exact draw the overfit probe '
-                         'trained on (`train_v3.py --overfit_probe` uses `rng(--seed)` over the same '
-                         'filtered pool), which is what makes this a comparison on the SAME '
-                         'samples the probe saw. A different seed silently scores a different '
-                         'population.')
     ap.add_argument('--n', type=int, default=200, choices=sorted(PROBES),
                     help='which overfit probe to compare: 200 samples (1.4:1 params-to-targets) '
                          'or 8 (39.7:1). Both drawn from the same pool with the same rng and seed, '
@@ -68,10 +86,30 @@ def main():
     a = ap.parse_args()
     out_path = os.path.join(RESULTS, 'probe_vs_trained%s.json'
                             % ('' if a.n == 200 else '_n%d' % a.n))
-    raw = [g for g in T2.load(DATA) if g['sim_ok'] and g['size_bin'] != 'large_holdout']
-    raw = [g for g in raw if float(g.get('contrast', 0.0)) >= 1e4]
+
+    # THE SAMPLE DRAW IS READ FROM THE PROBE CHECKPOINT, never assumed. The probe's 200 (or 8)
+    # samples were never saved as a list -- they were DRAWN, by `rng(seed).choice(len(raw), n)` -- so
+    # this script has to reproduce the draw exactly. Four things determine it: the seed, the dataset
+    # file, the contrast filter (which SHRINKS `raw` before the draw, changing what every index
+    # means), and the count. Hardcoding any of them encodes an assumption about how a DIFFERENT
+    # program was invoked, and a mismatch produces a normal-looking table for the wrong population --
+    # which is exactly how a resume against the wrong `--data` went unnoticed until a log line gave
+    # it away (NEXT_SESSION, 2026-09-13). Taking all four from the checkpoint makes a mismatch
+    # impossible rather than merely documented.
+    probe_ck = torch.load(PROBES[a.n], weights_only=False)
+    draw = draw_from_checkpoint(probe_ck, os.path.basename(PROBES[a.n]), expect_n=a.n)
+    trained_ck = torch.load(TRAINED, weights_only=False)
+    if trained_ck.get('data') != draw['data']:
+        raise SystemExit('the two checkpoints were trained on different datasets (%s vs %s), so '
+                         'there is no common population to score them on'
+                         % (trained_ck.get('data'), draw['data']))
+    data_path = os.path.join(M2DIR, 'data', str(draw['data']))
+    print('draw reproduced from the probe checkpoint: data=%s seed=%d contrast_min=%g n=%d'
+          % (draw['data'], int(draw['seed']), float(draw['contrast_min']), a.n))
+    raw = [g for g in T2.load(data_path) if g['sim_ok'] and g['size_bin'] != 'large_holdout']
+    raw = [g for g in raw if float(g.get('contrast', 0.0)) >= float(draw['contrast_min'])]
     # The probe's selection, reproduced exactly: same rng, same seed (--seed, default 0), same pool.
-    sel = np.random.default_rng(a.seed).choice(len(raw), a.n, replace=False)
+    sel = np.random.default_rng(int(draw['seed'])).choice(len(raw), a.n, replace=False)
     sub = [raw[i] for i in sorted(sel)]
     samples = [T3.prepare(g) for g in sub]
     # ONE sd for BOTH models, computed on the population being scored. The two runs normalised by
@@ -80,7 +118,8 @@ def main():
     # split" error (M2_RESIDUAL_AND_CONSTRAINTS.md, 2026-08-27).
     sd = torch.cat([t['target'] for t in samples]).std(0).clamp_min(1e-12)
 
-    out = {'n': len(samples), 'n_triangles': int(sum(len(s['target']) for s in samples)),
+    out = {'n': len(samples), 'draw': {k: (float(v) if k != 'data' else v)
+                                       for k, v in draw.items()}, 'n_triangles': int(sum(len(s['target']) for s in samples)),
            'label_std': [float(x) for x in sd]}
     for name, path in (('trained_full_40k', TRAINED),
                        ('overfit_probe_%d' % a.n, PROBES[a.n])):

@@ -744,6 +744,12 @@ def main():
                     epochs=a.epochs, n_train=len(train), seed=a.seed,
                     data=os.path.basename(a.data), tie=a.tie, n_iter=net.n_iter,
                     n_iter_hi=a.n_iter_hi,
+                    # THE SAMPLE DRAW. `--overfit_probe` selects by
+                    # `rng(seed).choice(len(raw), n)`, and `raw` is built from `data` and then SHRUNK
+                    # by `contrast_min` -- so the indices drawn depend on all four. Recording only
+                    # `seed` is not enough to reproduce a draw, and a consumer that assumes the other
+                    # three silently scores a DIFFERENT population (see m2_probe_vs_trained.py).
+                    overfit_probe=a.overfit_probe, contrast_min=a.contrast_min,
                     init_from=os.path.basename(a.init_from) if a.init_from else None),
                ckpt_path)
     with open(os.path.join(RESULTS, 'run_v3_%s.json' % tag), 'w', encoding='utf-8') as fh:
@@ -752,6 +758,7 @@ def main():
                        bulk_weight=a.bulk_weight, graph_balance=bool(a.graph_balance),
                        opt=a.opt, wd=a.wd, init_from=a.init_from or None,
                        tie=bool(a.tie), n_iter=int(net.n_iter), n_iter_hi=int(a.n_iter_hi),
+                       overfit_probe=int(a.overfit_probe), contrast_min=float(a.contrast_min),
                        schedule=a.schedule, patience=a.patience, stop_patience=a.stop_patience,
                        min_delta=a.min_delta, eval_every=a.eval_every,
                        hidden=a.hidden, layers=a.layers, n_train=len(train), n_val=len(valid),

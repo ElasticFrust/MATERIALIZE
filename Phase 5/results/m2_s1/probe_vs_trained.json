@@ -1,5 +1,11 @@
 {
   "n": 200,
+  "draw": {
+    "seed": 0.0,
+    "data": "dataset_v2_s0.npz",
+    "overfit_probe": 200.0,
+    "contrast_min": 10000.0
+  },
   "n_triangles": 48642,
   "label_std": [
     0.8277025527603488,
