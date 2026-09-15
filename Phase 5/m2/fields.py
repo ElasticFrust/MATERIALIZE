@@ -37,7 +37,11 @@ A note on periodicity: spatial fields use wave vectors COMMENSURATE with the box
 periodic seam, so the network and the field it carries would have different periods -- the sample
 would not be the crystal it claims to be.
 """
+import os, sys
 import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'Phase 2'))
+import mesh_build as MB                                                   # noqa: E402
 
 #: S0b (`DILUTION_VALIDITY.md`): `k_soft >= 1e-8` is safe at every dilution fraction tested up to
 #: f = 0.40, including sub-isostatic z = 3.6; at `k_soft <= 1e-12` the solver returns nu of the
@@ -226,6 +230,75 @@ def dilute(geo, rng, frac=0.2, k_soft=1e-6, k_stiff=1.0):
 
 
 # ---- the geometry field -----------------------------------------------------------------------
+def node_min_altitude(geo):
+    """Per node, the smallest ALTITUDE over its incident triangles — the local safety margin.
+
+    The altitude from a vertex to its opposite edge is exactly the distance it may travel before the
+    triangle FLATTENS and then inverts. It is NOT the edge length: a triangle can collapse into a
+    sliver with every edge still at full length, which is why normalising a displacement by edge
+    length (or by the mesh's mean bond length, as `displace` does) does not protect the mesh.
+
+    Uses `mesh_build.edge_vec_orientation` so the edge vectors are the PERIODIC ones with the
+    triangle's own corner order — `pts[j] - pts[i]` would be wrong across the wrap."""
+    ei, sg = MB.edge_vec_orientation(geo['tri_bond'], geo['simplices'],
+                                     geo['bond_u'], geo['bond_v'])
+    bR = np.asarray(geo['bond_R'], float)
+    sg = np.where(sg == 0.0, 1.0, sg)                      # self-loop: sign undefined, magnitude ok
+    ev = bR[ei] * sg[..., None]                            # (n_tri, 3, 2): (0,1), (0,2), (1,2)
+    area = 0.5 * np.abs(ev[:, 0, 0] * ev[:, 1, 1] - ev[:, 0, 1] * ev[:, 1, 0])
+    L = np.linalg.norm(ev, axis=2)                         # |01|, |02|, |12|
+    # altitude from corner c is 2*Area / |opposite edge|: corner0 -> |12|, 1 -> |02|, 2 -> |01|
+    alt = 2.0 * area[:, None] / np.maximum(L[:, [2, 1, 0]], 1e-300)
+    sm = np.asarray(geo['simplices'], np.int64)
+    out = np.full(len(geo['pts']), np.inf)
+    np.minimum.at(out, sm.ravel(), alt.ravel())
+    return out
+
+
+def displace_safe(geo, rng, frac=0.5, structure='correlated', **kw):
+    """Perturb node positions so that NO TRIANGLE CAN INVERT, by construction. Returns `(pts, meta)`.
+
+    `frac` is a dimensionless fraction of each node's OWN safety margin, not a length: node `v` moves
+    at most `frac * h_v / 3`, where `h_v` is the smallest altitude over its incident triangles.
+
+    WHY THAT BOUND. For a vertex to cross its opposite edge it must change its signed distance to
+    that edge by `h_v`. Its own motion contributes at most `d`, and the opposite edge can itself
+    translate by at most `d` when its two endpoints move — so `2d < h_v` already suffices, and the
+    `/3` is deliberate slack. Hence any `frac <= 1` cannot invert a triangle, and the amplitude is a
+    GUARANTEE rather than something to filter on afterwards.
+
+    That distinction is the point. §3.1f's prescription was "perturb, then accept/reject on shape
+    quality, and report the acceptance rate" — which works, but yields a silently BIASED subset
+    whenever the rejection rate is not reported, the same trap as an eta-sweep that does not say how
+    many seeds survived. A per-node bound removes the rejection step entirely: nothing is thrown
+    away, so nothing can be biased by throwing it away.
+
+    It also replaces the two defects of `displace` for FROZEN-CONNECTIVITY meshes:
+      * that function scales by `amp * mean(bond_length)`, a GLOBAL mean — so a node in a locally
+        fine region is displaced by something comparable to its own neighbourhood and collapses it;
+      * it ends with `np.mod(pts + d, box)`, and wrapping is WRONG here: triangles carry integer
+        image shifts, so a wrapped node reconstructs its triangle a box away (`seeds.py` records
+        13 of 72 triangles inverted, signed area −15.2, at eta = 0.05). This does not wrap.
+
+    Callers should STILL assert non-inversion (`mesh_build.check_mesh_preconditions`, or the signed
+    area) — the bound is a first-order argument and a cheap check costs nothing."""
+    pts = np.asarray(geo['pts'], float).copy()
+    Lx, Ly = box_of(geo)
+    if structure == 'correlated':
+        ux = periodic_field(pts, Lx, Ly, rng, **kw)
+        uy = periodic_field(pts, Lx, Ly, rng, **kw)
+        d = np.stack([ux, uy], 1)
+    elif structure == 'white':
+        a = rng.uniform(0, 2 * np.pi, len(pts))
+        d = np.stack([np.cos(a), np.sin(a)], 1)
+    else:
+        raise ValueError(f'unknown structure {structure!r}; expected correlated / white')
+    nrm = np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-300)
+    cap = (frac * node_min_altitude(geo) / 3.0)[:, None]   # per node, its OWN margin
+    return pts + d / nrm * np.minimum(nrm, cap), dict(
+        geom_structure=structure, geom_frac=float(frac), geom_bound='min_altitude/3')
+
+
 def displace(geo, rng, amp=0.1, structure='correlated', **kw):
     """Perturbed node positions -- returns `(pts, meta)`.  Connectivity is NOT re-triangulated.
 
