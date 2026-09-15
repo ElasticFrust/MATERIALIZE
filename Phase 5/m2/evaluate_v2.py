@@ -48,6 +48,7 @@ import model_v3 as M3                                                     # noqa
 import train_v2 as T                                                      # noqa: E402
 import train_v3 as T3                                                     # noqa: E402
 from inverse_design import c6_to_nuE                                      # noqa: E402
+import mesh_build as MB                                                   # noqa: E402
 
 warnings.simplefilter('ignore')
 torch.set_default_dtype(torch.float64)
@@ -88,29 +89,24 @@ def oriented_edge_vecs(g):
     anything that rebuilds a solver, and SAY how many were excluded.  It hits only the tiniest cells
     (2-3 nodes; `cells`, `anchor`)."""
     ei, sg = edge_vec_map(g)
+    # `edge_vec_orientation` reports sign 0 on a self-loop, meaning UNKNOWN -- the honest signal, and
+    # what `check_edge_vecs` keys off to skip the sign test there. A reconstruction still has to emit
+    # a vector, so fall back to +1: arbitrary, but nonzero and consistent, which keeps the SIM path
+    # (orientation-blind) exact. It is NOT good enough to build a solver on -- use `has_self_loops`
+    # to exclude those meshes, as `m2_gradient_fidelity` does.
+    sg = np.where(sg == 0.0, 1.0, sg)
     return np.asarray(g['bond_R'], float)[ei] * sg[..., None]
 
 
 def edge_vec_map(g):
     """The (bond index, sign) of each triangle's three edges -- PURE CONNECTIVITY, no coordinates.
 
-    Split out so a perturbed geometry reuses the same orientation instead of re-deriving it (and
-    re-deriving it wrongly, which is the bug above)."""
-    tb = np.asarray(g['tri_bond'], np.int64)
-    sm = np.asarray(g['tri_verts'], np.int64)
-    bu = np.asarray(g['bond_u'], np.int64); bv = np.asarray(g['bond_v'], np.int64)
-    ei = np.zeros((len(tb), 3), np.int64); sg = np.zeros((len(tb), 3), float)
-    for s in range(len(tb)):
-        for j, (p, q) in enumerate(((0, 1), (0, 2), (1, 2))):
-            a, b = sm[s, p], sm[s, q]
-            for e in tb[s]:
-                if bu[e] == a and bv[e] == b:
-                    ei[s, j], sg[s, j] = e, +1.0; break
-                if bu[e] == b and bv[e] == a:
-                    ei[s, j], sg[s, j] = e, -1.0; break
-            else:
-                raise ValueError('triangle %d has no bond joining its vertices %d,%d' % (s, a, b))
-    return ei, sg
+    Thin adapter onto `mesh_build.edge_vec_orientation`, which is where the convention is DEFINED
+    (`build_open_mesh`: `edge_vecs = [p1-p0, p2-p0, p2-p1]`). Kept as one implementation rather than
+    two so the reconstruction cannot drift from the builder -- drifting from it is exactly the bug
+    this function exists because of. Note the stored schema calls the corner array `tri_verts` where
+    a live geo calls it `simplices`."""
+    return MB.edge_vec_orientation(g['tri_bond'], g['tri_verts'], g['bond_u'], g['bond_v'])
 
 
 def has_self_loops(g):

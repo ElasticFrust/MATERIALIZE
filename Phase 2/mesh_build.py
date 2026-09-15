@@ -199,6 +199,74 @@ def check_mesh_preconditions(mesh, periodic=True):
     return (not failures), failures
 
 
+def edge_vec_orientation(tri_bond, simplices, bond_u, bond_v):
+    """Which bond, and with which SIGN, is each triangle's edge (0,1), (0,2), (1,2).
+
+    The canonical statement of the convention `build_open_mesh` and `_periodic_delaunay` build to:
+    `edge_vecs = [p1-p0, p2-p0, p2-p1]`.  `bond_R` is oriented by the GLOBAL bond list
+    (`bond_u` -> `bond_v`), which is unrelated to any one triangle's corner order, so about half the
+    entries need a sign flip.  Returns `(edge_idx, sign)`, both `(n_tri, 3)`; connectivity only, no
+    coordinates, so it is valid for any positions of the same mesh.
+
+    SELF-LOOPS ARE AMBIGUOUS and are reported as sign 0.  A bond from a node to its own periodic
+    image has `bond_u == bond_v`, so "from a to b" is undefined and no sign exists to recover.
+    Callers must treat sign 0 as "unknown", never as "positive"."""
+    tb = np.asarray(tri_bond, np.int64); sm = np.asarray(simplices, np.int64)
+    bu = np.asarray(bond_u, np.int64); bv = np.asarray(bond_v, np.int64)
+    ei = np.zeros(tb.shape, np.int64); sg = np.zeros(tb.shape, float)
+    for s in range(len(tb)):
+        for j, (p, q) in enumerate(((0, 1), (0, 2), (1, 2))):
+            a, b = sm[s, p], sm[s, q]
+            for e in tb[s]:
+                if bu[e] == bv[e] and (bu[e] == a or bu[e] == b):
+                    ei[s, j], sg[s, j] = e, 0.0; break          # self-loop: sign undefined
+                if bu[e] == a and bv[e] == b:
+                    ei[s, j], sg[s, j] = e, +1.0; break
+                if bu[e] == b and bv[e] == a:
+                    ei[s, j], sg[s, j] = e, -1.0; break
+            else:
+                raise ValueError(f'triangle {s} has no bond joining its vertices {a},{b}')
+    return ei, sg
+
+
+def check_edge_vecs(mesh, tol=1e-10):
+    """Is `edge_vecs` CONSISTENT with the `bond_R`/`tri_bond`/`simplices` beside it? (ok, failures).
+
+    `edge_vecs` is DERIVABLE from the other three and is ALSO stored, so a `geo` dict can be
+    self-contradictory -- and a solver built from one computes the right equations on a mesh that
+    does not exist.  Nothing cross-checked them until 2026-09-15, when a reconstruction that skipped
+    the sign flip (`evaluate_v2.geo_of`) silently corrupted the CURVATURE constraint: `q_e = dx dx^T`
+    and the areas are orientation-blind, so `A(s)`, the GNN's inputs and the sim were all unaffected,
+    but the angle at a corner is not, and a flipped vector gives its supplement.  Measured damage: a
+    solver rebuilt from a stored sample missed the stored label by a median 1.5e-1, max 7.1e+02.
+
+    Two levels, because only one of them is always decidable:
+      MAGNITUDE -- each triangle edge must BE one of that triangle's bonds, up to sign. Always checked.
+      SIGN      -- must follow the triangle's own corner order. Skipped on self-loop bonds, where no
+                   sign exists (see `edge_vec_orientation`)."""
+    failures = []
+    if 'edge_vecs' not in mesh:
+        return True, failures
+    ev = np.asarray(mesh['edge_vecs'], float)
+    bR = np.asarray(mesh['bond_R'], float)
+    ei, sg = edge_vec_orientation(mesh['tri_bond'], mesh['simplices'],
+                                  mesh['bond_u'], mesh['bond_v'])
+    scale = max(float(np.abs(bR).max()), 1e-300)
+    d_mag = float(np.abs(np.abs(ev) - np.abs(bR[ei])).max()) / scale
+    if d_mag > tol:
+        failures.append(f'edge_vecs magnitudes do not match bond_R[tri_bond]: max rel {d_mag:.3e}')
+    known = sg != 0.0
+    if known.any():
+        d_sgn = float(np.abs(ev[known] - (bR[ei] * sg[..., None])[known]).max()) / scale
+        if d_sgn > tol:
+            n_bad = int((np.abs(ev[known] - (bR[ei] * sg[..., None])[known]).max(-1) > tol * scale).sum())
+            failures.append(
+                f'edge_vecs SIGNS disagree with the triangle corner order on {n_bad} of '
+                f'{int(known.sum())} well-defined edges (max rel {d_sgn:.3e}) -- the curvature '
+                f'constraint would be built from the wrong angles')
+    return (not failures), failures
+
+
 def build_open_mesh(tri, vd_a=None):
     """clean triangulation -> non-periodic mesh dict (bonds = unique edges, no wrap).
     vd_a: if not None, per-bond k = 1 + tanh(vd_a*(|R|-1)); else uniform k=1."""

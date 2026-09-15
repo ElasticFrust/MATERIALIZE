@@ -34,7 +34,8 @@ sys.path.insert(0, ROOT)
 # imported its mesh construction, its constraint topology and its SOLVER CONSTRUCTION from four
 # scripts in there (verify_solver_open, test_cluster_VD, test_intrinsic_VD, verify_solver_sweep).
 import forward_solver_torch as fst
-from mesh_build import (build_geometry, set_VD, clean_tri, build_open_mesh, kkt_from_tri_bond)
+from mesh_build import (build_geometry, set_VD, clean_tri, build_open_mesh, kkt_from_tri_bond,
+                        check_edge_vecs)
 from solver_build import make_solver
 torch.set_default_dtype(torch.float64)
 
@@ -306,6 +307,14 @@ class DesignProblem:
         topologies (e.g. affine-transformed anisotropic lattices)."""
         if 'tri_k' not in geo:
             set_VD(geo, 0)                                       # default uniform k=1
+        # `edge_vecs` is derivable from bond_R/tri_bond/simplices and is ALSO stored, so a geo dict
+        # can contradict itself -- and the solver would then compute the right equations on a mesh
+        # that does not exist. Unchecked until 2026-09-15, when a reconstruction that skipped the
+        # sign flip corrupted the CURVATURE constraint while leaving q_e, the areas and the sim
+        # untouched (all orientation-blind), missing stored labels by a median 1.5e-1, max 7.1e+02.
+        ok, why = check_edge_vecs(geo)
+        if not ok:
+            raise ValueError('inconsistent geo handed to from_geo: ' + '; '.join(why))
         kkt = kkt_from_tri_bond(geo['tri_bond'], geo['edge_vecs'])
         solver = make_solver(geo, kkt)
         bond_len = np.sqrt((geo['bond_R'] ** 2).sum(1))
