@@ -307,7 +307,7 @@ def first_inversion_scale(geo, d):
     return t
 
 
-def displace_safe(geo, rng, frac=0.5, structure='correlated', **kw):
+def displace_safe(geo, rng, frac=0.5, structure='correlated', local_scale=True, **kw):
     """Perturb node positions so that NO TRIANGLE CAN INVERT. Returns `(pts, meta)`.
 
     `frac` is the fraction of the distance to the FIRST INVERSION, computed exactly by
@@ -353,14 +353,38 @@ def displace_safe(geo, rng, frac=0.5, structure='correlated', **kw):
     else:
         raise ValueError(f'unknown structure {structure!r}; expected correlated / white')
     d = d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-300)   # unit per node
+    if local_scale:
+        # SHAPE the field by each node's own margin before scaling it globally.
+        #
+        # Every triangle constrains all three of its vertices JOINTLY, so a per-vertex cap computed
+        # independently is NOT safe: A, B and C can each be within their own limit and still flip
+        # ABC by moving together. The guarantee therefore has to come from one global scale.
+        #
+        # But with a UNIT field that scale is set by the single worst triangle in the mesh, and every
+        # other node is throttled to match it -- on a heterogeneous mesh the coarse regions then
+        # barely move. Making the field proportional to each node's own smallest incident altitude
+        # fixes that: fine regions ask for less, coarse regions ask for more, and the exact global
+        # scale is no longer hostage to one fine spot. Each vertex is still limited by its tightest
+        # incident triangle -- that is what `node_min_altitude` is -- it simply is not limited by
+        # somebody else's.
+        h = node_min_altitude(geo)
+        d = d * (h / max(float(np.median(h)), 1e-300))[:, None]
     t_star = first_inversion_scale(geo, d)
     step = frac * t_star
     out = pts + step * d
     lbar = float(bond_lengths(geo).mean())
+    moved = np.linalg.norm(out - pts, axis=1)
     return out, dict(geom_structure=structure, geom_frac=float(frac),
                      geom_bound='exact_first_inversion',
+                     geom_local_scale=bool(local_scale),
                      geom_t_star=float(t_star),
-                     geom_eta_equiv=float(step / lbar))
+                     geom_eta_equiv=float(moved.max() / lbar),
+                     geom_eta_mean=float(moved.mean() / lbar),
+                     # how much of its OWN budget the typical node actually used: the number that
+                     # says whether the mesh moved uniformly or was throttled by its worst spot
+                     geom_budget_used=float(np.median(moved / np.maximum(h if local_scale
+                                                                         else node_min_altitude(geo),
+                                                                         1e-300))))
 
 
 def displace(geo, rng, amp=0.1, structure='correlated', **kw):

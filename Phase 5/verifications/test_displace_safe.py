@@ -165,6 +165,49 @@ def test_reaches_classical_eta():
     return 0 if ok else 1
 
 
+def test_local_scale_is_size_independent():
+    """[2d] The field is shaped by each node's OWN margin, so one bad triangle cannot throttle the
+    whole mesh -- and the reachable amplitude stops degrading with mesh size.
+
+    Every triangle constrains its three vertices JOINTLY, so a per-vertex cap computed independently
+    is not safe (A, B and C can each be within their own limit and still flip ABC together). The
+    guarantee therefore has to come from one exact global scale. But with a UNIT field that scale is
+    set by the single worst triangle anywhere in the mesh, so a larger mesh -- more chances for one
+    unlucky triangle -- moves LESS. Scaling the field by `node_min_altitude` removes that.
+
+    Measured (eta-equivalent at frac=0.99, white field, 6 seeds):
+        regular      unit 0.465   local 0.465    (uniform mesh: nothing to adapt, as expected)
+        eta0.35      unit 0.232   local 0.409
+        eta0.35 big  unit 0.184   local 0.424    <- unit DEGRADES with size, local does not
+    """
+    out = {}
+    for eta in (0.0, 0.35):
+        for N in (6, 12):
+            g = MB.build_geometry(N, eta, seed=1); MB.set_VD(g, 0); _add_box(g)
+            a0 = _signed_areas(g)
+            for ls in (False, True):
+                best, inv = 0.0, 0
+                for sd in range(6):
+                    pts, meta = F.displace_safe(g, np.random.default_rng(sd), frac=0.99,
+                                                structure='white', local_scale=ls)
+                    best = max(best, meta['geom_eta_equiv'])
+                    inv += int(np.any(np.sign(_signed_areas(g, pts)) != np.sign(a0)))
+                out[(eta, N, ls)] = (best, inv)
+    no_inv = all(v[1] == 0 for v in out.values())
+    # on the heterogeneous mesh, local scaling must not shrink as the mesh grows
+    unit_shrinks = out[(0.35, 12, False)][0] < out[(0.35, 6, False)][0]
+    local_holds = out[(0.35, 12, True)][0] >= 0.95 * out[(0.35, 6, True)][0]
+    better = out[(0.35, 12, True)][0] > 1.5 * out[(0.35, 12, False)][0]
+    ok = no_inv and unit_shrinks and local_holds and better
+    print('[2d] eta0.35: unit %.3f (N=6) -> %.3f (N=12), shrinks; local %.3f -> %.3f, holds and is '
+          '%.1fx better at N=12; 0 inversions either way  %s'
+          % (out[(0.35, 6, False)][0], out[(0.35, 12, False)][0],
+             out[(0.35, 6, True)][0], out[(0.35, 12, True)][0],
+             out[(0.35, 12, True)][0] / max(out[(0.35, 12, False)][0], 1e-9),
+             'OK' if ok else 'FAIL'))
+    return 0 if ok else 1
+
+
 def test_it_actually_moves():
     """[3] The bound must protect by BOUNDING, not by doing nothing."""
     tag, geo = _meshes()[1]
@@ -223,7 +266,8 @@ def main():
     bad = 0
     print('displace_safe tests')
     for fn in (test_altitude, test_no_inversion, test_scale_is_exact_not_conservative,
-               test_reaches_classical_eta, test_it_actually_moves,
+               test_reaches_classical_eta, test_local_scale_is_size_independent,
+               test_it_actually_moves,
                test_beats_global_amp, test_no_wrap):
         bad += fn()
     print('\n%s' % ('ALL PASSED' if bad == 0 else '%d TEST(S) FAILED' % bad))
