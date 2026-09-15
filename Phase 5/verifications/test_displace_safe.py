@@ -92,12 +92,12 @@ def test_altitude():
 
 
 def test_no_inversion():
-    """[2] THE GUARANTEE: no triangle inverts at any frac <= 1, over seeds and mesh kinds."""
+    """[2] THE GUARANTEE: no triangle inverts at any frac < 1, over seeds and mesh kinds."""
     bad, n = 0, 0
     worst_shrink = 1.0
     for tag, geo in _meshes():
         a0 = _signed_areas(geo)
-        for frac in (0.25, 0.5, 0.75, 1.0):
+        for frac in (0.25, 0.5, 0.75, 0.9, 0.99):
             for structure in ('white', 'correlated'):
                 for seed in range(6):
                     pts, _ = F.displace_safe(geo, np.random.default_rng(seed), frac=frac,
@@ -108,8 +108,60 @@ def test_no_inversion():
                         bad += 1
                     worst_shrink = min(worst_shrink, float((np.abs(a1) / np.abs(a0)).min()))
     ok = bad == 0
-    print('[2] NO INVERSION over %d perturbations (3 meshes x frac<=1 x 2 structures x 6 seeds): '
-          '%d inverted; worst area ratio %.3f  %s' % (n, bad, worst_shrink, 'OK' if ok else 'FAIL'))
+    print('[2] NO INVERSION over %d perturbations (3 meshes x frac<=0.99 x 2 structures x 6 seeds): '
+          '%d inverted; worst area ratio %.4f  %s'
+          % (n, bad, worst_shrink, 'OK' if ok else 'FAIL'))
+    return 0 if ok else 1
+
+
+def test_scale_is_exact_not_conservative():
+    """[2b] `first_inversion_scale` is the TRUE limit: just below it nothing inverts, just above it
+    something does. A merely-sufficient bound would pass the first half and fail the second."""
+    bad, rows = 0, []
+    for tag, geo in _meshes():
+        a0 = _signed_areas(geo)
+        for seed in range(4):
+            rng = np.random.default_rng(seed)
+            a = rng.uniform(0, 2 * np.pi, len(geo['pts']))
+            d = np.stack([np.cos(a), np.sin(a)], 1)
+            t = F.first_inversion_scale(geo, d)
+            pts_lo = np.asarray(geo['pts'], float) + 0.999 * t * d
+            pts_hi = np.asarray(geo['pts'], float) + 1.001 * t * d
+            lo_ok = not np.any(np.sign(_signed_areas(geo, pts_lo)) != np.sign(a0))
+            hi_bad = np.any(np.sign(_signed_areas(geo, pts_hi)) != np.sign(a0))
+            bad += (not lo_ok) or (not hi_bad)
+            rows.append((tag, t, lo_ok, hi_bad))
+    ok = bad == 0
+    print('[2b] t* is EXACT over %d cases: 0.999*t* safe and 1.001*t* inverts in every one  %s'
+          % (len(rows), 'OK' if ok else 'FAIL'))
+    if not ok:
+        for tag, t, lo, hi in rows:
+            if (not lo) or (not hi):
+                print('     %-9s t*=%.4f  0.999 safe=%s  1.001 inverts=%s' % (tag, t, lo, hi))
+    return 0 if ok else 1
+
+
+def test_reaches_classical_eta():
+    """[2c] The reachable amplitude covers the classical eta range, eta < 0.5.
+
+    The familiar bound is a COLLISION bound on the regular lattice: neighbours a unit apart, each
+    moving up to eta, touch at eta = 0.5. Area-positivity subsumes collision (two bonded nodes
+    cannot meet without first flattening the triangles on that edge), so the question is simply
+    whether `frac -> 1` reaches that far in eta units. The superseded `h_v/3` bound did NOT: it
+    stopped at 0.289 on an equilateral triangle."""
+    rows = []
+    for tag, geo in _meshes():
+        best = 0.0
+        for seed in range(6):
+            _, meta = F.displace_safe(geo, np.random.default_rng(seed), frac=0.99,
+                                      structure='white')
+            best = max(best, meta['geom_eta_equiv'])
+        rows.append((tag, best))
+    reg = dict(rows)['regular']
+    ok = reg > 0.45
+    print('[2c] eta-equivalent at frac=0.99: %s  (regular must exceed 0.45; the old h/3 bound '
+          'capped at 0.289)  %s'
+          % (', '.join('%s %.3f' % r for r in rows), 'OK' if ok else 'FAIL'))
     return 0 if ok else 1
 
 
@@ -118,13 +170,13 @@ def test_it_actually_moves():
     tag, geo = _meshes()[1]
     lbar = float(F.bond_lengths(geo).mean())
     rows = []
-    for frac in (0.25, 1.0):
+    for frac in (0.25, 0.99):
         pts, meta = F.displace_safe(geo, np.random.default_rng(0), frac=frac, structure='white')
         d = np.linalg.norm(pts - np.asarray(geo['pts'], float), axis=1)
         rows.append((frac, float(d.mean() / lbar), float(d.max() / lbar)))
     ok = rows[0][1] > 0.01 and rows[1][1] > rows[0][1]
     print('[3] displacement is real and scales: frac 0.25 -> mean %.3f lbar (max %.3f); '
-          'frac 1.0 -> mean %.3f lbar (max %.3f)  %s'
+          'frac 0.99 -> mean %.3f lbar (max %.3f)  %s'
           % (rows[0][1], rows[0][2], rows[1][1], rows[1][2], 'OK' if ok else 'FAIL'))
     return 0 if ok else 1
 
@@ -146,7 +198,7 @@ def test_beats_global_amp():
             pts_old = np.asarray(geo['pts'], float) + amp * lbar * np.stack(
                 [np.cos(a), np.sin(a)], 1)                    # `displace`'s rule, without the wrap
             n_old += int(np.any(np.sign(_signed_areas(geo, pts_old)) != np.sign(a0)))
-            pts_new, _ = F.displace_safe(geo, np.random.default_rng(seed), frac=1.0,
+            pts_new, _ = F.displace_safe(geo, np.random.default_rng(seed), frac=0.99,
                                          structure='white')
             n_new += int(np.any(np.sign(_signed_areas(geo, pts_new)) != np.sign(a0)))
     ok = n_old > 0 and n_new == 0
@@ -158,7 +210,7 @@ def test_beats_global_amp():
 def test_no_wrap():
     """[5] `displace_safe` must not wrap: a node near the seam must stay near the seam."""
     tag, geo = _meshes()[0]
-    pts, _ = F.displace_safe(geo, np.random.default_rng(0), frac=1.0, structure='white')
+    pts, _ = F.displace_safe(geo, np.random.default_rng(0), frac=0.99, structure='white')
     Lx, Ly = F.box_of(geo)
     moved = np.linalg.norm(pts - np.asarray(geo['pts'], float), axis=1)
     ok = moved.max() < 0.25 * min(Lx, Ly)     # a wrap would show as a ~box-sized jump
@@ -170,7 +222,8 @@ def test_no_wrap():
 def main():
     bad = 0
     print('displace_safe tests')
-    for fn in (test_altitude, test_no_inversion, test_it_actually_moves,
+    for fn in (test_altitude, test_no_inversion, test_scale_is_exact_not_conservative,
+               test_reaches_classical_eta, test_it_actually_moves,
                test_beats_global_amp, test_no_wrap):
         bad += fn()
     print('\n%s' % ('ALL PASSED' if bad == 0 else '%d TEST(S) FAILED' % bad))

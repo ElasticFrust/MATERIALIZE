@@ -255,33 +255,92 @@ def node_min_altitude(geo):
     return out
 
 
+def first_inversion_scale(geo, d):
+    """The EXACT scale `t*` at which displacing by `t*d` first flattens a triangle. Closed form.
+
+    Along a fixed direction field `d`, each triangle's edge vectors are AFFINE in `t`, so twice its
+    signed area is exactly QUADRATIC:
+
+        2A_s(t) = cross(e1 + t*de1, e2 + t*de2) = c0 + c1*t + c2*t^2
+
+    with `de_j` the difference of the two endpoint displacements. `t*` is the smallest positive root
+    over all triangles — the true distance to the first inversion, orientation and all. No bound, no
+    conservatism: a per-node altitude bound has to assume the worst relative orientation, which on an
+    equilateral triangle costs a factor ~1.7 against the real limit.
+
+    Vertex COLLISION needs no separate treatment: in a triangulation, two bonded nodes cannot meet
+    without first flattening every triangle on that edge, so area-positivity already covers it.
+
+    Periodicity is handled by construction — `de_j` is a difference of plain displacement vectors, so
+    the constant image shift inside each edge vector cancels and nothing has to be wrapped."""
+    ei, sg = MB.edge_vec_orientation(geo['tri_bond'], geo['simplices'],
+                                     geo['bond_u'], geo['bond_v'])
+    sg = np.where(sg == 0.0, 1.0, sg)
+    ev = np.asarray(geo['bond_R'], float)[ei] * sg[..., None]       # (n_tri,3,2): (0,1),(0,2),(1,2)
+    sm = np.asarray(geo['simplices'], np.int64)
+    d = np.asarray(d, float)
+    de1 = d[sm[:, 1]] - d[sm[:, 0]]                                  # change of edge (0,1)
+    de2 = d[sm[:, 2]] - d[sm[:, 0]]                                  # change of edge (0,2)
+    cr = lambda a, b: a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]          # noqa: E731
+    c0, c2 = cr(ev[:, 0], ev[:, 1]), cr(de1, de2)
+    c1 = cr(ev[:, 0], de2) + cr(de1, ev[:, 1])
+    s = np.sign(c0)                                                  # keep each triangle's own sign
+    a, b, c = s * c2, s * c1, s * c0                                 # want a t^2 + b t + c > 0
+    # `c > 0` at t = 0 by construction (each triangle starts un-inverted), so a triangle inverts at
+    # the smallest positive t where the parabola CROSSES zero. It crosses only if the discriminant
+    # is positive -- with disc < 0 and the leading sign positive the triangle can never invert at
+    # any scale. Clamping disc to 0 and taking the extremum as a root, which an earlier version did,
+    # invents a crossing that does not exist and makes t* too SMALL: the gate caught it as
+    # `1.001*t*` failing to invert anything.
+    t = np.inf
+    lin = np.abs(a) < 1e-300
+    with np.errstate(invalid='ignore', divide='ignore'):
+        tl = np.where(lin & (b < 0), -c / b, np.inf)
+        disc = b * b - 4 * a * c
+        rt = np.sqrt(np.where(disc > 0, disc, 0.0))
+        real = (~lin) & (disc > 0)
+        r1 = np.where(real, (-b - rt) / (2 * a), np.inf)
+        r2 = np.where(real, (-b + rt) / (2 * a), np.inf)
+    for r in (tl, r1, r2):
+        r = np.where(np.isfinite(r) & (r > 0), r, np.inf)
+        t = min(t, float(r.min()) if len(r) else np.inf)
+    return t
+
+
 def displace_safe(geo, rng, frac=0.5, structure='correlated', **kw):
-    """Perturb node positions so that NO TRIANGLE CAN INVERT, by construction. Returns `(pts, meta)`.
+    """Perturb node positions so that NO TRIANGLE CAN INVERT. Returns `(pts, meta)`.
 
-    `frac` is a dimensionless fraction of each node's OWN safety margin, not a length: node `v` moves
-    at most `frac * h_v / 3`, where `h_v` is the smallest altitude over its incident triangles.
+    `frac` is the fraction of the distance to the FIRST INVERSION, computed exactly by
+    `first_inversion_scale` for this particular direction field. So `frac` is a dimensionless
+    "how far toward breaking the mesh", `frac -> 1` approaches the true geometric limit, and
+    `frac < 1` cannot invert anything. That is the user's "direction normalized fraction", made
+    exact rather than bounded.
 
-    WHY THAT BOUND. For a vertex to cross its opposite edge it must change its signed distance to
-    that edge by `h_v`. Its own motion contributes at most `d`, and the opposite edge can itself
-    translate by at most `d` when its two endpoints move — so `2d < h_v` already suffices, and the
-    `/3` is deliberate slack. Hence any `frac <= 1` cannot invert a triangle, and the amplitude is a
-    GUARANTEE rather than something to filter on afterwards.
+    An earlier version capped each node at `h_v / 3` (a third of its smallest incident altitude).
+    That is a correct SUFFICIENT bound — vertex motion `d`, opposite-edge translation `d`, edge
+    rotation `d` — but it must assume the worst relative orientation, and on an equilateral triangle
+    it stops at 0.289 where vertices do not actually collide until 0.5. Solving the quadratic
+    removes that factor ~1.7 and, more importantly, adapts to whatever the direction field happens
+    to be.
 
-    That distinction is the point. §3.1f's prescription was "perturb, then accept/reject on shape
-    quality, and report the acceptance rate" — which works, but yields a silently BIASED subset
-    whenever the rejection rate is not reported, the same trap as an eta-sweep that does not say how
-    many seeds survived. A per-node bound removes the rejection step entirely: nothing is thrown
-    away, so nothing can be biased by throwing it away.
+    WHY A GUARANTEE RATHER THAN A FILTER. §3.1f prescribed "perturb, then accept/reject on shape
+    quality, and report the acceptance rate". That works, but leaves a silently BIASED subset the
+    moment the rate goes unreported — the same trap as an eta-sweep that does not say how many seeds
+    survived. Scaling to a guaranteed-safe amplitude removes the rejection step, so nothing is
+    discarded and nothing can be biased by discarding it.
 
-    It also replaces the two defects of `displace` for FROZEN-CONNECTIVITY meshes:
-      * that function scales by `amp * mean(bond_length)`, a GLOBAL mean — so a node in a locally
-        fine region is displaced by something comparable to its own neighbourhood and collapses it;
+    It also fixes the two defects `displace` has on FROZEN-CONNECTIVITY meshes:
+      * it scales by `amp * mean(bond_length)`, a GLOBAL mean, so a node in a locally fine region is
+        displaced by something comparable to its own neighbourhood and collapses it;
       * it ends with `np.mod(pts + d, box)`, and wrapping is WRONG here: triangles carry integer
-        image shifts, so a wrapped node reconstructs its triangle a box away (`seeds.py` records
-        13 of 72 triangles inverted, signed area −15.2, at eta = 0.05). This does not wrap.
+        image shifts, so a wrapped node reconstructs its triangle a box away (`seeds.py`: 13 of 72
+        triangles inverted, signed area −15.2, at eta = 0.05). This does not wrap.
 
-    Callers should STILL assert non-inversion (`mesh_build.check_mesh_preconditions`, or the signed
-    area) — the bound is a first-order argument and a cheap check costs nothing."""
+    `meta['geom_eta_equiv']` reports the largest node displacement in units of the mean bond length,
+    so a sweep can be quoted on the familiar eta scale (eta < 0.5 is the classical bound, and it is
+    a COLLISION bound — which area-positivity subsumes)."""
+    if not 0.0 <= frac < 1.0:
+        raise ValueError('frac must be in [0, 1): it is a fraction of the distance to inversion')
     pts = np.asarray(geo['pts'], float).copy()
     Lx, Ly = box_of(geo)
     if structure == 'correlated':
@@ -293,10 +352,15 @@ def displace_safe(geo, rng, frac=0.5, structure='correlated', **kw):
         d = np.stack([np.cos(a), np.sin(a)], 1)
     else:
         raise ValueError(f'unknown structure {structure!r}; expected correlated / white')
-    nrm = np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-300)
-    cap = (frac * node_min_altitude(geo) / 3.0)[:, None]   # per node, its OWN margin
-    return pts + d / nrm * np.minimum(nrm, cap), dict(
-        geom_structure=structure, geom_frac=float(frac), geom_bound='min_altitude/3')
+    d = d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-300)   # unit per node
+    t_star = first_inversion_scale(geo, d)
+    step = frac * t_star
+    out = pts + step * d
+    lbar = float(bond_lengths(geo).mean())
+    return out, dict(geom_structure=structure, geom_frac=float(frac),
+                     geom_bound='exact_first_inversion',
+                     geom_t_star=float(t_star),
+                     geom_eta_equiv=float(step / lbar))
 
 
 def displace(geo, rng, amp=0.1, structure='correlated', **kw):
