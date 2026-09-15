@@ -27,19 +27,60 @@ torch.set_default_dtype(torch.float64)
 RESULTS = os.path.join(REPO, 'Phase 5', 'results', 'm2_s1')
 
 
-def prepare(g):
+def bond_vectors(g, pts):
+    """`bond_R` rebuilt from node positions, so `dC/dpts` has a path (A0.1, 2026-09-15).
+
+    `shift = bond_R - (pts[v] - pts[u])` is the bond's PERIODIC IMAGE OFFSET: "u connects to the
+    image of v displaced by (nx, ny) boxes".  It is part of the frozen connectivity, not of the
+    coordinates, so it is a constant here and is NOT re-derived by minimum image -- re-deriving it
+    is what lets an offset flip by one and reconstructs a triangle a box away (`seeds.py` records
+    that failure: `fields.displace`'s trailing `np.mod` inverted 13 of 72 triangles at eta = 0.05).
+
+    Verified on 12 dataset networks: `shift / (Lx, Ly)` is an integer to <= 2.2e-16, image indices
+    only in {-1, 0, +1}.  Asserted below, because a `pts` that is not the mesh's own would show up
+    here as a non-integer offset rather than as a quietly wrong gradient."""
+    bu = np.asarray(g['bond_u'], np.int64); bv = np.asarray(g['bond_v'], np.int64)
+    p0 = np.asarray(g['pts'], float)
+    shift = np.asarray(g['bond_R'], float) - (p0[bv] - p0[bu])
+    box = np.array([float(g['Lx']), float(g['Ly'])])
+    off = shift / box
+    if np.abs(off - np.round(off)).max() > 1e-9:
+        raise ValueError('bond_R - (pts[v] - pts[u]) is not an integer number of boxes: '
+                         'these positions do not belong to this bond list')
+    return pts[bv] - pts[bu] + torch.as_tensor(shift, dtype=pts.dtype)
+
+
+def prepare(g, pts=None, k=None):
     """Everything v3 consumes, from (edge vectors, k, l0) ALONE.
 
     No lengths, angles, degrees or gap statistics: those are derived and the network forms them if it
     wants them.  Lengths are normalised by `lbar` and `k` by its mean, which is what makes the
-    prediction scale-invariant (see `train_v2.prepare` for why an unnormalised Q is unlearnable)."""
-    bR = np.asarray(g['bond_R'], float)
+    prediction scale-invariant (see `train_v2.prepare` for why an unnormalised Q is unlearnable).
+
+    DIFFERENTIABLE, opt-in and per channel (A0.1; D6 wants `k` and geometry as INDEPENDENT design
+    modes).  Pass `pts` and/or `k` as torch tensors with `requires_grad` to get `dC/dpts`, `dC/dk`
+    or both; omit them and the stored arrays are used, which is the behaviour every existing caller
+    already has.  Everything downstream of here was always torch -- the break was that this function
+    built `Q`, the star weights and the areas in NumPy and handed over leaves with no history, so
+    the model was differentiable only in its own weights despite `model_v3.py:36` claiming the chain
+    rule flows.
+
+    `areas` are RECOMPUTED rather than read from `g`: the stored array is a constant and would
+    truncate the position gradient through `area_w` (the `M_S` channel) and `phys`."""
     tb = g['tri_bond'].astype(np.int64)
-    lbar = max(float(np.hypot(bR[:, 0], bR[:, 1]).mean()), 1e-12)
+    if pts is None:
+        bR = torch.as_tensor(np.asarray(g['bond_R'], float))
+    else:
+        bR = bond_vectors(g, pts if torch.is_tensor(pts) else torch.as_tensor(np.asarray(pts, float)))
+    k = torch.as_tensor(np.asarray(g['k'], float)) if k is None else k
+    # connectivity only -- no coordinates -- so it is shared by the star weights and the areas
+    idx = M3.corner_index(g['tri_verts'], tb, g['bond_u'], g['bond_v'])
+
+    ell_abs = torch.linalg.norm(bR, dim=1)
+    lbar = torch.clamp_min(ell_abs.mean(), 1e-12)
     Q = M2.edge_carriers(bR[tb] / lbar)                       # (n_tri, 3, 3) carriers as columns
-    ell = np.hypot(bR[:, 0], bR[:, 1]) / lbar
-    k = np.asarray(g['k'], float)
-    kk = k / max(k.mean(), 1e-30)
+    ell = ell_abs / lbar
+    kk = k / torch.clamp_min(k.mean(), 1e-30)
     # l0 == l in all current data (forward(rest_lengths=None) -> zero prestress). Passed explicitly
     # anyway: it is a real input of A(s), and the residual-stress programme makes it independent.
     l0 = ell
@@ -48,19 +89,20 @@ def prepare(g):
     # identical to the solver's operator by `test_m2_constraints.py`. Lengths are normalised by
     # `lbar` here too, so the weights are computed on the SAME geometry the carriers use.
     st_t, st_v, st_w, n_vert = M3.vertex_stars(g['tri_verts'], tb, g['bond_u'], g['bond_v'],
-                                               bR / lbar)
+                                               bR / lbar, idx=idx)
     bq = M2.edge_carriers((bR / lbar)[:, None, :])[:, :, 0]   # (n_bond, 3) per-bond carrier
+    # areas from the edge vectors, NOT from g['areas'] -- see the docstring
+    areas = M3.triangle_areas(g['tri_verts'], tb, g['bond_u'], g['bond_v'], bR, idx=idx)
 
     t = dict(Q=Q, tri_src=src, tri_dst=dst,
-             tri_scalars=torch.as_tensor(np.concatenate([kk[tb], l0[tb], np.log(kk[tb] + 1e-12)], 1)),
+             tri_scalars=torch.cat([kk[tb], l0[tb], torch.log(kk[tb] + 1e-12)], 1),
              bond_q=bq[bnd],
-             bond_feat=torch.as_tensor(np.stack([kk[bnd], l0[bnd]], 1)),
+             bond_feat=torch.stack([kk[bnd], l0[bnd]], 1),
              star_tri=torch.as_tensor(st_t), star_vert=torch.as_tensor(st_v),
-             star_w=torch.as_tensor(st_w), n_vert=int(n_vert),
+             star_w=st_w, n_vert=int(n_vert),
              # M_S weights: areas normalised by their own sum, so the channel is scale-free and
              # only the RELATIVE area distribution enters -- which is all the constraint uses.
-             area_w=torch.as_tensor(np.asarray(g['areas'], float)
-                                    / max(float(np.sum(g['areas'])), 1e-30)),
+             area_w=areas / torch.clamp_min(areas.sum(), 1e-30),
              # A SINGLE sample is a batch of one, and it must say so. `forward` enables the M_S
              # channel on `'tri_batch' in g`; without these two keys the channel silently switched
              # OFF for one-at-a-time evaluation and ON for batched training -- so the model would
@@ -69,8 +111,8 @@ def prepare(g):
              tri_batch=torch.zeros(len(tb), dtype=torch.long), n_graphs=1,
              target=torch.as_tensor(g['C6_per']),
              n_tri=len(tb), n_bond=len(bR))
-    t['phys'] = 8.0 * len(tb) / torch.as_tensor(g['areas']).sum() * (lbar ** 2)
-    t['kbar'] = torch.as_tensor(k).mean()
+    t['phys'] = 8.0 * len(tb) / areas.sum() * (lbar ** 2)
+    t['kbar'] = k.mean()
     return t
 
 
@@ -83,7 +125,9 @@ def collate(ts):
         Q.append(t['Q']); tsc.append(t['tri_scalars']); tg.append(t['target'])
         src.append(t['tri_src'] + to); dst.append(t['tri_dst'] + to)
         bq.append(t['bond_q']); bf.append(t['bond_feat'])
-        sc.append(torch.full((t['n_tri'],), float(t['phys'] * t['kbar'])))
+        # NOT `float(...)`: that detaches, and the physical factor carries dC/dpts (through the
+        # areas and lbar) and dC/dk (through kbar). A0.1 -- the cast was silently a stop-gradient.
+        sc.append((t['phys'] * t['kbar']).reshape(1).expand(t['n_tri']))
         # VERTEX indices need their OWN offset -- they index a per-sample vertex array, not the
         # triangle array, so reusing the triangle offset would silently fuse stars across graphs.
         stt.append(t['star_tri'] + to); stv.append(t['star_vert'] + vo); stw.append(t['star_w'])

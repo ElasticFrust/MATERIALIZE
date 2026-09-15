@@ -125,24 +125,35 @@ def angle_gradient_vec(a, b):
 
     Note the object type: the return value is a vec3 in the SAME representation as the edge carriers
     `q_e`, so it transforms the same way under rotation and can be fed straight into a tensor
-    channel."""
-    a = np.asarray(a, float); b = np.asarray(b, float)
+    channel.
+
+    TYPE-PRESERVING, and deliberately so (A0.1, 2026-09-15): numpy in -> numpy out, torch in ->
+    torch out.  The torch path is what carries `dC/dpts` -- the star weights are a FUNCTION OF THE
+    GEOMETRY, so leaving them as numpy constants silently truncates the position gradient.  Keeping
+    ONE function rather than adding a torch twin is the point: the solver's version and this one are
+    the only two implementations of this formula, and `test_m2_constraints.py [1]` pins them
+    together.  The clamps mirror the solver's exactly (`la*lb` and `sin_th`, not `a2`/`b2`), so the
+    numpy path stays bit-identical to what it was."""
+    was_np = not (torch.is_tensor(a) or torch.is_tensor(b))
+    a = torch.as_tensor(a, dtype=torch.float64) if not torch.is_tensor(a) else a
+    b = torch.as_tensor(b, dtype=torch.float64) if not torch.is_tensor(b) else b
     a2 = (a * a).sum(-1); b2 = (b * b).sum(-1); ab = (a * b).sum(-1)
-    la = np.sqrt(a2); lb = np.sqrt(b2)
-    cos_th = np.clip(ab / np.maximum(la * lb, 1e-300), -1.0 + 1e-10, 1.0 - 1e-10)
-    sin_th = np.sqrt(1.0 - cos_th ** 2)
-    d_ab = np.stack([a[..., 0] * b[..., 0],
-                     a[..., 0] * b[..., 1] + a[..., 1] * b[..., 0],
-                     a[..., 1] * b[..., 1]], -1)
-    d_a2 = np.stack([a[..., 0] ** 2, 2 * a[..., 0] * a[..., 1], a[..., 1] ** 2], -1)
-    d_b2 = np.stack([b[..., 0] ** 2, 2 * b[..., 0] * b[..., 1], b[..., 1] ** 2], -1)
-    d_cos = (d_ab / np.maximum(la * lb, 1e-300)[..., None]
+    la = torch.sqrt(a2); lb = torch.sqrt(b2)
+    cos_th = torch.clamp(ab / torch.clamp_min(la * lb, 1e-300), -1.0 + 1e-10, 1.0 - 1e-10)
+    sin_th = torch.sqrt(1.0 - cos_th ** 2)
+    d_ab = torch.stack([a[..., 0] * b[..., 0],
+                        a[..., 0] * b[..., 1] + a[..., 1] * b[..., 0],
+                        a[..., 1] * b[..., 1]], -1)
+    d_a2 = torch.stack([a[..., 0] ** 2, 2 * a[..., 0] * a[..., 1], a[..., 1] ** 2], -1)
+    d_b2 = torch.stack([b[..., 0] ** 2, 2 * b[..., 0] * b[..., 1], b[..., 1] ** 2], -1)
+    d_cos = (d_ab / torch.clamp_min(la * lb, 1e-300)[..., None]
              - cos_th[..., None] * (d_a2 / (2 * a2)[..., None] + d_b2 / (2 * b2)[..., None]))
-    out = -d_cos / np.maximum(sin_th, 1e-300)[..., None]
-    return np.where((sin_th < 1e-10)[..., None], 0.0, out)     # degenerate corner -> zero row
+    out = -d_cos / torch.clamp_min(sin_th, 1e-300)[..., None]
+    out = torch.where((sin_th < 1e-10)[..., None], torch.zeros_like(out), out)   # degenerate -> 0
+    return out.detach().numpy() if was_np else out
 
 
-def vertex_stars(tri_verts, tri_bond, bond_u, bond_v, bond_R):
+def vertex_stars(tri_verts, tri_bond, bond_u, bond_v, bond_R, idx=None):
     """The CURVATURE constraint's coupling, as a bipartite (triangle, vertex) incidence.
 
     `C_curv` has one row per interior vertex: `sum_{s in star(v)} (dtheta_v^s/dg) . dg(s) = 0`, i.e.
@@ -155,35 +166,84 @@ def vertex_stars(tri_verts, tri_bond, bond_u, bond_v, bond_R):
         star_vert (P,)    vertex index      "
         star_w    (P, 3)  the vec3 `dtheta/dg` weight for that corner
     Sign convention copied verbatim from the solver: for edge (a, b), the vector taken at vertex `v`
-    is `-bond_R` if `v == a` and `+bond_R` if `v == b`."""
+    is `-bond_R` if `v == a` and `+bond_R` if `v == b`.
+
+    `bond_R` is TYPE-PRESERVING (A0.1): pass it as torch and `star_w` comes back as torch carrying
+    `d/dpts`.  The INDICES are computed by `corner_index` from connectivity alone -- they do not
+    depend on the coordinates, which is exactly why the split is safe: topology is discrete and
+    correctly non-differentiable, the weights are not."""
+    e_a, s_a, e_b, s_b, tri_idx, vert_compact, n_vert = idx if idx is not None else corner_index(
+        tri_verts, tri_bond, bond_u, bond_v)
+    if len(tri_idx) == 0:
+        z = np.zeros(0, np.int64)
+        return z, z, np.zeros((0, 3)), 0
+    was_np = not torch.is_tensor(bond_R)
+    bR = torch.as_tensor(np.asarray(bond_R, float)) if was_np else bond_R
+    sa = torch.as_tensor(s_a, dtype=bR.dtype)[:, None]
+    sb = torch.as_tensor(s_b, dtype=bR.dtype)[:, None]
+    w = angle_gradient_vec(sa * bR[e_a], sb * bR[e_b])
+    return tri_idx, vert_compact, (w.detach().numpy() if was_np else w), n_vert
+
+
+def corner_index(tri_verts, tri_bond, bond_u, bond_v):
+    """The (triangle, corner) incidence of the curvature star, as PURE CONNECTIVITY.
+
+    Returns `(e_a, s_a, e_b, s_b, tri_idx, vert_compact, n_vert)`: for each incidence, the two bond
+    indices meeting at that corner and the sign each is taken with (the solver's convention, see
+    `vertex_stars`).  Depends on no coordinate, so it is computed once in numpy and reused for every
+    perturbed geometry -- which is what makes `star_w` and the areas differentiable without
+    recomputing the combinatorics."""
     tri_verts = np.asarray(tri_verts, np.int64)
     tri_bond = np.asarray(tri_bond, np.int64)
     bu = np.asarray(bond_u, np.int64); bv = np.asarray(bond_v, np.int64)
-    bR = np.asarray(bond_R, float)
-    n_tri = len(tri_bond)
 
-    tri_idx, vert_idx, vecs_a, vecs_b = [], [], [], []
-    for s_ in range(n_tri):
+    e_a, s_a, e_b, s_b, tri_idx, vert_idx = [], [], [], [], [], []
+    for s_ in range(len(tri_bond)):
         for v in tri_verts[s_]:
             got = []
             for i in range(3):
-                e = tri_bond[s_, i]
+                e = int(tri_bond[s_, i])
                 if bu[e] == v:
-                    got.append(-bR[e])
+                    got.append((e, -1.0))
                 elif bv[e] == v:
-                    got.append(bR[e])
+                    got.append((e, +1.0))
             if len(got) != 2:            # v is not a corner of two of this triangle's edges
                 continue
             tri_idx.append(s_); vert_idx.append(int(v))
-            vecs_a.append(got[0]); vecs_b.append(got[1])
+            e_a.append(got[0][0]); s_a.append(got[0][1])
+            e_b.append(got[1][0]); s_b.append(got[1][1])
     if not tri_idx:
         z = np.zeros(0, np.int64)
-        return z, z, np.zeros((0, 3)), 0
-    w = angle_gradient_vec(np.array(vecs_a), np.array(vecs_b))
-    vert_idx = np.array(vert_idx, np.int64)
+        return z, np.zeros(0), z, np.zeros(0), z, z, 0
     # compact the vertex ids so they index a dense per-sample vertex array
-    uniq, vert_compact = np.unique(vert_idx, return_inverse=True)
-    return (np.array(tri_idx, np.int64), vert_compact.astype(np.int64), w, len(uniq))
+    uniq, vert_compact = np.unique(np.array(vert_idx, np.int64), return_inverse=True)
+    return (np.array(e_a, np.int64), np.array(s_a, float),
+            np.array(e_b, np.int64), np.array(s_b, float),
+            np.array(tri_idx, np.int64), vert_compact.astype(np.int64), len(uniq))
+
+
+def triangle_areas(tri_verts, tri_bond, bond_u, bond_v, bond_R, idx=None):
+    """Per-triangle area, in torch, from the edge vectors -- so it carries `d/dpts`.
+
+    The stored `areas` are a NumPy constant; using them would silently truncate the position
+    gradient through `area_w` (the `M_S` channel) and `phys` (the physical-units factor).  Computed
+    as `|a x b| / 2` at one corner of each triangle, reusing `corner_index`'s verified sign
+    convention rather than re-deriving an edge orientation here.  Gated against the stored areas at
+    1e-13 by `test_m2_grad_port.py`, which is what catches a wrong orientation."""
+    e_a, s_a, e_b, s_b, tri_idx, _, _ = idx if idx is not None else corner_index(
+        tri_verts, tri_bond, bond_u, bond_v)
+    n_tri = len(np.asarray(tri_bond, np.int64))
+    bR = torch.as_tensor(np.asarray(bond_R, float)) if not torch.is_tensor(bond_R) else bond_R
+    # one incidence per triangle: the first corner encountered
+    first = np.full(n_tri, -1, np.int64)
+    for p in range(len(tri_idx) - 1, -1, -1):        # reverse so the earliest wins
+        first[tri_idx[p]] = p
+    if (first < 0).any():
+        raise ValueError('triangle with no complete corner: mesh connectivity is inconsistent')
+    sa = torch.as_tensor(s_a[first], dtype=bR.dtype)[:, None]
+    sb = torch.as_tensor(s_b[first], dtype=bR.dtype)[:, None]
+    a = sa * bR[e_a[first]]; b = sb * bR[e_b[first]]
+    return 0.5 * torch.abs(a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0])
 
 
 class TensorMP(nn.Module):
