@@ -24,6 +24,35 @@ including "nothing".** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
 
 ---
 
+## ⏸ WHERE THINGS STAND — 2026-09-15: STOPPED, PLAN AFRESH
+
+**Nothing is running.** The weight-tied iteration run was stopped by the user at epoch 7, deliberately,
+to plan the next step from the start rather than continue.
+
+**The surrogate sits at per-triangle MAE/σ 0.0925** (`bravais` holdout). Against the independent sim,
+**E passes its must-tier** (3.85 %) and **ν clears the kill line but misses its must-tier** (0.0329
+mean / 0.0109 median against 0.05 and 0.02). The tier verdict is formally undecided — the mean-based
+criterion STAYS by the user's call.
+
+**Every identified lever is now measured and closed** — data volume (+9.7 %), capacity (§9g),
+the schedule on the full arm (§9i), `--bulk_weight`, `--graph_balance`, the near-mechanism tail
+(§9j: error REDISTRIBUTED, not reduced) and `cond(G)` as an architecture pointer (§9k: the hypothesis
+failed its own test). **The model is representation-limited, and the deficit is the per-triangle
+SPATIAL structure** — bulk 0.031 against per-triangle 0.0925.
+
+**Two live options, neither started:**
+1. **Weight-tied iteration, attempt #2.** Built, gated (`test_m2_train_surface.py`, 7/7) and
+   understood; attempt #1 was confounded by an unintended 4.2× capacity cut (fixed, `648eab7`).
+   Proposed but NOT agreed: `ns=96 nt=14 hidden=128 --tie --n_iter 4 --n_iter_hi 10` — 361 660 params
+   (0.91× baseline), 4–10 sweeps vs 5, ~5.2 days. ⚠ lr 1e-3 vs 3e-3 remains a confound: **a win is
+   conclusive, a loss is not.**
+2. **Stop improving the surrogate and USE it** — the differentiable designer through the FROZEN GNN.
+   No retraining, the first actual capability out of M2, and it tests the surrogate adversarially
+   because descent hunts its blind spots. The user's own framing, and a harder test than any
+   random-sample score.
+
+Detail: `Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md` §9f–§9k.
+
 ## ⚙ GATE STATUS — all 5 green as of 2026-09-13 (after TWO were found broken); a 6th added 2026-09-14
 
 Run them with `PYTHONIOENCODING=utf-8` on Windows, or pipe-safe now that the second bug below is fixed.
