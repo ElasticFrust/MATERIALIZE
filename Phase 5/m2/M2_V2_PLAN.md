@@ -343,10 +343,30 @@ non-affine content**. This is an **M1 gate**, not just a sample.
 It also inverts the receptive-field concern: a small cell fits entirely inside the GNN's receptive
 field, so the model *can* be exact there, and the degradation with size becomes a measured curve.
 
-*Caveat — RESOLVED 2026-08-25 by flooring the sweep.* In a minimal cell every bond is a **self-loop**
-in the quotient graph (node to its own periodic image, distinguished only by `bond_R`). **Measured:
-self-loops occur only at N=1 (3 of 3 bonds) and N=2 (2 of 6); there are ZERO for N≥3**, and N=1/N=2
-are also the only sizes that make the solver's angle/curvature code emit `invalid value` warnings.
+*Caveat — the 2026-08-25 "resolution" was WRONG, corrected 2026-09-15.* In a minimal cell a bond can
+be a **self-loop** in the quotient graph (node to its own periodic image, distinguished only by
+`bond_R`). This section used to claim "**self-loops occur only at N=1 and N=2; there are ZERO for
+N≥3**", and `N_BASIS_MIN = 3` was set on that basis. **It is false.** Measured over 120 generated
+cells (`seed_cells`, n_cfg=4, seed 0):
+
+| n_node | 3 | 4 | 5 | 6 | ≥7 |
+|---|---|---|---|---|---|
+| fraction with ≥1 self-loop | **67 %** | 33 % | 25 % | 8 % | **0 %** |
+
+They vanish at **N ≥ 7**, not N ≥ 3. In the built set `dataset_v2_s0.npz` **906 of 41 431 samples
+(2.2 %)** carry one, entirely inside `cells` (14.2 % of that family) and `anchor` (100 %); zero in
+every other family.
+
+**Why it matters, and the DECISION (user, 2026-09-15): there should be NO self-loops at all.** A
+self-loop has `bond_u == bond_v`, so "from a to b" is undefined and the edge ORIENTATION cannot be
+recovered from a schema that stores no `edge_vecs` — such a mesh cannot be rebuilt into a solver at
+all (measured: label reproduction 6.0e-1 with a self-loop against 9.2e-16 without). The fix is
+**supercell re-representation, not exclusion**: a self-loop in the 1×1 cell becomes an ordinary bond
+between two distinct nodes in the 2×2 supercell of the same crystal, and `C_eff` is invariant across
+supercells to **5e-16** (`results/supercell_invariance/`), so no physics and no coverage is lost.
+Tracked in A1; a generator-side guard goes with it.
+
+N=1/N=2 remain the sizes that make the solver's angle/curvature code emit `invalid value` warnings.
 The generator therefore floors at **`seeds.N_BASIS_MIN = 3`** (user's call), which removes the
 self-loop question, the warnings, and the degenerate all-self-loop graph in one move — a 1-vertex
 cell is a real Bravais crystal physically, but as a *graph* it is all self-loops and no neighbours.

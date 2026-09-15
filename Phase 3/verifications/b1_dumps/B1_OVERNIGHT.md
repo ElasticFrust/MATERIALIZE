@@ -404,6 +404,43 @@ B-1. Correctly not flagged, but it is a real residual source of solver variabili
 
 ---
 
+## 4f. GUARD-REPAIR DATA FROM ROUTINE SUITE RUNS (2026-09-15)
+
+The guard emits a `RuntimeWarning` whenever it repairs, and `CLAUDE.md` §3 says to treat that warning
+as data — it is how the rate gets measured. Two full `test_inverse_design` runs, collected
+incidentally while gating the A0.1/A0.2 work (commits `4fa81d4`, `5625254`, `10659e1`):
+
+| arm | repairs | orthogonality before | after | repaired \|ΔW\| rel: median | max |
+|---|---|---|---|---|---|
+| `OMP_NUM_THREADS=1` | **12** | 1.05e-02 … 1.32e+00 | 2.95e-13 … 2.15e-05 | 4.27 | **69.51** |
+| default threads | **3** | 7.21e-01 … 9.88e-01 | 2.95e-11 … 5.67e-11 | 2.53 | 3.45 |
+
+**Two things worth keeping:**
+
+1. **The severity distribution is WIDER than recorded.** §4e's rate measurement gives repaired
+   `|ΔW|` median 2.5, **max 48**. Here the median matches well (2.53 on the default arm, 4.27 at one
+   thread) but the maximum reaches **69.51**, above the recorded max. So the tail of the severity
+   distribution is longer than the `b1_rate.py` sample showed. The guard handled it — orthogonality
+   went 7.50e-01 → 6.95e-08 on that event — but the magnitude is worth knowing, because it is the
+   size of the error that would have propagated silently pre-fix.
+2. **A thread asymmetry appears in the REPAIR counts, and it is NOT yet a result.** 12 vs 3 of 15
+   is two-sided binomial **p = 0.035**, which would contradict §3's "thread-arm asymmetry is not
+   significant (p = 0.214)". Do not read it that way yet, for three reasons:
+   - **it is ONE pair of runs**, not a campaign;
+   - it measures a **different quantity** — guard *repairs*, which are ~500× more frequent than the
+     observable `C` excursions §3 counted;
+   - **the two arms do not perform the same solves.** Thread count changes the L-BFGS trajectory
+     (that is the settled §2 finding, and `test_local_region` lands in a different basin at one
+     thread), so the arms do different work and a raw count comparison is confounded.
+   The clean version of this test is `b1_rate.py` run per arm on an IDENTICAL solve sequence.
+   **Logged as an observation, not a conclusion.**
+
+*Also visible in the same logs, and consistent with the guard's design: every repair improved
+orthogonality by at least three orders, and the one mild event (1.05e-02 → 2.15e-05) sits near the
+documented healthy floor for designed meshes (~4e-6), i.e. the guard is not firing on noise.*
+
+---
+
 ## 5. Files
 
 | file | role |

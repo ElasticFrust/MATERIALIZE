@@ -151,7 +151,9 @@ python "Phase 3/verifications/b1_overnight.py" 10          # 10-hour budget, arm
 python "Phase 3/verifications/b1_overnight.py" 10 --arms 1,0
 ```
 
-Each iteration is a fresh subprocess running the full suite (~12 min), alternating a **1-thread** arm
+Each iteration is a fresh subprocess running the full suite (**~29-35 min**, measured: the
+`overnight_*.csv` rows record 1717-2119 s; an earlier "~12 min" here was wrong and cost a
+30-minute timeout that looked like a regression, 2026-09-15), alternating a **1-thread** arm
 and a **default-threads** arm, so the thread question is answered alongside. It appends one CSV row
 and **flushes + fsyncs after every run** — a suspend at hour six must not cost the night (one g1_2
 design already recorded 18266 s of wall clock from exactly that). Re-running APPENDS, so the CSV is
