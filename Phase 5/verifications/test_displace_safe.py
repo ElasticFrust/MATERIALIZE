@@ -208,6 +208,38 @@ def test_local_scale_is_size_independent():
     return 0 if ok else 1
 
 
+def test_every_vertex_uses_its_own_margin_equally():
+    """[2e] With the locally-shaped field every node uses the SAME fraction of its OWN margin.
+
+    This is the property the global scalar was suspected of breaking: does one scalar throttle the
+    nodes that could have moved further? Measured, no -- the per-node utilisation `move_v / h_v` has
+    spread exactly 1.00 with `local_scale=True`, against 1.78 (eta=0.2) and 4.48 (eta=0.35) with the
+    unit field, where some nodes use 19 % of their budget and others 74 %.
+
+    So each vertex IS limited by its own tightest incident triangle; the single global scalar only
+    picks the common fraction, and picks it exactly at the first inversion. A scheme with no global
+    coupling would have to budget each vertex blind to its neighbours, and since a triangle flips
+    from all three moving together that forces a division by 3 -- the conservatism the exact solve
+    exists to remove. Identity by construction (move_v/h_v = t/median(h)); gated so a change to the
+    normalisation cannot quietly break it."""
+    rows, bad = [], 0
+    for eta, tag in ((0.2, 'eta0.2'), (0.35, 'eta0.35')):
+        g = MB.build_geometry(12, eta, seed=1); MB.set_VD(g, 0); _add_box(g)
+        h = F.node_min_altitude(g); p0 = np.asarray(g['pts'], float)
+        sp = {}
+        for ls in (False, True):
+            pts, _ = F.displace_safe(g, np.random.default_rng(0), frac=0.99, structure='white',
+                                     local_scale=ls)
+            u = np.linalg.norm(pts - p0, axis=1) / h
+            sp[ls] = float(u.max() / u.min())
+        rows.append((tag, sp[False], sp[True]))
+        bad += not (sp[True] < 1.001 and sp[False] > 1.5)
+    ok = bad == 0
+    print('[2e] per-node use of its OWN margin, spread max/min: %s  (local must be 1.00)  %s'
+          % ('; '.join('%s unit %.2f -> local %.2f' % r for r in rows), 'OK' if ok else 'FAIL'))
+    return 0 if ok else 1
+
+
 def test_it_actually_moves():
     """[3] The bound must protect by BOUNDING, not by doing nothing."""
     tag, geo = _meshes()[1]
@@ -267,6 +299,7 @@ def main():
     print('displace_safe tests')
     for fn in (test_altitude, test_no_inversion, test_scale_is_exact_not_conservative,
                test_reaches_classical_eta, test_local_scale_is_size_independent,
+               test_every_vertex_uses_its_own_margin_equally,
                test_it_actually_moves,
                test_beats_global_amp, test_no_wrap):
         bad += fn()
