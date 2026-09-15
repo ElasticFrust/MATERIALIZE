@@ -444,19 +444,94 @@ def _init_raw(prob, mode, seed):
     return raw
 
 
+def _trace_state(trace, raw, mode, reg, restart, step, seed, loss):
+    """Record the CHEAP half of a traced row, from inside the closure: no solver call.
+
+    Deliberately touches nothing but `raw` and its gradient. An earlier version called
+    `prob.forward` here to capture the response, which inserted an extra solver call INTO the
+    optimisation's call sequence -- and the solver is measurably history-sensitive (`max|dk|` 1.7e-08
+    between traced and untraced runs, and a first-call effect of 1.3e-03 within a process). The
+    response is therefore filled afterwards by `_trace_fill_response`, which leaves `trace=[]`
+    bit-identical to `trace=None`."""
+    row = dict(restart=int(restart), step=int(step), loss=float(loss),
+               seed=int(seed), mode=str(mode), reg=float(reg),
+               threads=int(torch.get_num_threads()))
+    for name, t in raw.items():
+        row['raw_' + name] = t.detach().numpy().copy()
+        row['grad_' + name] = (np.zeros_like(row['raw_' + name]) if t.grad is None
+                               else t.grad.detach().numpy().copy())
+    trace.append(row)
+
+
+def _trace_fill_response(trace, prob, mode, first):
+    """Fill in each traced row's RESPONSE, after the optimisation has finished.
+
+    One solver forward per row, recomputed from that row's stored `raw` -- so the stored (k, C) pair
+    is exactly reproducible from `k`, which is what a training label must be. `C6_per` is stored
+    because the policy's target is a per-triangle field: `M2_LOCALITY.md` measured that label as
+    worth about 20x the effective signal of the bulk mean, and the bulk is the unweighted mean of it
+    anyway (`CLAUDE.md` section 3)."""
+    phys = 8.0 * prob.n_tri / float(np.asarray(prob.areas).sum())
+    for row in trace[first:]:
+        with torch.no_grad():
+            k_bond = _softplus(torch.as_tensor(row['raw_k'])) if 'raw_k' in row else None
+            l0_bond = torch.as_tensor(row['raw_l0']) if 'raw_l0' in row else None
+            if k_bond is None:
+                k_bond = prob.bond_k if hasattr(prob, 'bond_k') else torch.ones(prob.n_bond)
+            out = prob.forward(k_bond, l0_bond, physical_units=True)
+            per = out['per_triangle']
+            row['k'] = k_bond.detach().numpy().copy()
+            if l0_bond is not None:
+                row['l0'] = l0_bond.detach().numpy().copy()
+            row['C6'] = np.asarray(prob.region_tensor(per, None), float)
+            row['C6_per'] = np.asarray(per, float) * phys      # PHYSICAL, as the builder stores
+            row['w_max'] = float(np.abs(np.asarray(out['W'], float)).max())
+            row['k_min'] = float(k_bond.min())                 # dead-k detector, see the gate
+
+
 def optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80,
-             n_restarts=1, seed=0, reg=0.0, verbose=True):
+             n_restarts=1, seed=0, reg=0.0, verbose=True, trace=None):
     """Design k (and/or l0) to meet the objectives. `reg` (>0) adds a mean((k−mean k)²) = k-variance
     penalty that keeps k near a constant level (uniform; the level floats freely, e.g. for an E
     target) — discourages the optimiser from exploiting floppy/unstable
     configurations that satisfy a scalar target but collapse in simulation. Returns the best
-    result over restarts: dict(k, l0, loss, history, raw)."""
+    result over restarts: dict(k, l0, loss, history, raw).
+
+    `trace` (A0.4, 2026-09-15) — pass a LIST to record the optimisation TRAJECTORY, one row per
+    ACCEPTED ITERATE. This is the demonstration data the M2 edit-policy trains on
+    (`(G, C_i, C_target) -> k_{i+1} - k_i`); until now only the endpoint was kept, so every design
+    run discarded it and recovering it later costs a full re-run.
+
+    **THE OPTIMISER IS NOT RESTRUCTURED.** Rows are written from inside the existing closure, so
+    `trace=None` and `trace=[]` run the IDENTICAL optimisation — bit-identical, asserted by
+    `test_inverse_design_trace.py [2]`.
+
+    An earlier attempt drove L-BFGS one iteration at a time (`max_iter=1` in a loop) so that a row
+    would be one ACCEPTED ITERATE rather than one line-search evaluation. **Measured, that silently
+    destroys the curvature memory**: 0 curvature pairs after 25 iterations against 23 for a single
+    call, i.e. it degrades to steepest descent, reaching an optimum 236× worse (1.33e-01 vs
+    5.62e-04) for 61 % more evaluations. Do not re-propose it.
+
+    **So a row is one CLOSURE EVALUATION, and consecutive rows can be line-search siblings at the
+    same iterate rather than successive steps.** That is fine for the intended consumer precisely
+    because the protection against near-duplicate leakage is the **split by `traj_id`**, not the row
+    granularity — every row of one run goes to the same side. A consumer wanting only iterates can
+    subsample; the information to do so (`raw`) is in the row.
+
+    Each row carries `raw` and `grad_raw` rather than `dL/dk` — lossless, since
+    `dL/dk = grad_raw / sigmoid(BETA*raw)`, and it lets a consumer derive either. Provenance that is
+    LOCALLY knowable is included (`seed`, `mode`, `reg`, `threads`); the caller adds the commit.
+
+    **Cost:** tracing roughly DOUBLES the solver work, because `_trace_row` re-runs `prob.forward`
+    to capture the response rather than threading it out of `_loss` (which would change a
+    verified-truth signature for a data-generation convenience)."""
     assert mode in ('k', 'l0', 'both')
     best = None
     for r in range(n_restarts):
         raw = _init_raw(prob, mode, seed + r)
         params = list(raw.values())
         history = []
+        first_row = 0 if trace is None else len(trace)
         if optimizer == 'lbfgs':
             opt = torch.optim.LBFGS(params, lr=1.0, max_iter=n_iter,
                                     line_search_fn='strong_wolfe', tolerance_grad=1e-12)
@@ -465,7 +540,10 @@ def optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80,
                 opt.zero_grad()
                 k_bond, l0_bond = _params_to_kl(raw, prob, mode)
                 l = _loss(prob, objectives, k_bond, l0_bond, reg)
-                l.backward(); history.append(l.item()); return l
+                l.backward(); history.append(l.item())
+                if trace is not None:
+                    _trace_state(trace, raw, mode, reg, r, len(history) - 1, seed, l.item())
+                return l
             opt.step(closure)
         else:                                                            # adam
             opt = torch.optim.Adam(params, lr=0.05)
@@ -473,7 +551,12 @@ def optimize(prob, objectives, mode='k', optimizer='lbfgs', n_iter=80,
                 opt.zero_grad()
                 k_bond, l0_bond = _params_to_kl(raw, prob, mode)
                 l = _loss(prob, objectives, k_bond, l0_bond, reg)
-                l.backward(); opt.step(); history.append(l.item())
+                l.backward()
+                if trace is not None:
+                    _trace_state(trace, raw, mode, reg, r, len(history), seed, l.item())
+                opt.step(); history.append(l.item())
+        if trace is not None:                    # responses AFTER the optimisation, never during
+            _trace_fill_response(trace, prob, mode, first_row)
         with torch.no_grad():
             k_bond, l0_bond = _params_to_kl(raw, prob, mode)
             final = float(_loss(prob, objectives, k_bond, l0_bond, reg))
