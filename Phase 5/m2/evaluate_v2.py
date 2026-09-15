@@ -60,9 +60,67 @@ def nuE(c6):
     return float(nu), float(E)
 
 
+def oriented_edge_vecs(g):
+    """`edge_vecs` with the TRIANGLE's own orientation -- edges (v0,v1), (v0,v2), (v1,v2).
+
+    NOT `bond_R[tri_bond]`, which is what this used to be.  `bond_R` is oriented by the GLOBAL bond
+    list (`bond_u` -> `bond_v`); the builder's `edge_vecs` is oriented by each triangle's vertex
+    order, and the two disagree in SIGN on about half the rows (measured on a 32-triangle periodic
+    mesh: 48 of 96 rows differ, identical to 8.9e-16 once the sign is removed).
+
+    It went unnoticed because the sign is invisible to almost everything downstream: the edge carrier
+    `q_e = dx dx^T` is EVEN in `dx`, so `A(s)`, the GNN's `Q`, and the sim's `R (x) R` stiffness are
+    all unaffected.  What is NOT sign-even is the CURVATURE constraint `C_curv`, which is the angle
+    between two vectors taken outward from a shared vertex -- flip one and you get its supplement.
+    So a `DesignProblem` rebuilt from a stored sample solved a DIFFERENT constrained problem:
+    measured on 60 smoke samples, a fresh solve missed the stored label by a median 1.5e-1 (max 710)
+    where the GNN misses it by 4.5e-2.  Fixed 2026-09-15 while building the A0.2 gradient reference;
+    `test_m2_grad_port.py` now gates label reproduction so it cannot come back silently.
+
+    The sim path is unchanged by the fix (it is sign-even), which is verified rather than assumed.
+
+    LIMITATION -- SELF-LOOPS ARE NOT RECONSTRUCTABLE.  A self-loop (a node bonded to its own periodic
+    image) has `bond_u == bond_v`, so "from a to b" is undefined and the sign cannot be recovered
+    from the index pair.  `has_self_loops` flags them; measured on 200 smoke samples, meshes with a
+    self-loop reproduce the stored label to a median 6.0e-1 (100 % fail a 1e-9 test) while meshes
+    without reproduce it to 9.2e-16.  It is a SCHEMA limitation -- the dataset keeps no `edge_vecs`
+    -- and the fix is to store them (S2), not to guess here.  Until then, exclude such meshes from
+    anything that rebuilds a solver, and SAY how many were excluded.  It hits only the tiniest cells
+    (2-3 nodes; `cells`, `anchor`)."""
+    ei, sg = edge_vec_map(g)
+    return np.asarray(g['bond_R'], float)[ei] * sg[..., None]
+
+
+def edge_vec_map(g):
+    """The (bond index, sign) of each triangle's three edges -- PURE CONNECTIVITY, no coordinates.
+
+    Split out so a perturbed geometry reuses the same orientation instead of re-deriving it (and
+    re-deriving it wrongly, which is the bug above)."""
+    tb = np.asarray(g['tri_bond'], np.int64)
+    sm = np.asarray(g['tri_verts'], np.int64)
+    bu = np.asarray(g['bond_u'], np.int64); bv = np.asarray(g['bond_v'], np.int64)
+    ei = np.zeros((len(tb), 3), np.int64); sg = np.zeros((len(tb), 3), float)
+    for s in range(len(tb)):
+        for j, (p, q) in enumerate(((0, 1), (0, 2), (1, 2))):
+            a, b = sm[s, p], sm[s, q]
+            for e in tb[s]:
+                if bu[e] == a and bv[e] == b:
+                    ei[s, j], sg[s, j] = e, +1.0; break
+                if bu[e] == b and bv[e] == a:
+                    ei[s, j], sg[s, j] = e, -1.0; break
+            else:
+                raise ValueError('triangle %d has no bond joining its vertices %d,%d' % (s, a, b))
+    return ei, sg
+
+
+def has_self_loops(g):
+    """True if any bond joins a node to its own periodic image -- see `oriented_edge_vecs`."""
+    return bool((np.asarray(g['bond_u'], np.int64) == np.asarray(g['bond_v'], np.int64)).any())
+
+
 def geo_of(g):
     """Rebuild a solver-ready geo dict from a stored sample (the dataset keeps no `edge_vecs`)."""
-    ev = g['bond_R'][g['tri_bond'].astype(np.int64)]
+    ev = oriented_edge_vecs(g)
     return dict(pts=g['pts'], simplices=g['tri_verts'].astype(np.int64),
                 bond_u=g['bond_u'].astype(np.int64), bond_v=g['bond_v'].astype(np.int64),
                 bond_R=g['bond_R'], tri_bond=g['tri_bond'].astype(np.int64),

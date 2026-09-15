@@ -222,8 +222,12 @@ def corner_index(tri_verts, tri_bond, bond_u, bond_v):
             np.array(tri_idx, np.int64), vert_compact.astype(np.int64), len(uniq))
 
 
-def triangle_areas(tri_verts, tri_bond, bond_u, bond_v, bond_R, idx=None):
+def triangle_areas(tri_verts, tri_bond, bond_u, bond_v, bond_R, idx=None, signed=False):
     """Per-triangle area, in torch, from the edge vectors -- so it carries `d/dpts`.
+
+    `signed=True` returns the SIGNED area instead, which is the inversion detector: a node moved far
+    enough flips a triangle inside out, and `abs` hides exactly that.  Any perturbed geometry -- a
+    finite-difference probe, a trust-region step, a node drag -- must be checked with it.
 
     The stored `areas` are a NumPy constant; using them would silently truncate the position
     gradient through `area_w` (the `M_S` channel) and `phys` (the physical-units factor).  Computed
@@ -243,7 +247,8 @@ def triangle_areas(tri_verts, tri_bond, bond_u, bond_v, bond_R, idx=None):
     sa = torch.as_tensor(s_a[first], dtype=bR.dtype)[:, None]
     sb = torch.as_tensor(s_b[first], dtype=bR.dtype)[:, None]
     a = sa * bR[e_a[first]]; b = sb * bR[e_b[first]]
-    return 0.5 * torch.abs(a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0])
+    cross = a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]
+    return 0.5 * (cross if signed else torch.abs(cross))
 
 
 class TensorMP(nn.Module):
