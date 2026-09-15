@@ -152,8 +152,23 @@ def test_tied_iteration():
     torch.manual_seed(0)
     net = M3.ForwardGNNv3(ns=48, nt=10, hidden=64, n_layers=5, tie=True, n_iter=8)
     tied_params = sum(p.numel() for p in net.parameters())
-    untied = sum(p.numel() for p in M3.ForwardGNNv3(ns=48, nt=10, hidden=64, n_layers=5).parameters())
+    untied_net = M3.ForwardGNNv3(ns=48, nt=10, hidden=64, n_layers=5)
+    untied = sum(p.numel() for p in untied_net.parameters())
     assert tied_params < untied, (tied_params, untied)
+
+    # EVERY channel must be tied, not just `layers`. Checking only the parameter COUNT is too weak:
+    # a version of this where two of three replacements had silently failed still had FEWER params
+    # than untied and passed, while carrying 5 `stars` and 5 `globals` blocks of which 4 each were
+    # allocated, saved and NEVER reached by the forward pass -- 65 % of the checkpoint was dead
+    # weight, and the reported model size was wrong by 3x. Count the blocks.
+    import re as _re
+    def _blocks(m):
+        ks = list(m.state_dict())
+        return {p: len({int(x.group(1)) for k in ks for x in [_re.match(p + r'\.(\d+)\.', k)] if x})
+                for p in ('layers', 'stars', 'globals')}
+    tb, ub = _blocks(net), _blocks(untied_net)
+    assert set(tb.values()) == {1}, 'tied model is not tied in every channel: %s' % tb
+    assert set(ub.values()) == {5}, 'untied model lost its distinct blocks: %s' % ub
 
     # THE TRAP: the readout's last layer is zero-init BY DESIGN, so X = 0 and the output is exactly
     # A(s) regardless of s, T and hence of n_iter. Without perturbing it this test passes vacuously.
@@ -174,8 +189,9 @@ def test_tied_iteration():
         raise AssertionError('untied n_iter != n_layers was accepted')
     except ValueError:
         pass
-    print('  [3] tied iteration: %d params vs untied %d; n_iter reaches the output, is changeable '
-          'post-construction, finite at 30; untied mismatch refused  OK' % (tied_params, untied))
+    print('  [3] tied iteration: ALL channels tied (1 block each) %d params vs untied (5 each) %d; '
+          'n_iter reaches the output, is changeable post-construction, finite at 30; untied mismatch '
+          'refused  OK' % (tied_params, untied))
 
 
 def test_analytic_survives_tying():

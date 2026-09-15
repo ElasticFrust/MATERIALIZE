@@ -404,8 +404,8 @@ class ForwardGNNv3(nn.Module):
                                     for _ in range(n_blocks))
         # the CURVATURE channel, one per layer, run alongside the bond channel. Flagged so it can be
         # ablated as a single variable against the bond-only model.
-        self.stars = nn.ModuleList(StarMP(ns, nt, hidden) for _ in range(n_layers))             if use_star else None
-        self.globals = nn.ModuleList(GlobalMS(ns, nt, hidden) for _ in range(n_layers))             if use_global else None
+        self.stars = nn.ModuleList(StarMP(ns, nt, hidden) for _ in range(n_blocks))             if use_star else None
+        self.globals = nn.ModuleList(GlobalMS(ns, nt, hidden) for _ in range(n_blocks))             if use_global else None
         self.readout = nn.Sequential(nn.Linear(ns + nt * nt, hidden), nn.SiLU(),
                                      nn.Linear(hidden, hidden), nn.SiLU(),
                                      nn.Linear(hidden, 9))          # X, a full invariant 3x3
