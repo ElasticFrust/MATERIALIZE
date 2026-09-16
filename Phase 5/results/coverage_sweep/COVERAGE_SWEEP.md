@@ -1,5 +1,19 @@
 # A1/d — what deformation + stiffness contrast actually reach, and the "hole" that wasn't
 
+> ## WARNING - TERMINOLOGY CORRECTED 2026-09-16: SECTIONS 1-5 DO NOT MEASURE VD
+> The user: *"You are mixing VD and alpha (or a) stiffness. VD is when you don't move the vertices,
+> only virtually, and then assign the spring stiffness according to tanh(a(l-l0))."* Correct.
+> **Sections 1-5 below actually deform the geometry and then key `k` off the DEFORMED lengths** --
+> the "real disorder + length-keyed k" cell, not virtual distortion.
+> `Phase 3/verifications/vd_demo/README.md` already draws this distinction and warns about this exact
+> confusion. Read "VD" in sections 1-5 as **"real disorder + length-keyed k"**.
+> **Section 6 is true VD**, and it reaches a different place.
+>
+> **PRIOR ART I MISSED.** `Phase 3/verifications/vd_demo/` (five scripts + README) is a whole study of
+> true VD. I searched `VERIFICATION_CAMPAIGN.md` and `verification_tools/`, found only the dead legacy
+> `recheck_sweep_nu_E_eta.py`, and did not find `vd_demo` -- it is not in the campaign index. The same
+> indexing gap `CLAUDE.md` section 3 exists to prevent, recurring.
+
 **Producer:** `Phase 5/verifications/m2_coverage_sweep.py` (+ the focused probe in §3)
 **Data:** `coverage_sweep_pilot.json`, `coverage_sweep_iso.json` (this directory)
 **Run:** 2026-09-16, float64, `OMP_NUM_THREADS=1`
@@ -100,3 +114,50 @@ alone, and together they reach it easily.
 - The ν values are the **solver's**; none of this run was cross-checked against the independent sim.
   That is the standing tier-(A) check and should be run before these numbers are used as labels.
 - 8 seeds per cell: enough to see a monotone trend, not enough for a tight distribution.
+
+
+---
+
+## 6. TRUE VD - and it does NOT reach isotropic auxetic
+
+Real lattice regular and untouched; a virtual copy displaced by eta; `k = 1 + tanh(alpha(l_virt - 1))`
+put on the real lattice. 6 seeds, forward solver.
+Producer: `Phase 5/verifications/m2_true_vd_anisotropy.py`.
+
+| N | n_tri | eta | alpha | nu median [min, max] | anisotropy median (max) |
+|---|---|---|---|---|---|
+| 20 | 800 | 0.15 | 5 | +0.266 [+0.261, +0.268] | **1.05** (1.08) |
+| 20 | 800 | 0.15 | 15 | +0.046 [+0.012, +0.058] | 1.24 (1.33) |
+| 20 | 800 | 0.15 | 30 | **-0.056** [-0.092, +0.011] | 1.49 (1.85) |
+| 20 | 800 | 0.15 | 60 | -0.038 [-0.299, +0.061] | 2.06 (4.24) |
+| 20 | 800 | 0.45 | 30 | +0.041 [-0.082, +0.275] | 2.64 (3.28) |
+| 10 | 200 | 0.45 | 60 | +0.287 [-0.319, +0.818] | **35.51** (236862) |
+
+**The nu column independently reproduces `vd_demo`:** not auxetic at alpha = 5 (+0.27), crossing zero
+between alpha = 15 and 30. That is the README's "alpha ~ 15-21", from a different script and via the
+forward solver rather than the sim.
+
+**The anisotropy column is new, and it is the answer.** Anisotropy rises monotonically with alpha --
+1.05 -> 1.24 -> 1.49 -> 2.06 at eta = 0.15 -- so **wherever true VD makes nu negative, the material is
+already anisotropic**. The best it reaches is nu = -0.056 at anisotropy 1.49: neither deep enough nor
+isotropic enough for the target cell.
+
+Two secondary observations: nu is **non-monotonic in alpha** (it turns back up by 60), and small cells
+are wildly noisier (N = 10, eta = 0.45, alpha = 60: anisotropy median 35, max 2.4e5) -- the same
+finite-size effect as section 3, much stronger here.
+
+### The two routes separate cleanly
+
+| route | geometry | reaches |
+|---|---|---|
+| **true VD** (section 6) | regular, untouched | nu ~ -0.06 at anisotropy ~1.5 -- **not** the cell |
+| **real disorder + length-keyed k** (section 3) | deformed | **nu = -0.42 at anisotropy 1.19** -- the cell |
+
+Counter-intuitive but consistent: real disorder contributes auxeticity *and* is statistically
+isotropic, so it self-averages toward anisotropy 1 as the cell grows. A disordered `k` field on a
+perfect lattice breaks the lattice's symmetry without contributing geometric auxeticity, so it buys
+anisotropy faster than it buys negative nu.
+
+**Consequence for A1:** the cell is filled by **real disorder crossed with length-keyed stiffness at a
+large cell** -- section 3's recipe -- not by virtual distortion. Section 5's conclusion stands; only
+the label on the mechanism was wrong.
