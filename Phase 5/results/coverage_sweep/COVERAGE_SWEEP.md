@@ -161,3 +161,63 @@ anisotropy faster than it buys negative nu.
 **Consequence for A1:** the cell is filled by **real disorder crossed with length-keyed stiffness at a
 large cell** -- section 3's recipe -- not by virtual distortion. Section 5's conclusion stands; only
 the label on the mechanism was wrong.
+
+
+---
+
+## 7. Anisotropy DOES average out - and it separates two regimes
+
+The user: *"as far as anisotropy, it should average out on disordered lattices (through VD or eta)."*
+Settled by the SCALING: pure fluctuation of a statistically isotropic ensemble must give
+`(anisotropy - 1) ~ 1/sqrt(n_tri)`. eta = 0.35, 10 seeds.
+Producers: `m2_anisotropy_scaling.py`, `m2_vd_k_source.py`.
+
+### alpha = 5 - textbook self-averaging, and nu is size-stable
+
+| n_tri | 72 | 200 | 512 | 1152 |
+|---|---|---|---|---|
+| nu median | -0.372 | -0.362 | -0.344 | **-0.342** |
+| anisotropy - 1 | 0.435 | 0.312 | 0.183 | **0.100** |
+| (anisotropy - 1) x sqrt(n_tri) | 3.69 | 4.41 | 4.14 | 3.41 |
+
+The scaled row is FLAT, i.e. exactly `1/sqrt(N)`. The residual anisotropy is pure finite-size
+fluctuation and goes to zero, while nu barely moves. **The claim holds.**
+
+### The direction test - fluctuation, not a lattice artefact
+
+Rayleigh `R` on the axis of maximum E across seeds (near 1 = aligned, near 0 = uniform):
+**R = 0.08 to 0.50 in every case**, at both contrasts and all four sizes. No preferred direction, so
+the residual is fluctuation rather than a systematic lattice or box bias.
+
+### alpha = 30 - it also falls, but nu is NOT size-stable
+
+`(anisotropy - 1)` falls 2.11 -> 2.23 -> 1.19 -> 0.45, but `x sqrt(n_tri)` gives 18 -> 32 -> 27 -> 15,
+so not the clean fluctuation law. More important, **nu itself drifts hard with size:
+-0.610 -> -0.423 -> -0.401 -> -0.204.** That is the "auxeticity weakens with system size" recorded in
+`vd_demo/README.md`, and it means deep nu at high contrast is substantially a small-cell artefact.
+
+### The three k sources, at fixed geometry
+
+Medians over 6 seeds, N = 12 (nu / anisotropy):
+
+| eta | alpha | uniform | length-keyed on REAL | extra virtual distortion |
+|---|---|---|---|---|
+| 0.00 | 5 | +0.333 / 1.00 | +0.333 / 1.00 | +0.151 / 1.21 |
+| 0.20 | 15 | +0.292 / 1.02 | **-0.304** / 1.55 | -0.082 / 1.56 |
+| **0.35** | **5** | +0.172 / 1.04 | **-0.366 / 1.20** | +0.154 / 1.11 |
+| 0.35 | 30 | +0.172 / 1.04 | -0.353 / 2.64 | -0.021 / 1.96 |
+
+**Correlation between `k` and the geometry is what produces auxeticity.** At eta = 0.35, keying `k`
+to the actual lengths reaches nu = -0.366 at alpha = 5, while an INDEPENDENT virtual distortion
+reaches only -0.021 even at alpha = 30. Auxetic response needs specific bonds soft in specific places
+relative to the geometry; a `k` field that does not know the geometry cannot set that up.
+
+### The recipe for A1
+
+**eta ~ 0.35 at LOW contrast (alpha ~ 5), cell >= ~1000 triangles:** nu ~ -0.34, size-stable,
+anisotropy -> 1 as `1/sqrt(N)`. Chasing deeper nu with high alpha buys numbers that wash out with
+cell size and costs anisotropy on the way.
+
+**Also flagged:** `mesh_build.set_VD` hardcodes `dl = |R| - 1.0`, so it can only express `l0 = 1`. On
+the Bravais cells with phi, psi != 1 the natural spacing is not 1 and it keys off the wrong reference
+-- likely part of why section 1 anisotropy was so high.
