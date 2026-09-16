@@ -26,10 +26,7 @@
 > not: under the definition above it is exactly **VD on an irregular network**.
 >
 > ## PRIOR ART I MISSED
-> `Phase 3/verifications/vd_demo/README.md` already draws this distinction and warns about exactly
-> this confusion.
->
-> **PRIOR ART I MISSED.** `Phase 3/verifications/vd_demo/` (five scripts + README) is a whole study of
+> `Phase 3/verifications/vd_demo/` (five scripts + README) is a whole study of
 > true VD. I searched `VERIFICATION_CAMPAIGN.md` and `verification_tools/`, found only the dead legacy
 > `recheck_sweep_nu_E_eta.py`, and did not find `vd_demo` -- it is not in the campaign index. The same
 > indexing gap `CLAUDE.md` section 3 exists to prevent, recurring.
