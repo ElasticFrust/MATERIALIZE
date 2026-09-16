@@ -54,16 +54,38 @@ import mesh_build as MB                                                   # noqa
 sys.path.insert(0, os.path.join(REPO, 'Phase 5'))
 sys.path.insert(0, os.path.join(REPO, 'Phase 5', 'm2'))
 import seeds as S                                                         # noqa: E402
+import build_dataset as BD                                                # noqa: E402
 import fields as F                                                        # noqa: E402
 sys.path.insert(0, HERE)
 from m2_coverage_sweep import geo_moved                                   # noqa: E402
+import positions as POS                                                   # noqa: E402
+from build_dataset import _commit                                         # noqa: E402
 
 torch.set_default_dtype(torch.float64)
 RESULTS = os.path.join(REPO, 'Phase 5', 'results', 'auxetic_generation')
 
 
-def base_networks(n_random, reps, n_nodes, seed):
-    """Base topologies to deform: Bravais crystals across the planar types, plus random patches."""
+def base_networks(n_random, reps, n_nodes, seed, only=None):
+    """Base topologies to deform: Bravais crystals across the planar types, plus random patches.
+
+    `only` is a substring filter on the base name. It exists because DISORDER SELF-AVERAGES THE
+    FLUCTUATION, NOT THE BASE: a base that is intrinsically anisotropic can never reach the
+    isotropic cell however large the cell or however much disorder is applied. Measured base
+    anisotropy, undeformed and uniform k:
+
+        bravais_p1.0_1.0_a2-a1     1.000   <- the regular triangular lattice
+        random_poisson_disk        1.053
+        random_blue_noise          1.079
+        bravais_p1.2_0.8_a2-a1     2.120
+        bravais_p0.6_1.3_a2-a1     2.648
+        bravais_p0.0_1.2_*         5.000
+        bravais_p0.0_1.0_*         5.615
+        bravais_p0.6_1.3_a1+a2    13.233
+        bravais_p1.0_1.0_a1+a2    33.000   <- the sqrt(3)-diagonal variant, NOT the triangular one
+        bravais_p1.2_0.8_a1+a2    80.797
+
+    So an isotropic-corner run should target the first three and spend its large-cell budget there;
+    the rest are useful as large anisotropic samples but cannot serve that purpose."""
     out = []
     for phi, psi in ((1.0, 1.0), (0.0, 2 / np.sqrt(3)), (0.0, 1.0), (1.2, 0.8), (0.6, 1.3)):
         for diag in S.BRAVAIS_DIAGONALS:
@@ -79,6 +101,11 @@ def base_networks(n_random, reps, n_nodes, seed):
                 out.append(('random_%s_%d' % (proc, i), r['geo']))
             except Exception:                                             # noqa: BLE001
                 pass
+    if only:
+        pats = [x.strip() for x in only.split(',') if x.strip()]
+        out = [(n, g) for n, g in out if any(pat in n for pat in pats)]
+        if not out:
+            raise SystemExit('no base matches --bases %r' % only)
     return out
 
 
@@ -100,7 +127,15 @@ def response(geo, k):
         return None
     return dict(nu=float(nt.mean()), nu_min=float(nt.min()), nu_max=float(nt.max()),
                 aniso=float(Et.max() / max(Et.min(), 1e-300)), E=float(Et.mean()),
-                w_max=wm, C6=c6.tolist())
+                w_max=wm, C6=c6, nu_theta=nt, E_theta=Et,
+                C6_per=np.asarray(out['per_triangle'], float)
+                * (8.0 * prob.n_tri / float(np.asarray(prob.areas).sum())),
+                spd=bool(np.linalg.eigvalsh(np.array([[c6[0], c6[1], c6[2]],
+                                                      [c6[1], c6[3], c6[4]],
+                                                      [c6[2], c6[4], c6[5]]])).min() > 0),
+                min_eig=float(np.linalg.eigvalsh(np.array([[c6[0], c6[1], c6[2]],
+                                                           [c6[1], c6[3], c6[4]],
+                                                           [c6[2], c6[4], c6[5]]])).min()))
 
 
 def alpha_k(lengths, l_ref, alpha):
@@ -133,22 +168,29 @@ def main():
     ap.add_argument('--reps', type=int, default=8)
     ap.add_argument('--n_nodes', type=int, default=120)
     ap.add_argument('--n_random', type=int, default=2)
+    ap.add_argument('--bases', default='',
+                    help='comma-separated substrings; only matching bases are used. For an '
+                         'ISOTROPIC-corner run use p1.0_1.0_a2-a1,random -- every other base is '
+                         'intrinsically anisotropic and cannot reach that cell')
     ap.add_argument('--seeds', type=int, default=3)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--out_dir', default=RESULTS)
     ap.add_argument('--tag', default='')
+    ap.add_argument('--save_npz', default='',
+                    help='also write the samples in the build_dataset schema, so they\n                          drop straight into training')
     a = ap.parse_args()
 
     fracs = [float(x) for x in a.fracs.split(',')]
     alphas = [float(x) for x in a.alphas.split(',')]
     mechs = a.mechanisms.split(',')
     assert max(abs(x) for x in alphas) <= 10.0 + 1e-9, 'alpha is capped at |alpha| <= 10'
-    bases = base_networks(a.n_random, a.reps, a.n_nodes, a.seed)
+    bases = base_networks(a.n_random, a.reps, a.n_nodes, a.seed, only=a.bases)
     print('%d base networks x %d mechanisms x %d fracs x %d alphas x %d seeds'
           % (len(bases), len(mechs), len(fracs), len(alphas), a.seeds))
     print('amplitude: per-vertex local maximum (scale="local"), frac = uniform portion of it')
 
     rows, t0, inverted, failed = [], time.time(), 0, 0
+    save_samples = [] if a.save_npz else None
     for bname, geo0 in bases:
         l0 = bond_len(geo0)                       # each bond's own reference length
         for mech in mechs:
@@ -183,7 +225,34 @@ def main():
                         r.update(base=bname, mech=mech, frac=frac, alpha=al, seed=sd,
                                  n_tri=len(geo['tri_bond']),
                                  eta_equiv=float(meta.get('geom_eta_equiv', 0.0)))
-                        r.pop('C6')
+                        if save_samples is not None:
+                            # SAME graph shape the builder uses, so the packer is reused rather
+                            # than reimplemented and the result drops straight into training.
+                            rec = BD.graph_of(geo, k)
+                            rec.update(C6=r['C6'], C6_per=r['C6_per'], nu=r['nu'], E=r['E'],
+                                       nu_theta=r['nu_theta'], E_theta=r['E_theta'],
+                                       w_max=r['w_max'], spd=r['spd'], min_eig=r['min_eig'],
+                                       anisotropy=r['aniso'],
+                                       min_quality=float(np.min(POS.tri_shape_quality(geo))),
+                                       contrast=float(np.max(k) / max(np.min(k), 1e-300)),
+                                       # PROVENANCE: the mechanism is part of the sample identity.
+                                       # `family` stays a generator label; the mechanism and its two
+                                       # knobs go in their own fields so a holdout can be taken on
+                                       # either axis without parsing strings.
+                                       family='auxgen_%s' % mech, topology_id=bname,
+                                       geom_variant='%s_frac%.2f' % (mech, frac),
+                                       k_pattern='alpha%+.0f' % al,
+                                       structure='white', marginal='vd_tanh',
+                                       disorder_class='both' if mech != 'vd' else 'k',
+                                       label_source='solver', traj_id='%s|%s|f%.2f|a%+.0f|s%d'
+                                       % (bname, mech, frac, al, sd),
+                                       traj_step=0, seed=sd, n_threads=1,
+                                       tiling_method='fan', commit=_commit(),
+                                       k_source=mech, size_bin='gen',
+                                       sim_ok=True, sim_gap=np.nan, sim_status='not_run')
+                            save_samples.append(rec)
+                        for key in ('C6', 'C6_per', 'nu_theta', 'E_theta'):
+                            r.pop(key, None)
                         rows.append(r)
         print('  %-30s %6d samples  (%.0fs)' % (bname, len(rows), time.time() - t0))
 
@@ -208,6 +277,10 @@ def main():
     for b in sorted({r['base'] for r in rows}):
         s = np.array([r['base'] == b for r in rows])
         print('   %-30s %7d %8.1f%% %11.4f' % (b, s.sum(), 100 * (nu[s] < 0).mean(), nu[s].min()))
+
+    if save_samples:
+        BD.save(save_samples, a.save_npz)
+        print('\n-> %d samples in the build_dataset schema: %s' % (len(save_samples), a.save_npz))
 
     os.makedirs(a.out_dir, exist_ok=True)
     dst = os.path.join(a.out_dir, 'auxetic_generation%s.json' % (('_' + a.tag) if a.tag else ''))

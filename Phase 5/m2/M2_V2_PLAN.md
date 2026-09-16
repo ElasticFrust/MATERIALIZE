@@ -312,9 +312,36 @@ Use each family's **own natural parameter** instead:
 matched to 4.4e-06 by `test_hex_closed_form`. It is simultaneously a continuous auxetic sampling
 axis **and** a third-path ground truth — labels checkable without solver or sim. Use it as both.
 
-η constraints where it IS used: **η ≤ 0.42** (0.5 singular; health gate fires at η≥0.44, only 3/10
-seeds survive 0.5) — try/except `UnhealthyGeometryError` and **record the surviving-seed count**, or
-the average is a silently biased subset. η=0 needs one seed.
+η constraints where it IS used: **η ≤ 0.42** — try/except `UnhealthyGeometryError` and **record the
+surviving-seed count**, or the average is a silently biased subset. η=0 needs one seed.
+
+> **CORRECTED 2026-09-16 — the survival figure was attached to the wrong η, and the bound now has a
+> GEOMETRIC reason rather than an empirical one.** This used to read "health gate fires at η≥0.44,
+> only 3/10 seeds survive 0.5". The 3/10 is the **η = 0.45** number; at **η = 0.50 it is 0/10**.
+> Measured directly by counting negative signed areas (`check_mesh_preconditions`' own criterion):
+>
+> | η | 0.40 | 0.44 | 0.45 | 0.48 | 0.50 |
+> |---|---|---|---|---|---|
+> | seeds with ≥1 inverted triangle (of 10, 200 tri) | 0 | 1 | 7 | 10 | 10 |
+> | `check_mesh_preconditions` pass | 10/10 | — | 3/10 | — | **0/10** |
+>
+> **Why 0.42 is the right cap, geometrically.** On a unit-bond equilateral triangle two failures
+> compete: two bonded vertices COLLIDE at t = 1/2, and a vertex CROSSES ITS OPPOSITE EDGE at
+> t = h/2 = **√3/4 = 0.4330**. Inversion happens first, so the collision bound is never operative and
+> **√3/4 is the floor** — both constructed exactly in `test_displace_safe [2h]`, and 600 random
+> fields on 200 triangles bottom out at 1.0002 × it. First inversions duly appear at η ≈ 0.44.
+>
+> **Consequence for labels.** ν only goes negative PAST the floor: the best clean η (0.44) gives
+> ν = +0.021, while the documented "η-disorder reaches ν ≈ −0.11" needs η ≈ 0.48–0.50 where every
+> mesh folds. The band is REAL — the independent sim gives ν = −0.150 at η = 0.50 — but
+> solver-vs-sim degrades from **1e-13 to 1.6e-2** exactly at the folding onset, which is fine for a
+> qualitative claim and **not** fine for labels whose must-tier is 0.02. So: do not generate solver
+> labels above η ≈ 0.44. `dataset_v2_s0` already complies (its η values are 0, 0.05, 0.1, 0.18, 0.30).
+>
+> **Better still, do not use a fixed η at all.** `fields.displace_safe(scale='local')` gives every
+> vertex its own maximum — the exact distance to the first inversion in its own neighbourhood — with
+> one uniform `frac` as the portion taken. It cannot fold a mesh at any `frac < 1`, and the amplitude
+> adapts to the mesh instead of being a number that is safe on one and fatal on another.
 
 **⚠ Any geometry axis blurs the holdout.** A heavily perturbed honeycomb approaches a generic
 disordered network, making leave-one-family-out EASIER than it should be and inflating the headline.
