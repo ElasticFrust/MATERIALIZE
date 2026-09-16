@@ -307,7 +307,89 @@ def first_inversion_scale(geo, d):
     return t
 
 
-def displace_safe(geo, rng, frac=0.5, structure='correlated', local_scale=True, amp=None, **kw):
+def per_triangle_limit(geo, d):
+    """Exact first-inversion scale for EACH triangle on its own -- its three vertices only.
+
+    Same algebra as `first_inversion_scale`, without the final min over triangles. This is the
+    quantity that makes a LOCAL scale possible: every constraint in the mesh involves exactly three
+    mutually adjacent vertices, so nothing about the limit is global."""
+    ei, sg = MB.edge_vec_orientation(geo['tri_bond'], geo['simplices'],
+                                     geo['bond_u'], geo['bond_v'])
+    sg = np.where(sg == 0.0, 1.0, sg)
+    ev = np.asarray(geo['bond_R'], float)[ei] * sg[..., None]
+    sm = np.asarray(geo['simplices'], np.int64)
+    d = np.asarray(d, float)
+    de1 = d[sm[:, 1]] - d[sm[:, 0]]
+    de2 = d[sm[:, 2]] - d[sm[:, 0]]
+    cr = lambda a, b: a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]               # noqa: E731
+    c0, c2 = cr(ev[:, 0], ev[:, 1]), cr(de1, de2)
+    c1 = cr(ev[:, 0], de2) + cr(de1, ev[:, 1])
+    sgn0 = np.sign(c0)
+    a, b, c = sgn0 * c2, sgn0 * c1, sgn0 * c0
+    t = np.full(len(sm), np.inf)
+    lin = np.abs(a) < 1e-300
+    with np.errstate(invalid='ignore', divide='ignore'):
+        tl = np.where(lin & (b < 0), -c / b, np.inf)
+        disc = b * b - 4 * a * c
+        rt = np.sqrt(np.where(disc > 0, disc, 0.0))
+        real = (~lin) & (disc > 0)
+        r1 = np.where(real, (-b - rt) / (2 * a), np.inf)
+        r2 = np.where(real, (-b + rt) / (2 * a), np.inf)
+    for r in (tl, r1, r2):
+        r = np.where(np.isfinite(r) & (r > 0), r, np.inf)
+        t = np.minimum(t, r)
+    return t
+
+
+def signed_tri_areas(geo, pts):
+    """Signed area per triangle at `pts`, through the constant periodic offsets."""
+    bu = np.asarray(geo['bond_u'], np.int64); bv = np.asarray(geo['bond_v'], np.int64)
+    p0 = np.asarray(geo['pts'], float)
+    shift = np.asarray(geo['bond_R'], float) - (p0[bv] - p0[bu])
+    bR = np.asarray(pts, float)[bv] - np.asarray(pts, float)[bu] + shift
+    ei, sg = MB.edge_vec_orientation(geo['tri_bond'], geo['simplices'], bu, bv)
+    sg = np.where(sg == 0.0, 1.0, sg)
+    ev = bR[ei] * sg[..., None]
+    return 0.5 * (ev[:, 0, 0] * ev[:, 1, 1] - ev[:, 0, 1] * ev[:, 1, 0])
+
+
+def local_scale_field(geo, d, margin=0.05, shrink=0.85, iters=600):
+    """Per-vertex displacement scale by a LOCAL FIXED POINT. No global minimum is ever taken.
+
+    A single global scale is safe but wasteful: it is set by the tightest triangle in the whole mesh,
+    and every other vertex is then held to somebody else's limit. Measured on a 200-triangle mesh at
+    eta = 0.35, that costs a factor **2.3 in median amplitude** and up to **12x** for individual
+    vertices (`m2_local_scale_probe.py`). On a regular mesh it costs nothing, because there is
+    nothing to localise.
+
+    The obvious local alternative -- cap each vertex at the min over its own incident triangles --
+    is NOT safe, and measurably so: it inverted in 9 of 9 cases. A triangle flips from its three
+    vertices moving TOGETHER, so three vertices each sitting at their individual limit still flip the
+    triangle they share.
+
+    So: start at that optimistic local value and run a fixed point, shrinking only the vertices of
+    triangles that are actually violated. Each update touches one triangle's three vertices, so
+    information travels only between triangles that share a vertex -- nothing global is computed.
+    Converges in 3-6 sweeps in practice. `margin` keeps a triangle from being driven arbitrarily
+    thin rather than merely un-inverted."""
+    sm = np.asarray(geo['simplices'], np.int64)
+    p0 = np.asarray(geo['pts'], float)
+    s = np.full(len(p0), np.inf)
+    np.minimum.at(s, sm.ravel(), np.repeat(per_triangle_limit(geo, d), 3))
+    s = np.minimum(s, 1e6)
+    a0 = signed_tri_areas(geo, p0)
+    sgn = np.sign(a0)
+    for it in range(iters):
+        a = signed_tri_areas(geo, p0 + s[:, None] * d)
+        bad = (np.sign(a) != sgn) | (np.abs(a) < margin * np.abs(a0))
+        if not bad.any():
+            return s, it
+        np.multiply.at(s, sm[bad].ravel(), shrink)
+    return s, iters
+
+
+def displace_safe(geo, rng, frac=0.5, structure='correlated', local_scale=True, amp=None,
+                  scale='global', **kw):
     """Perturb node positions so that NO TRIANGLE CAN INVERT. Returns `(pts, meta)`.
 
     `frac` is the fraction of the distance to the FIRST INVERSION, computed exactly by
@@ -338,7 +420,26 @@ def displace_safe(geo, rng, frac=0.5, structure='correlated', local_scale=True, 
 
     `meta['geom_eta_equiv']` reports the largest node displacement in units of the mean bond length,
     so a sweep can be quoted on the familiar eta scale (eta < 0.5 is the classical bound, and it is
-    a COLLISION bound — which area-positivity subsumes)."""
+    a COLLISION bound — which area-positivity subsumes).
+
+    `scale` PICKS BETWEEN TWO GUARANTEES, and they are mutually exclusive:
+
+      'global' (default)  ONE scale for the whole mesh, set by the tightest triangle. The requested
+                          amplitude SHAPE -- `amp`, or the `local_scale` profile -- is then
+                          reproduced EXACTLY up to that one multiplier. Costs amplitude on a
+                          heterogeneous mesh: measured factor ~2.3 in the median and up to 12x on
+                          individual vertices at eta = 0.35.
+      'local'             a per-vertex scale from `local_scale_field`, so every vertex moves as far
+                          as its OWN neighbourhood allows and nothing global is computed. Recovers
+                          that factor -- but the per-vertex scale MODULATES the requested shape, so
+                          an `amp` profile is no longer reproduced exactly. By construction: the
+                          whole point is to vary amplitude with mesh tightness.
+
+    Default is 'global' because it is what every existing caller and every committed result was
+    produced under, and because "the shape I asked for is the shape I get" is the less surprising
+    contract. For DATASET GENERATION 'local' is the better choice -- more disorder per sample, and
+    no dependence on the mesh's single worst spot.
+    """
     if not 0.0 <= frac < 1.0:
         raise ValueError('frac must be in [0, 1): it is a fraction of the distance to inversion')
     pts = np.asarray(geo['pts'], float).copy()
@@ -380,8 +481,19 @@ def displace_safe(geo, rng, frac=0.5, structure='correlated', local_scale=True, 
         # somebody else's.
         h = node_min_altitude(geo)
         d = d * (h / max(float(np.median(h)), 1e-300))[:, None]
-    t_star = first_inversion_scale(geo, d)
-    step = frac * t_star
+    if scale == 'local':
+        # LOCAL fixed point: every vertex limited by its OWN neighbourhood, nothing global.
+        # Worth a factor ~2.3 in median amplitude on a disordered mesh and up to 12x on individual
+        # vertices; worth nothing on a regular one, which is the correct behaviour.
+        sv, n_it = local_scale_field(geo, d)
+        step = frac * sv[:, None]
+        t_star = float(np.median(sv))
+    elif scale == 'global':
+        n_it = 0
+        t_star = first_inversion_scale(geo, d)
+        step = frac * t_star
+    else:
+        raise ValueError("scale must be 'local' or 'global', got %r" % (scale,))
     out = pts + step * d
     lbar = float(bond_lengths(geo).mean())
     moved = np.linalg.norm(out - pts, axis=1)
@@ -389,6 +501,8 @@ def displace_safe(geo, rng, frac=0.5, structure='correlated', local_scale=True, 
     return out, dict(geom_structure=structure, geom_frac=float(frac),
                      geom_bound='exact_first_inversion',
                      geom_local_scale=bool(local_scale),
+                     geom_scale_mode=str(scale),
+                     geom_scale_iters=int(n_it),
                      geom_t_star=float(t_star),
                      geom_eta_equiv=float(moved.max() / lbar),
                      geom_eta_mean=float(moved.mean() / lbar),
