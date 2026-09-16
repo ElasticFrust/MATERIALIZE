@@ -332,6 +332,62 @@ def test_local_scale_beats_global_and_is_safe():
     return 0 if ok else 1
 
 
+def test_regular_lattice_floor_is_sqrt3_over_4():
+    """[2h] On the regular lattice the limit is sqrt(3)/4, NOT 1/2 -- inversion precedes collision.
+
+    Asked twice why the measured regular-lattice limit is ~0.435 and not 0.5. Because two different
+    failures compete on a unit-bond equilateral triangle:
+
+        two bonded vertices COLLIDE        closing at 2t over distance 1      t = 1/2      = 0.5000
+        a vertex CROSSES ITS OPPOSITE EDGE closing at 2t over altitude √3/2   t = √3/4     = 0.4330
+
+    The triangle FLATTENS BEFORE THE NODES MEET, so the collision bound is never the operative one.
+    Both configurations are constructed here and must return their exact analytic values.
+
+    √3/4 is the WORST-CASE limit per triangle, so a mesh-wide `t*` (a min over triangles) approaches
+    it FROM ABOVE as the triangle count grows: with few triangles no triangle need sit near the
+    adverse configuration and `t*` can exceed 0.5, with many one always does. Checked here at 200
+    triangles, where random fields land within 0.1 % of the floor."""
+    g2 = MB.build_geometry(10, 0.0, seed=1); MB.set_VD(g2, 0); _add_box(g2)
+    p0 = np.asarray(g2['pts'], float); n = len(p0)
+    lbar = float(F.bond_lengths(g2).mean())
+    bu = np.asarray(g2['bond_u'], np.int64); bv = np.asarray(g2['bond_v'], np.int64)
+    sm = np.asarray(g2['simplices'], np.int64)
+    floor = np.sqrt(3) / 4
+
+    # (a) adverse PAIR -> exactly 1/2
+    Rb = np.asarray(g2['bond_R'], float)
+    e = int(np.argmin(np.abs(np.hypot(Rb[:, 0], Rb[:, 1]) - lbar)))
+    d = np.zeros((n, 2)); dirn = Rb[e] / np.linalg.norm(Rb[e])
+    d[bu[e]] = +dirn; d[bv[e]] = -dirn
+    t_pair = F.first_inversion_scale(g2, d) / lbar
+
+    # (b) adverse ALTITUDE triple -> exactly sqrt(3)/4
+    A, B, C = sm[0]
+    ei, sg = MB.edge_vec_orientation(g2['tri_bond'], sm, bu, bv); sg = np.where(sg == 0.0, 1.0, sg)
+    ev = Rb[ei] * sg[..., None]
+    eBC = ev[0, 2]
+    nrm = np.array([-eBC[1], eBC[0]]); nrm /= np.linalg.norm(nrm)
+    if 0.5 * (ev[0, 0, 0] * ev[0, 1, 1] - ev[0, 0, 1] * ev[0, 1, 0]) > 0:
+        nrm = -nrm
+    d = np.zeros((n, 2)); d[A] = nrm; d[B] = -nrm; d[C] = -nrm
+    t_alt = F.first_inversion_scale(g2, d) / lbar
+
+    # (c) random fields approach the floor from above and never reach 1/2
+    ts = []
+    for sd in range(200):
+        rng = np.random.default_rng(sd); a = rng.uniform(0, 2 * np.pi, n)
+        ts.append(F.first_inversion_scale(g2, np.stack([np.cos(a), np.sin(a)], 1)) / lbar)
+    ts = np.array(ts)
+
+    ok = (abs(t_pair - 0.5) < 1e-9 and abs(t_alt - floor) < 1e-9
+          and ts.min() >= floor - 1e-9 and ts.min() < 1.01 * floor and (ts < 0.5).all())
+    print('[2h] regular lattice: adverse pair %.6f (=1/2), adverse altitude %.6f (=sqrt(3)/4 %.6f); '
+          '200 random fields min %.4f = %.4f x floor, all below 1/2  %s'
+          % (t_pair, t_alt, floor, ts.min(), ts.min() / floor, 'OK' if ok else 'FAIL'))
+    return 0 if ok else 1
+
+
 def test_it_actually_moves():
     """[3] The bound must protect by BOUNDING, not by doing nothing."""
     tag, geo = _meshes()[1]
@@ -396,6 +452,7 @@ def main():
                test_every_vertex_uses_its_own_margin_equally,
                test_arbitrary_amplitude_profile,
                test_local_scale_beats_global_and_is_safe,
+               test_regular_lattice_floor_is_sqrt3_over_4,
                test_it_actually_moves,
                test_beats_global_amp, test_no_wrap):
         bad += fn()
