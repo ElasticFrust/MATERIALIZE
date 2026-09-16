@@ -1,13 +1,33 @@
 # A1/d — what deformation + stiffness contrast actually reach, and the "hole" that wasn't
 
-> ## WARNING - TERMINOLOGY CORRECTED 2026-09-16: SECTIONS 1-5 DO NOT MEASURE VD
-> The user: *"You are mixing VD and alpha (or a) stiffness. VD is when you don't move the vertices,
-> only virtually, and then assign the spring stiffness according to tanh(a(l-l0))."* Correct.
-> **Sections 1-5 below actually deform the geometry and then key `k` off the DEFORMED lengths** --
-> the "real disorder + length-keyed k" cell, not virtual distortion.
-> `Phase 3/verifications/vd_demo/README.md` already draws this distinction and warns about this exact
-> confusion. Read "VD" in sections 1-5 as **"real disorder + length-keyed k"**.
-> **Section 6 is true VD**, and it reaches a different place.
+> ## DEFINITIONS (the user, 2026-09-16) - read these first, the labels in here were wrong twice
+>
+> **VD** -- virtual displacements on top of some real (regular or not) network: you consider an eta
+> variation **in order to decide about spring rigidities**, but **do not distort the initial
+> configuration**. The real geometry is untouched; only `k` changes.
+>
+> **eta + alpha stiffness** -- you **really** eta-distort some network (regular or not), and enhance
+> the distortion through the alpha stiffness mechanism, which changes the stiffness. The real
+> geometry IS the distorted one.
+>
+> So the distinction is **whether the real configuration is distorted**, not whether eta appears.
+> Both use eta; both use alpha to set `k`.
+>
+> ### What this document actually measures, relabelled
+>
+> | section | real geometry | k from | correct name |
+> |---|---|---|---|
+> | 1-5 | distorted | the distorted lengths | **eta + alpha** |
+> | 6 | regular, untouched | a virtual copy | **VD on a regular network** |
+> | 7, column "extra virtual distortion" | irregular, untouched | a further virtual copy | **VD on an irregular network** |
+>
+> Two labelling errors are corrected by that table. Sections 1-5 were first written as "VD" and are
+> not (they distort). And section 7 column 3 was then described as "a third thing I invented" -- it is
+> not: under the definition above it is exactly **VD on an irregular network**.
+>
+> ## PRIOR ART I MISSED
+> `Phase 3/verifications/vd_demo/README.md` already draws this distinction and warns about exactly
+> this confusion.
 >
 > **PRIOR ART I MISSED.** `Phase 3/verifications/vd_demo/` (five scripts + README) is a whole study of
 > true VD. I searched `VERIFICATION_CAMPAIGN.md` and `verification_tools/`, found only the dead legacy
@@ -221,3 +241,34 @@ cell size and costs anisotropy on the way.
 **Also flagged:** `mesh_build.set_VD` hardcodes `dl = |R| - 1.0`, so it can only express `l0 = 1`. On
 the Bravais cells with phi, psi != 1 the natural spacing is not 1 and it keys off the wrong reference
 -- likely part of why section 1 anisotropy was so high.
+
+
+---
+
+## 8. The two mechanisms compared, in the user's terms
+
+All from the same baseline: the regular triangular lattice at uniform `k`, nu = +0.333.
+
+| what | real geometry | alpha needed | nu reached | anisotropy | change in nu |
+|---|---|---|---|---|---|
+| distortion alone (eta = 0.35, uniform k) | distorted | - | +0.172 | 1.04 | 0.161 |
+| **VD on a regular network** | untouched | **30** | -0.056 | 1.49 | 0.389 |
+| **VD on an irregular network** | untouched | 30 | -0.021 | 1.96 | 0.354 |
+| **eta + alpha** (eta = 0.35) | distorted | **5** | **-0.366** | **1.20** | **0.699** |
+
+**eta + alpha is not just the sum of its parts.** Distortion alone moves nu by 0.161. The alpha
+mechanism applied to the distorted lattice moves it a further 0.538 *at alpha = 5*, whereas VD needs
+*alpha = 30* to achieve 0.389 on the undistorted one. So the stiffness mechanism is several times
+more effective per unit contrast when the stiffness pattern is **correlated with the geometry it acts
+on** -- which is the same conclusion section 7 reached from the k-source comparison, arrived at from
+the other direction.
+
+**This refines `vd_demo/README.md`.** That README concludes "disorder just lowers the alpha threshold;
+it is not required". True as far as it goes -- VD alone does cross zero. But the threshold framing
+understates the difference: at alpha = 5 the distorted route reaches -0.366 while VD reaches +0.15,
+and VD never gets past about -0.06 even at alpha = 30, where the distorted route is already at -0.37
+with *lower* anisotropy. Disorder does not merely lower the threshold; it does most of the work.
+
+**And it is the cheaper route in the sense that matters for the sampler:** low alpha keeps anisotropy
+near 1 and keeps nu size-stable (section 7), whereas the high alpha that VD requires costs anisotropy
+and makes nu a finite-size artefact.
