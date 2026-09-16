@@ -240,6 +240,56 @@ def test_every_vertex_uses_its_own_margin_equally():
     return 0 if ok else 1
 
 
+def test_arbitrary_amplitude_profile():
+    """[2f] An ARBITRARY per-node amplitude profile is honoured exactly, and still cannot invert.
+
+    THE VERDICT ON LOCAL AMPLITUDE CONTROL, in three parts:
+      * the RELATIVE amplitude of every vertex is fully controllable -- pass any non-negative profile
+        and the realised displacements reproduce it to machine precision (checked here by correlating
+        requested against realised, which must be 1.0);
+      * the overall SCALE is not the caller's to choose: it is set by the tightest triangle and
+        solved exactly, so the profile is honoured up to one common multiplier;
+      * an INDEPENDENT per-vertex absolute guarantee is impossible in principle, not merely
+        unimplemented -- a triangle inverts from all three of its vertices moving together, so the
+        binding constraint couples three nodes and no cap computed per-vertex in isolation is safe.
+
+    Tested with two deliberately awkward profiles: a single HOT node (everything else still), and a
+    smooth spatial ramp. Both must be reproduced in shape and neither may invert a triangle."""
+    g = MB.build_geometry(10, 0.2, seed=1); MB.set_VD(g, 0); _add_box(g)
+    a0 = _signed_areas(g)
+    p0 = np.asarray(g['pts'], float)
+    n = len(p0)
+    bad, rows = 0, []
+
+    profiles = {}
+    hot = np.zeros(n); hot[n // 3] = 1.0
+    profiles['single hot node'] = hot
+    profiles['spatial ramp'] = (p0[:, 0] - p0[:, 0].min()) / max(float(np.ptp(p0[:, 0])), 1e-300)
+    profiles['two-scale'] = np.where(np.arange(n) % 4 == 0, 1.0, 0.1)
+
+    for name, amp in profiles.items():
+        pts, meta = F.displace_safe(g, np.random.default_rng(0), frac=0.9, structure='white',
+                                    amp=amp)
+        moved = np.linalg.norm(pts - p0, axis=1)
+        inv = bool(np.any(np.sign(_signed_areas(g, pts)) != np.sign(a0)))
+        live = amp > 0
+        # shape fidelity: realised must be a constant multiple of requested, wherever requested > 0
+        ratio = moved[live] / amp[live]
+        shape_ok = float(ratio.max() / max(ratio.min(), 1e-300)) < 1.0 + 1e-9
+        # a zero request must produce zero motion
+        zero_ok = bool(np.all(moved[~live] < 1e-12)) if np.any(~live) else True
+        ok = shape_ok and zero_ok and not inv
+        bad += not ok
+        rows.append((name, int(live.sum()), float(moved.max()), shape_ok, zero_ok, inv))
+
+    for name, nlive, mx, sh, zo, inv in rows:
+        print('[2f] %-16s %3d live nodes, max move %.4f | shape exact %-5s | zeros stay %-5s | '
+              'inverted %-5s' % (name, nlive, mx, sh, zo, inv))
+    print('[2f] arbitrary per-node amplitude profile honoured exactly, no inversion  %s'
+          % ('OK' if bad == 0 else 'FAIL'))
+    return 1 if bad else 0
+
+
 def test_it_actually_moves():
     """[3] The bound must protect by BOUNDING, not by doing nothing."""
     tag, geo = _meshes()[1]
@@ -300,6 +350,7 @@ def main():
     for fn in (test_altitude, test_no_inversion, test_scale_is_exact_not_conservative,
                test_reaches_classical_eta, test_local_scale_is_size_independent,
                test_every_vertex_uses_its_own_margin_equally,
+               test_arbitrary_amplitude_profile,
                test_it_actually_moves,
                test_beats_global_amp, test_no_wrap):
         bad += fn()
