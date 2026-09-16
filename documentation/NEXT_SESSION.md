@@ -19,39 +19,73 @@ including "nothing".** `AUDIT_2026-08.md` §6 STATUS holds the older backlog.
 > 2026-08-25 and corrected here.)*
 >
 > **Nothing is blocking.** B-1 was root-caused and fixed 2026-08-24 (§1); M2's decisions **D1–D9 are
-> taken** (2026-08-25); the live plan is **`Phase 5/m2/M2_V2_PLAN.md`**, staged **S0…S5**.
-> **The next action is S1** (§2).
+> taken** (2026-08-25); the stage plan is **`Phase 5/m2/M2_V2_PLAN.md`**, staged **S0…S5**.
+>
+> **The two LIVE plans, as of 2026-09-16, are `Phase 5/m2/PLAN_A.md` (the science — A0 complete, A1
+> partial) and `documentation/PLAN_B.md` (the proof-of-concept site — planned, nothing built). They
+> are independent; only B2 depends on A. THE NEXT ACTION IS PLAN B / B1** — see the status block below.
 
 ---
 
-## ⏸ WHERE THINGS STAND — 2026-09-15: STOPPED, PLAN AFRESH
+## ▶ WHERE THINGS STAND — 2026-09-16: A0 COMPLETE, next action is **PLAN B (the site)**
 
-**Nothing is running.** The weight-tied iteration run was stopped by the user at epoch 7, deliberately,
-to plan the next step from the start rather than continue.
+**Nothing is running.** Option 2 below was the road taken, and it is finished.
 
-**The surrogate sits at per-triangle MAE/σ 0.0925** (`bravais` holdout). Against the independent sim,
-**E passes its must-tier** (3.85 %) and **ν clears the kill line but misses its must-tier** (0.0329
-mean / 0.0109 median against 0.05 and 0.02). The tier verdict is formally undecided — the mean-based
-criterion STAYS by the user's call.
+**THE TWO LIVE PLANS, both in-repo:**
+- **`Phase 5/m2/PLAN_A.md`** — the science. A0 complete, A1 partial.
+- **`documentation/PLAN_B.md`** — the proof-of-concept site. Planned, nothing built. **B1 is the
+  next action** (the user's call, 2026-09-16). It shares only a frozen checkpoint with Track A.
 
-**Every identified lever is now measured and closed** — data volume (+9.7 %), capacity (§9g),
-the schedule on the full arm (§9i), `--bulk_weight`, `--graph_balance`, the near-mechanism tail
-(§9j: error REDISTRIBUTED, not reduced) and `cond(G)` as an architecture pointer (§9k: the hypothesis
-failed its own test). **The model is representation-limited, and the deficit is the per-triangle
-SPATIAL structure** — bulk 0.031 against per-triangle 0.0925.
+### A0 — the surrogate is differentiable, its gradient was measured, and the verdict is in
 
-**Two live options, neither started:**
-1. **Weight-tied iteration, attempt #2.** Built, gated (`test_m2_train_surface.py`, 7/7) and
-   understood; attempt #1 was confounded by an unintended 4.2× capacity cut (fixed, `648eab7`).
-   Proposed but NOT agreed: `ns=96 nt=14 hidden=128 --tie --n_iter 4 --n_iter_hi 10` — 361 660 params
-   (0.91× baseline), 4–10 sweeps vs 5, ~5.2 days. ⚠ lr 1e-3 vs 3e-3 remains a confound: **a win is
-   conclusive, a loss is not.**
-2. **Stop improving the surrogate and USE it** — the differentiable designer through the FROZEN GNN.
-   No retraining, the first actual capability out of M2, and it tests the surrogate adversarially
-   because descent hunts its blind spots. The user's own framing, and a harder test than any
-   random-sample score.
+**It was never differentiable in geometry**, despite the docstring: `prepare()` was pure NumPy, so the
+model had gradients **only in its own weights**. Ported (`4fa81d4`), gated to ≤1e-6 against central
+finite differences on `∂C6/∂pts` and `∂C6/∂k`.
 
-Detail: `Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md` §9f–§9k.
+| | result |
+|---|---|
+| **A0.2** gradient fidelity | median `cos(∇L_solver, ∇L_gnn)` = **0.950** on `k` (n=300), **0.915** on positions (n=100, full 2N central FD). Pre-registered thresholds met. **But the cosine collapses monotonically with `max\|W\|`** — 0.999 below 1, **0.042 above 100** |
+| **A0.3** descent through the frozen GNN | **M1 needs a median of 9 exact-solver calls to match what the surrogate produces for free**, 20/20 targets, against the 86 M1 spends in a full run. Improves on the start in 90 %; **beats M1 in 0 %** |
+
+**VERDICT: a strong initialiser and a usable descent direction inside a trust region gated on
+`max|W|` — NOT a replacement for the solver.** The live route is an **edit policy via the surrogate
+with the solver as verifier** (the user, 2026-09-16). FD #13 (exact position gradients in the solver)
+remains the fork that would largely remove the surrogate's reason to exist for geometry.
+
+**Also landed:** A0.4's trace hook in `Phase 3/inverse_design.optimize(trace=...)`, recording one row
+per *accepted* iterate (the strong-Wolfe line search would otherwise store near-copies — the worst
+possible leakage), with the solver gradient that was already being computed and discarded.
+
+**⚠ And the session's biggest bug (`5625254`):** `evaluate_v2.geo_of` rebuilt solvers from stored
+samples with the **wrong edge orientation**, silently, for months. Guarded now by
+`mesh_build.edge_vec_orientation` / `check_edge_vecs`, with `inverse_design.from_geo` raising on
+inconsistency.
+
+### A1 — the dataset: audited, and 2832 new networks generated
+
+**"Auxetic" is an EFFECT, not a family.** The `auxetic` *generator* is 0.7 % of `dataset_v2_s0`, but
+**ν < 0 is 19.3 %** of it, 64 % of that from `disordered`. The real imbalance is in **response space**:
+the 0.2…1/3 bin alone is **42.7 %**. The corrective is to *subsample* `random`, not to generate.
+
+**A1/d generated 2832 auxetic-capable networks, 0 inverted, 0 solver failures** through the user's
+three mechanisms (η / VD / η+α) — `Phase 5/results/auxetic_generation/AUXETIC_GENERATION.md`. Its
+decisive finding: **9 of 14 bases produced zero isotropic-auxetic samples across 1890 rows**, at every
+isotropy threshold, while the capable bases gained 10–25× with cell size (1/√N self-averaging).
+
+**OPEN in A1, in priority order:**
+1. **Tier-(A) sim cross-check** on the 2832 — they carry solver labels only (`sim_status='not_run'`)
+   and 30 % sit above `max|W|` = 10, where folding degrades solver-sim agreement from 1e-13 to 1.6e-2.
+   **This must precede training on them.**
+2. **A1.a re-split** — the response-bin cap is the user's to choose; a 15 % cap costs 59 % of the data.
+3. **The targeted isotropic arm** — `--bases p1.0_1.0_a2-a1,random --reps 16`, ~4× the yield per unit
+   compute. Compute, not yet sanctioned.
+4. **A1.c** ingest of the 660 designed networks (the heavy-tailed deployment `k`).
+
+Detail: `Phase 5/m2/PLAN_A.md`, and `Phase 5/results/m2_s1/M2_RESIDUAL_AND_CONSTRAINTS.md` §9f–§9k for
+why every accuracy lever is closed.
+
+**Parked:** weight-tied iteration attempt #2 (built and gated at `test_m2_train_surface.py` 7/7, but
+lr 1e-3 vs 3e-3 is a confound — a win would be conclusive, a loss would not).
 
 ## ⚙ GATE STATUS — all 5 green as of 2026-09-13 (after TWO were found broken); a 6th added 2026-09-14
 

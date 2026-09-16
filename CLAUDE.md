@@ -15,7 +15,10 @@
 > code-vs-docs consistency-sweep task).
 >
 > **Entry points:** to run a design, `Phase 5/designer.py` → `design(nu_target, E_target, tag)`;
-> reusable API in `Phase 5/PLAN.md §1` and `MATERIALIZE.md §11`. M2 (GNN **surrogate → edit-policy**): `Phase 5/m2/M2.md`, plan `Phase 5/m2/M2_V2_PLAN.md`.
+> reusable API in `Phase 5/PLAN.md §1` and `MATERIALIZE.md §11`. M2 (GNN **surrogate → edit-policy**): `Phase 5/m2/M2.md`, stage plan `Phase 5/m2/M2_V2_PLAN.md`.
+> **The two LIVE working plans (2026-09-16) are `Phase 5/m2/PLAN_A.md`** (the science — A0 complete,
+> A1 partial) **and `documentation/PLAN_B.md`** (the proof-of-concept site, which runs the GNN and
+> never the solver, in a SEPARATE clone). They are independent; only B2 depends on A.
 > **Before modifying the network itself, read `documentation/GNN_GUIDE.md`** — the instructional doc:
 > what every element of the surrogate means, why it is there, and the recipe for writing a new
 > channel. (Results and status live in `Phase 5/results/m2_s1/`; the guide is the *how and why*.)
