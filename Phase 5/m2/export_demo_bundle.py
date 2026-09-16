@@ -251,6 +251,31 @@ def build_model(ck):
 # Exactly what `model_v3.from_checkpoint` reads, plus `head` (architecture-descriptive, not
 # protocol). `tie` / `n_iter` are carried only when present: from_checkpoint infers both from the
 # state dict otherwise, and that inference is the documented fallback, not a guess.
+BULK_HELPERS = '''
+
+def bulk_c6(c6_per):
+    """The project's homogenisation: the UNWEIGHTED mean of the per-triangle tensors.
+
+    Unweighted, not area-weighted. Area weighting is a constraint-side device; using it in the final
+    average biases nu on meshes whose triangles differ in size, which is every disordered mesh."""
+    return c6_per.mean(0)
+
+
+def directional(c6_per, n_theta=37):
+    """nu(theta) and E(theta) over [0, pi], plus the two scalars, from a per-triangle prediction.
+
+    This is the ONLY thing the API returns. The per-triangle tensors stay on the server: the model
+    predicts `G = (I + X) G_an (I + X)^T` against a truth of the form `C = (1 + W)^T A (1 + W)`, so a
+    per-triangle field would let a reader recover `(1 + W)^T = Q (I + X) Q^-1` -- the model's internal
+    decomposition -- which the bulk curves do not reveal. The angle grid matches the project's
+    canonical one: 37 points over [0, pi]."""
+    import numpy as _np
+    th = _np.linspace(0.0, _np.pi, n_theta)
+    nu, E = c6_to_nuE_theta(bulk_c6(c6_per), th)
+    return (th, nu.detach().numpy(), E.detach().numpy(),
+            float(nu.detach().numpy()[0]), float(E.detach().numpy()[0]))
+'''
+
 SANITISE_KEEP = ('ns', 'nt', 'hidden', 'layers', 'use_star', 'use_global', 'head', 'state')
 SANITISE_OPT = ('tie', 'n_iter')
 
@@ -287,8 +312,17 @@ def main():
     # ---- the inference module, extracted ------------------------------------------------------
     tv3 = open(os.path.join(HERE, 'train_v3.py'), encoding='utf-8').read()
     bds = open(os.path.join(HERE, 'build_dataset.py'), encoding='utf-8').read()
+    # ONE function out of the design module -- textbook anisotropic elasticity (build the compliance
+    # 4-tensor, contract with the axial and transverse directions), not unpublished method. Taken by
+    # extraction rather than retyping so the site's curves are the project's curves, and so gate [3]
+    # covers it. The MODULE is still excluded: it imports the solver stack, and gate [2] enforces
+    # that nothing of the sort rides along.
+    idn = open(os.path.join(REPO, 'Phase 3', 'inverse_design.py'), encoding='utf-8').read()
     body = _extract(tv3, ['bond_vectors', 'prepare', 'predict'])
     body += '\n\n' + _scrub(_extract(bds, ['graph_of']), [GRAPH_OF_DOC])
+    body += '\n\n' + _scrub(_extract(idn, ['c6_to_nuE_theta']),
+                            [(r'Matches _common\.nu_E_theta exactly: build', 'Build')])
+    body += BULK_HELPERS
     # the label is not available at inference; everything else stays exactly as trained
     body = body.replace("             target=torch.as_tensor(g['C6_per']),\n",
                         "             target=(torch.as_tensor(g['C6_per']) if 'C6_per' in g\n"

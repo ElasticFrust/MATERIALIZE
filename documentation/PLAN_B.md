@@ -161,8 +161,13 @@ physics code it carries is `mesh_build.py` and the GNN modules.
 |---|---|
 | `GET /api/library` | the preset catalogue (precomputed, also shipped static) |
 | `POST /api/mesh` | build a mesh from (family, parameters, seed) → graph JSON |
-| `POST /api/predict` | graph + `k` → `C6`, ν(θ), E(θ), per-triangle ν/E, timing |
+| `POST /api/predict` | graph + `k` → ν(θ), E(θ), the two scalars, timing — **and nothing else** |
 | `POST /api/design` | **B2 only** (B.5) — gradient design through the GNN |
+
+*(Corrected 2026-09-16: the `/api/predict` row used to promise `C6` and a per-triangle ν/E field.
+That contradicted B.3 and B.6/9 in the same document — the user's call was to omit both, precisely
+because `W` is recoverable from a per-triangle prediction. The restrictive reading wins; the row is
+now the narrow one, and the server computes ν(θ)/E(θ) rather than shipping the tensor it came from.)*
 
 **Two hard safety rules** (the full list is B.6):
 
