@@ -100,7 +100,40 @@ real, and is the reason it was weighed rather than dismissed. It loses to (1).
 
 **github.io still hosts the frontend**, under the user's own domain; it simply cannot host the Python.
 
-### Host: Hugging Face Spaces *(chosen 2026-09-15; reversible)*
+### ⛔ HOST: THE CHOICE BELOW IS REFUTED — Docker Spaces are no longer free *(step 0, 2026-09-16)*
+
+The plan's own step 0 said to verify the free-tier numbers before building on a remembered one. It
+did its job on the first try. Hugging Face's current Spaces documentation says:
+
+> *"Static Spaces are free for everyone. **Gradio and Docker Spaces run on compute and require a
+> paid plan to create: PRO for personal accounts**, Team or Enterprise for organizations. Free
+> personal accounts in good standing can still host up to 2 Gradio Spaces running on ZeroGPU."*
+
+The hardware table still reads **CPU Basic — 2 vCPU, 16 GB, FREE**, and 50 GB of non-persistent
+disk, so the RAM figure that decided the host is accurate. What changed is **eligibility**: the
+hourly rate is zero but *creating* a Docker Space now needs PRO (~$9/month). The sleep policy is
+unchanged ("go to sleep and stop executing after a period of time if unused"), port 7860 and the
+git-repo-per-Space mechanics are unchanged, and no card is needed for the free account itself.
+
+**So the decision is reopened.** The three live options, with my recommendation first:
+
+1. **Hugging Face PRO, ~$9/month — RECOMMENDED if the budget allows.** Everything else in this plan
+   was chosen on HF's properties and still holds: 16 GB (which is what killed Render), git-push
+   deploy, one Space serving both halves so no CORS, invisible behind the user's own domain. The
+   only change is that it stops being free. Also gains **protected visibility** (source private,
+   running app public) — which is a materially better fit for B.6 than public-with-scrubbed-code.
+2. **A free Python host elsewhere.** The backend is a standard containerised FastAPI app, so this
+   costs a config file, not a rewrite. But Render's 512 MB is the known OOM risk with torch
+   resident, and the alternatives that do fit (e.g. scale-to-zero container hosts) generally want a
+   card on file even when the free allowance covers this traffic.
+3. **Gradio on the free ZeroGPU allowance.** Free, and genuinely available — but it constrains the
+   UI to Gradio's model, and B.3's node dragging and custom ν(θ)/E(θ) panels are exactly the kind of
+   bespoke interaction that fights it. Not recommended for this page.
+
+**Nothing else in B1 depends on this.** The bundle, the API, the frontend and every gate are
+host-independent; only the deploy target waits.
+
+### Host: Hugging Face Spaces *(chosen 2026-09-15 — see the refutation ABOVE before acting on it)*
 
 | host | free RAM | catch |
 |---|---|---|
