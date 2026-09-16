@@ -4,7 +4,11 @@
 > mode permits editing one. **Plan A and Plan B are standalone and independent.** Plan A is
 > `Phase 5/m2/PLAN_A.md`. Nothing in B depends on A except **B2**, which is marked throughout.
 >
-> **Status as of 2026-09-16: planned, nothing built. B1 is the next action.**
+> **Status 2026-09-16: B1 is BUILT and gated locally; only the deploy remains.** The clone lives
+> outside this repository and carries the bundle (`model_v2`, `model_v3`, `meshing`, `inference`,
+> a sanitised `checkpoint.pt`), the site layer (`guards`, `render`, `library`, `ui`), the Space
+> wrapper, and two gate suites: `test_app.py` (6 gates, no gradio, runs in the research
+> environment) and `test_ui.py` (4 gates, needs gradio). All ten pass. **B2 is not started.**
 >
 > This document describes a deliverable that **deliberately does not live in this repository**. The
 > site is a **clone** carrying copied files only, with fresh history and no remote here (B.7). This
@@ -40,7 +44,7 @@ product, not a result.
 | interaction | **choose from a library**, **build your own**, **tune stiffnesses** |
 | node dragging | **IN SCOPE** for the first build |
 | reachability | **must be reachable**; free for now; **the user's own domain** |
-| compute location | **split: static frontend on the user's domain + free Python API** (B.1) |
+| compute location | originally *split static frontend + Python API*; **settled as a single Gradio Space on the user's domain** (see Host, below) |
 | inverse side | later, same API contract |
 
 *Note on node dragging:* an earlier draft said it needs the A0.1 torch port. **That is wrong** — for
@@ -100,58 +104,74 @@ real, and is the reason it was weighed rather than dismissed. It loses to (1).
 
 **github.io still hosts the frontend**, under the user's own domain; it simply cannot host the Python.
 
-### ⛔ HOST: THE CHOICE BELOW IS REFUTED — Docker Spaces are no longer free *(step 0, 2026-09-16)*
+### Host — SETTLED 2026-09-16: a PROTECTED Hugging Face Space on PRO, Gradio SDK, CPU Basic
 
-The plan's own step 0 said to verify the free-tier numbers before building on a remembered one. It
-did its job on the first try. Hugging Face's current Spaces documentation says:
+The decision took four turns and each one was forced by a measurement, so the trail is kept: the
+reasoning is reusable, and three of the dead ends are things a future reader would otherwise retry.
 
-> *"Static Spaces are free for everyone. **Gradio and Docker Spaces run on compute and require a
-> paid plan to create: PRO for personal accounts**, Team or Enterprise for organizations. Free
-> personal accounts in good standing can still host up to 2 Gradio Spaces running on ZeroGPU."*
+**1. The original choice (free Docker Space) was refuted at step 0.** HF now states that only
+*Static* Spaces are free for everyone, and that "Gradio and Docker Spaces run on compute and require
+a paid plan to create: PRO for personal accounts". The hardware table still reads **CPU Basic — 2
+vCPU, 16 GB, FREE**, so the RAM figure that ruled out Render is intact; what changed is
+**eligibility**, not cost-per-hour. *(The plan itself said to verify this rather than trust a
+remembered number. It was right to.)*
 
-The hardware table still reads **CPU Basic — 2 vCPU, 16 GB, FREE**, and 50 GB of non-persistent
-disk, so the RAM figure that decided the host is accurate. What changed is **eligibility**: the
-hourly rate is zero but *creating* a Docker Space now needs PRO (~$9/month). The sleep policy is
-unchanged ("go to sleep and stop executing after a period of time if unused"), port 7860 and the
-git-repo-per-Space mechanics are unchanged, and no card is needed for the free account itself.
+**2. The free carve-out did not apply.** Free accounts may host 2 **ZeroGPU** Spaces — Gradio SDK
+only — but eligibility requires an account **older than 30 days**, and this account is new. So the
+free HF route is closed for about a month. Gradio sells no hosting of its own: `gradio.app`'s "deploy
+free" *is* Spaces, and `share=True` is a one-week proxy tunnel to your own machine, not a host.
 
-**So the decision is reopened.** The three live options, with my recommendation first:
+**3. A fully-static page was considered seriously, and is a good design — for a different site.**
+Precompute a sweep (φ × ψ × η, with α reused across a fixed geometry) into ~5 MB of JSON, ship no
+weights at all, host free on Cloudflare Pages with a custom domain. It gives the library, the
+parameter sliders and both response panels, always-on, with nothing to leak. It cannot give
+**freehand** — arbitrary geometry and node moves need the model on unswept input — and it cannot give
+**B2** at all, since ONNX Runtime Web has no autograd and finite differences would cost ~54 000
+forward passes per design. Freehand and B2 were both wanted, so it lost.
 
-1. **Hugging Face PRO, ~$9/month — RECOMMENDED if the budget allows.** Everything else in this plan
-   was chosen on HF's properties and still holds: 16 GB (which is what killed Render), git-push
-   deploy, one Space serving both halves so no CORS, invisible behind the user's own domain. The
-   only change is that it stops being free. Also gains **protected visibility** (source private,
-   running app public) — which is a materially better fit for B.6 than public-with-scrubbed-code.
-2. **A free Python host elsewhere.** The backend is a standard containerised FastAPI app, so this
-   costs a config file, not a rewrite. But Render's 512 MB is the known OOM risk with torch
-   resident, and the alternatives that do fit (e.g. scale-to-zero container hosts) generally want a
-   card on file even when the free allowance covers this traffic.
-3. **Gradio on the free ZeroGPU allowance.** Free, and genuinely available — but it constrains the
-   UI to Gradio's model, and B.3's node dragging and custom ν(θ)/E(θ) panels are exactly the kind of
-   bespoke interaction that fights it. Not recommended for this page.
+**4. PRO clears three blockers with one subscription**, which is why it wins over a VPS or Cloud Run:
 
-**Nothing else in B1 depends on this.** The bundle, the API, the frontend and every gate are
-host-independent; only the deploy target waits.
+| blocker | what PRO gives |
+|---|---|
+| free accounts cannot create Gradio Spaces (the 30-day rule) | Space creation, immediately |
+| a free Space's repo is public, so `checkpoint.pt` would be published | **protected visibility** — source private, running app publicly reachable |
+| the site should live on the user's own address | **custom domain**, CNAME to `hf.space` (PRO-only, and needs public or protected visibility) |
 
-### Host: Hugging Face Spaces *(chosen 2026-09-15 — see the refutation ABOVE before acting on it)*
+Protected visibility is the one that matters most: it deletes an entire mechanism the earlier draft
+needed, in which the weights had to live in a **private model repo** pulled at startup with an
+`HF_TOKEN` Space secret because the Space's own repo was necessarily public. With a protected repo
+the checkpoint simply ships inside it.
 
-| host | free RAM | catch |
-|---|---|---|
-| **Hugging Face Spaces** | **~16 GB** | sleeps when idle, ~tens of seconds to wake |
-| Render | **512 MB** | sleeps after ~15 min; **torch + scipy + numpy resident is plausibly 300–500 MB, so the failure mode is an opaque OOM kill** |
-| Fly.io | tight allowance | most DevOps; needs its CLI and a `fly.toml`; memory limits need reasoning about |
+**Known and accepted: PRO is not always-on.** CPU Basic still sleeps when idle and wakes in tens of
+seconds; running indefinitely needs paid hardware (~$22/month more). Fine for a demo, and the README
+says so, so the wake reads as expected rather than as a fault.
 
-**The memory figure decides it.** The two downsides do not bite here: the Space's URL is invisible
-behind the user's own domain, and the sleep is hidden because the preset library is static — the
-backend is only woken by "build your own", k-tuning, or a node drag.
+**Not ZeroGPU.** The workload is 30–90 ms of CPU on 397 k parameters. With PRO, plain CPU Basic is
+allowed and costs nothing per hour, so there is no reason to take GPU hardware whose allocation
+latency and per-visitor quotas (2 min/day unauthenticated, 5 min/day free) would make the app both
+slower and rationed. No `spaces` package, no `@spaces.GPU`.
 
-**Reversible:** the backend is a standard containerised FastAPI app, so changing host later is a config
-file and a deploy command, not a rewrite.
+**Gradio, not Docker** *(user's call, 2026-09-16)*. PRO permits either. Docker would allow fluid node
+dragging and full control of the page; Gradio costs about two days less and needs no frontend. **One
+argument made for Gradio was overstated and is corrected here:** rendering the project's matplotlib
+conventions server-side is *not* exclusive to Gradio — a FastAPI app can serve the same PNGs. The
+real advantage is development time. The cost is that node editing is **two-click** (pick up / put
+down) rather than a drag.
 
-⚠ **Verify current free-tier limits (RAM, sleep policy, card requirement) as the FIRST deploy step.**
-These change, and the plan should not be built on a remembered number.
+The switch stays cheap because everything below the interface is UI-agnostic: `guards.py`,
+`render.py`, `library.py`, `inference.py` and `meshing.py` import no Gradio. Moving to Docker later
+means writing a frontend and a thin wrapper around functions that already exist and are already
+gated.
 
-## B.2 Backend — thin adapter, in the SEPARATE clone (B.7)
+## B.2 Backend — SUPERSEDED by the Gradio build; kept for the rules it states
+
+*(2026-09-16: the endpoint table below described a REST API behind a separate static frontend. The
+build is a **Gradio app**, so there are no public endpoints at all — the handlers in `ui.py` are
+called over Gradio's own transport, and `queue(api_open=False)` closes the auto-generated
+programmatic API. The two safety rules and the output restriction still hold verbatim and are
+implemented in `guards.py` and `inference.directional`; only the transport changed.)*
+
+### the original adapter design
 
 The site lives in its own repository with copied files only (B.6/B.7). It therefore imports nothing
 from MATERIALIZE at runtime — no `Phase 2` solver, no `Phase 3`, no `verification_tools`. The only
