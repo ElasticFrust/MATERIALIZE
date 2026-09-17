@@ -8,7 +8,8 @@ edited. This script makes the bundle a FUNCTION of the repo, so it can be regene
 importantly, RE-CHECKED.
 
 It exports, and nothing else:
-    model_v2.py, model_v3.py   the network itself                (numpy + torch only)
+    tensor_ops.py              the three tensor helpers the app calls, extracted
+    model.py                   the network itself                (numpy + torch only)
     inference.py               bond_vectors / prepare / predict, EXTRACTED from train_v3.py so the
                                deployed pipeline is literally the trained one, not a retyping
     meshing.py                 mesh_build.py minus the solver-facing leaves
@@ -168,6 +169,32 @@ GRAPH_OF_DOC = (
     '    non-triangular face; it is provenance and never a model input -- the model already sees\n'
     '    such an edge through `log(k/k_mean)`, which reads about -7 against ~0 for a real rib."""')
 
+# Renames applied to the emitted network module. The bundle has no "v2"/"v3": version-numbered
+# filenames carry no meaning for a reader of the demo and carry a little history for anyone else.
+# The import is narrowed at the same time -- the original pulled five names and used three, with a
+# `noqa: F401` acknowledging that two were dead.
+MODEL_RENAMES = [
+    (r'from model_v2 import [^\n]*',
+     'from tensor_ops import assemble, edge_carriers, sym3_to_c6'),
+    (r'`model_v3\.py`', '`model.py`'),
+    (r'\bmodel_v3\b', 'model'),
+    (r'\bmodel_v2\b', 'tensor_ops'),
+]
+
+TENSOR_OPS_HEADER = '''"""The tensor algebra the network is built on: edge carriers, assembly, Voigt packing.
+
+Three functions, each self-contained. They are separated from the network itself because they are
+convention rather than architecture -- the Voigt ordering [xx, xy, yy] with no factor of two on
+shear, and the per-triangle assembly C(s) = Q G Q^T -- and because the inference pipeline needs them
+without needing the model.
+"""
+import numpy as np
+import torch
+
+
+'''
+
+
 # meshing.py's module docstring is pure provenance -- where each function was lifted from, which
 # file is protected, which audit moved it. None of that can be rewritten line by line into something
 # meaningful, so it is REPLACED wholesale with a docstring written for the bundle.
@@ -190,9 +217,12 @@ Conventions:
   - float64 throughout.
 """'''
 
+# `model_v2.py` is NOT in this table. Copying it whole shipped ten definitions to deliver three --
+# including `ForwardGNNv2`, a complete earlier architecture, and that generation's feature
+# engineering. The three the app actually uses are extracted into `tensor_ops.py` instead (see
+# TENSOR_OPS below); they are self-contained, 24 lines in total.
 FILES = {
-    'model_v2.py': dict(src='Phase 5/m2/model_v2.py', rules=COMMON, drop=[]),
-    'model_v3.py': dict(src='Phase 5/m2/model_v3.py', rules=COMMON, drop=[]),
+    'model.py': dict(src='Phase 5/m2/model_v3.py', rules=COMMON + MODEL_RENAMES, drop=[]),
     # the solver-facing leaves: nothing else in the file calls them (asserted in main)
     'meshing.py': dict(src='Phase 2/mesh_build.py', rules=COMMON, doc=MESHING_DOC,
                        drop=['kkt_from_tri_bond', 'build_open_mesh', 'clean_tri']),
@@ -230,8 +260,8 @@ prediction against the research code to 1e-12.
 import numpy as np
 import torch
 
-import model_v2 as M2
-import model_v3 as M3
+import tensor_ops as M2
+import model as M3
 
 torch.set_default_dtype(torch.float64)
 
@@ -309,6 +339,11 @@ def main():
             text = _replace_module_docstring(text, spec['doc'])
         emitted[name] = _scrub(text, spec['rules'])
 
+    # ---- tensor_ops.py: only what the app calls -------------------------------------------
+    m2 = open(os.path.join(HERE, 'model_v2.py'), encoding='utf-8').read()
+    emitted['tensor_ops.py'] = TENSOR_OPS_HEADER + _scrub(
+        _extract(m2, ['edge_carriers', 'assemble', 'sym3_to_c6']), COMMON)
+
     # ---- the inference module, extracted ------------------------------------------------------
     tv3 = open(os.path.join(HERE, 'train_v3.py'), encoding='utf-8').read()
     bds = open(os.path.join(HERE, 'build_dataset.py'), encoding='utf-8').read()
@@ -329,7 +364,9 @@ def main():
                         "                     else None),\n")
     if 'C6_per' not in body:
         raise SystemExit('the target line moved -- re-check the extraction')
-    emitted['inference.py'] = INFERENCE_HEADER + _scrub(body, COMMON)
+    # MODEL_RENAMES here too: the header and the extracted docstrings both name `model_v3`,
+    # and a bundle that has no such file should not mention one.
+    emitted['inference.py'] = _scrub(INFERENCE_HEADER + body, COMMON + MODEL_RENAMES)
 
     # ---- gate [0]: the emitted files must PARSE ----------------------------------------------
     for name, text in emitted.items():
@@ -363,7 +400,7 @@ def main():
         for m in re.finditer(r'^\s*(?:from\s+([A-Za-z0-9_.]+)\s+import|import\s+([A-Za-z0-9_.]+))',
                              text, re.M):
             mod = (m.group(1) or m.group(2)).split('.')[0]
-            if mod not in ALLOWED_TOP and mod not in {'model_v2', 'model_v3', 'meshing',
+            if mod not in ALLOWED_TOP and mod not in {'tensor_ops', 'model', 'meshing',
                                                       'inference'}:
                 bad.append('%s: %s' % (name, mod))
     if bad:
@@ -395,7 +432,7 @@ def main():
     net_r = M3research.from_checkpoint(ck, eval_mode=True)
 
     sys.path.insert(0, out_app)
-    for m in ('model_v2', 'model_v3'):                 # import the BUNDLE copies, not the repo's
+    for m in ('tensor_ops', 'model', 'inference'):     # import the BUNDLE copies, not the repo's
         sys.modules.pop(m, None)
     import importlib                                                            # noqa: E402
     inf = importlib.import_module('inference')
